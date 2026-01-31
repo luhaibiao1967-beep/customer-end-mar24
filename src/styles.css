@@ -1,0 +1,9 @@
+/* 使用远程 CSS 导入，这通常不会被 CSP 拦截 */
+@import url("https://unpkg.com/tailwindcss@^2/dist/tailwind.min.css");
+
+/* 补丁：手动定义一些 3000 端口可能用到的基础样式 */
+body {
+  margin: 0;
+  background-color: #f3f4f6;
+  font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+}
