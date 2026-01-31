@@ -29,13 +29,13 @@ export default function CustomerHome({ customer: initialCustomer }: CustomerHome
   };
 
    const handleAddressUpdate = async () => {
-    const newAddress = prompt('Enter new address:', customer.addr || '');
-    if (newAddress && newAddress !== customer.addr) {
+    const newAddress = prompt('Enter new address:', customer.address || '');
+    if (newAddress && newAddress !== customer.address) {
       try {
         // Update address in the database
         const { error } = await supabase
           .from('customers')
-          .update({ addr: newAddress }) // Ensure correct column name "addr"
+           .update({ address: newAddress }) // Correct column name
           .eq('id', customer.id);
 
         if (error) {
@@ -45,7 +45,7 @@ export default function CustomerHome({ customer: initialCustomer }: CustomerHome
         // Update local state dynamically
         setCustomer((prev) => ({
           ...prev,
-          addr: newAddress,
+           address: newAddress,
         }));
 
         alert('Address updated successfully!');
@@ -71,7 +71,7 @@ export default function CustomerHome({ customer: initialCustomer }: CustomerHome
         alignItems: 'center'
       }}>
         <h1 style={{ color: 'white', fontSize: '24px', margin: 0 }}>
-          💧 Water Delivery
+          💧 Vividaqua
         </h1>
         <button
           onClick={handleSignOut}
@@ -99,26 +99,26 @@ export default function CustomerHome({ customer: initialCustomer }: CustomerHome
         {/* Welcome Card */}
         <div style={{
           background: 'white',
-          borderRadius: '20px',
-          padding: '40px',
-          marginBottom: '20px',
-          boxShadow: '0 10px 40px rgba(0,0,0,0.2)'
+          borderRadius: '12px',
+          padding: '20px',
+          marginBottom: '15px',
+          boxShadow: '0 5px 20px rgba(0,0,0,0.2)'
         }}>
-          <div style={{ textAlign: 'center', marginBottom: '30px' }}>
+          <div style={{ textAlign: 'center', marginBottom: '20px' }}>
             <div style={{
-              width: '100px',
-              height: '100px',
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              width: '80px',
+              height: '80px',
+              background: 'white',
               borderRadius: '50%',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              margin: '0 auto 20px',
-              fontSize: '50px'
+              margin: '0 auto 15px',
+              fontSize: '40px'
             }}>
               👋
             </div>
-            <h2 style={{ fontSize: '32px', margin: '0 0 10px 0' }}>
+            <h2 style={{ fontSize: '28px', margin: '0 0 10px 0' }}>
               Welcome, {customer.name}!
             </h2>
             <p style={{ color: '#666', margin: 0 }}>
@@ -229,7 +229,7 @@ export default function CustomerHome({ customer: initialCustomer }: CustomerHome
                   cursor: customer.branch ? 'pointer' : 'not-allowed'
                 }}
               >
-                🛒 Order Now
+                🛒 Order Delivery
               </button>
               <button
                 onClick={() => navigate('/buy-vouchers')}
@@ -263,7 +263,7 @@ export default function CustomerHome({ customer: initialCustomer }: CustomerHome
                 cursor: customer.branch ? 'pointer' : 'not-allowed'
               }}
             >
-              🛒 Order Now
+              🛒 Order Delivery
             </button>
           )}
         </div>
