@@ -6,7 +6,7 @@ import { supabase } from '../supabaseClient';
 interface Customer {
   id: string;
   name: string;
-  addr: string;
+  address: string;
   whatsapp: string;
   customer_type: string;
   voucher_balance: number;
@@ -17,14 +17,43 @@ interface CustomerHomeProps {
   customer: Customer;
 }
 
-export default function CustomerHome({ customer }: CustomerHomeProps) {
+export default function CustomerHome({ customer: initialCustomer }: CustomerHomeProps) {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
-
+  const [customer, setCustomer] = useState<Customer>(initialCustomer); 
+  
   const handleSignOut = async () => {
     setLoading(true);
     await supabase.auth.signOut();
     navigate('/login');
+  };
+
+   const handleAddressUpdate = async () => {
+    const newAddress = prompt('Enter new address:', customer.addr || '');
+    if (newAddress && newAddress !== customer.addr) {
+      try {
+        // Update address in the database
+        const { error } = await supabase
+          .from('customers')
+          .update({ addr: newAddress }) // Ensure correct column name "addr"
+          .eq('id', customer.id);
+
+        if (error) {
+          throw new Error(`Failed to update address: ${error.message}`);
+        }
+
+        // Update local state dynamically
+        setCustomer((prev) => ({
+          ...prev,
+          addr: newAddress,
+        }));
+
+        alert('Address updated successfully!');
+      } catch (err) {
+        console.error('Error updating address:', err);
+        alert('Failed to update address. Please try again.');
+      }
+    }
   };
 
   return (
@@ -108,21 +137,9 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                 <p style={{ fontSize: '12px', color: '#999', margin: 0 }}>📍 Delivery Address</p>
-                <button
-                  onClick={() => {
-                    const newAddress = prompt('Enter new address:', customer.address || customer.addr);
-                    if (newAddress) {
-                      // Update in database
-                      supabase
-                        .from('customers')
-                        .update({ address: newAddress })
-                        .eq('id', customer.id)
-                        .then(() => {
-                          alert('Address updated successfully!');
-                          window.location.reload();
-                        });
-                    }
-                  }}
+                <button                 
+                  onClick={handleAddressUpdate}
+
                   style={{
                     background: 'none',
                     border: 'none',
@@ -136,33 +153,39 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
                 </button>
               </div>
               <p style={{ fontSize: '14px', color: '#333', margin: 0, fontWeight: '500' }}>
-                {customer.address || customer.addr}
+                 {customer.address}
               </p>
             </div>
 
-            {/* Branch */}
-            <div style={{
-              background: '#f5f5f5',
-              padding: '20px',
-              borderRadius: '12px',
-              marginBottom: '15px'
-            }}>
-              <p style={{ fontSize: '12px', color: '#999', margin: '0 0 5px 0' }}>🏢 Service Branch</p>
-              <p style={{ fontSize: '14px', color: '#333', margin: 0, fontWeight: '500' }}>
-                {customer.branch || 'Not assigned yet'}
-              </p>
-            </div>
+             {/* Customer Info Panels */}
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+              {/* Service Branch Panel */}
+              <div style={{
+                background: '#f5f5f5',
+                padding: '20px',
+                borderRadius: '12px',
+                flex: 1,
+                textAlign: 'center',
+              }}>
+                <p style={{ fontSize: '14px', color: '#999', margin: '0 0 5px 0' }}>🏢 Service Branch</p>
+                <p style={{ fontSize: '16px', color: '#333', margin: 0, fontWeight: '500' }}>
+                  {customer.branch || 'Not assigned'}
+                </p>
+              </div>
 
-            {/* WhatsApp only */}
-            <div style={{
-              background: '#f5f5f5',
-              padding: '20px',
-              borderRadius: '12px'
-            }}>
-              <p style={{ fontSize: '12px', color: '#999', margin: '0 0 5px 0' }}>💬 WhatsApp</p>
-              <p style={{ fontSize: '14px', color: '#333', margin: 0, fontWeight: '500' }}>
-                {customer.whatsapp}
-              </p>
+            {/* WhatsApp Panel */}
+              <div style={{
+                background: '#f5f5f5',
+                padding: '20px',
+                borderRadius: '12px',
+                flex: 1,
+                textAlign: 'center',
+              }}>
+                <p style={{ fontSize: '14px', color: '#999', margin: '0 0 5px 0' }}>💬 WhatsApp</p>
+                <p style={{ fontSize: '16px', color: '#333', margin: 0, fontWeight: '500' }}>
+                  {customer.whatsapp || 'Not provided'}
+                </p>
+              </div>
             </div>
           </div>
 
