@@ -286,7 +286,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
                 <p style={{ fontSize: '36px', fontWeight: 'bold', margin: 0 }}>
                   {customer.voucher_balance}
                 </p>
-                <p style={{ fontSize: '12px', margin: '8px 0 0 0', opacity: 0.9' }}>
+                <p style={{ fontSize: '12px', margin: '8px 0 0 0', opacity: 0.9 }}>
                   vouchers available
                 </p>
               </div>

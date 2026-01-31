@@ -6,6 +6,7 @@ import CustomerRegister from './Pages/CustomerRegister';
 import CustomerHome from './Pages/CustomerHome';
 import BuyVouchers from './Pages/BuyVouchers';
 import OrderHistory from './Pages/OrderHistory';
+import PlaceOrder from './Pages/PlaceOrder';
 
 function App() {
   const [loading, setLoading] = useState(true);
@@ -84,6 +85,16 @@ function App() {
           element={
             customer ? (
               <BuyVouchers customer={customer} />
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+        <Route
+          path="/place-order"
+          element={
+            customer ? (
+              <PlaceOrder customer={customer} />
             ) : (
               <Navigate to="/login" replace />
             )
