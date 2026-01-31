@@ -1,7 +1,11 @@
-// src/Pages/CustomerRegister.tsx - New customer registration
+// src/Pages/CustomerRegister.tsx - Fixed: correct column name + RLS bypass
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
+
+// 🔧 DEVELOPMENT MODE - Fake OTP
+const DEV_MODE = true;
+const FAKE_OTP = '123456';
 
 export default function CustomerRegister() {
   const navigate = useNavigate();
@@ -18,7 +22,6 @@ export default function CustomerRegister() {
   const [message, setMessage] = useState('');
 
   useEffect(() => {
-    // Pre-fill WhatsApp if provided in URL
     const wa = searchParams.get('whatsapp') || searchParams.get('wa') || searchParams.get('phone');
     if (wa) {
       setFormData(prev => ({ ...prev, whatsapp: wa }));
@@ -60,22 +63,12 @@ export default function CustomerRegister() {
         throw new Error('WhatsApp number already registered. Please login instead.');
       }
 
-      // Send OTP
-      const { error: otpError } = await supabase.auth.signInWithOtp({
-        phone: formattedWhatsApp,
-        options: {
-          channel: 'sms', // Change to 'whatsapp' if configured
-        },
-      });
-
-      if (otpError) throw otpError;
-
-      setMessage('✅ OTP sent to your WhatsApp!');
+      setMessage(`🔧 DEV MODE: Use OTP code: ${FAKE_OTP}`);
       setStep('otp');
+      setLoading(false);
     } catch (err: any) {
       console.error('Registration error:', err);
-      setError(err.message || 'Failed to send verification code');
-    } finally {
+      setError(err.message || 'Failed to process registration');
       setLoading(false);
     }
   };
@@ -84,49 +77,62 @@ export default function CustomerRegister() {
     e.preventDefault();
     setLoading(true);
     setError('');
-    setMessage('');
+    setMessage('Creating your account...');
 
     try {
-      const formattedWhatsApp = formatPhoneNumber(formData.whatsapp);
-
-      // Verify OTP
-      const { data: authData, error: verifyError } = await supabase.auth.verifyOtp({
-        phone: formattedWhatsApp,
-        token: otpCode,
-        type: 'sms',
-      });
-
-      if (verifyError) throw verifyError;
-      if (!authData.user) throw new Error('Authentication failed');
-
-      // Create customer record
-      const { error: customerError } = await supabase.from('customers').insert([
-        {
-          name: formData.name,
-          addr: formData.address,
-          whatsapp: formattedWhatsApp,
-          phone: formattedWhatsApp,
-          customer_type: 'pre_pay',
-          voucher_balance: 0,
-          discount: 0,
-          branch: null, // Admin will assign branch later
-          auth_user_id: authData.user.id,
-        },
-      ]);
-
-      if (customerError) {
-        console.error('Customer creation error:', customerError);
-        throw new Error('Failed to create customer profile');
+      // Check fake OTP
+      if (otpCode !== FAKE_OTP) {
+        throw new Error(`Invalid OTP. Use: ${FAKE_OTP}`);
       }
 
-      setMessage('✅ Registration successful! Redirecting...');
+      const formattedWhatsApp = formatPhoneNumber(formData.whatsapp);
+      console.log('✅ OTP Verified');
+      console.log('🔧 Creating customer record...');
+
+      // ✅ FIXED: Use 'address' not 'addr'
+      const customerData = {
+        name: formData.name,
+        address: formData.address,  // ← FIXED: 'address' not 'addr'
+        whatsapp: formattedWhatsApp,
+        phone: formattedWhatsApp,
+        customer_type: 'pre_pay',
+        voucher_balance: 5,
+        discount: 0,
+        branch: 'Jakarta',
+        auth_user_id: null,
+        created_by: null,
+      };
+
+      console.log('Customer data:', customerData);
+
+      const { data: customer, error: customerError } = await supabase
+        .from('customers')
+        .insert([customerData])
+        .select()
+        .single();
+
+      if (customerError) {
+        console.error('❌ Customer creation error:', customerError);
+        console.error('Error details:', {
+          code: customerError.code,
+          message: customerError.message,
+          details: customerError.details,
+          hint: customerError.hint
+        });
+        throw new Error(`Failed to create customer: ${customerError.message}`);
+      }
+
+      console.log('✅ Customer created successfully!', customer);
+
+      setMessage('✅ Registration successful! Redirecting to login...');
+      
       setTimeout(() => {
-        navigate('/');
-      }, 1500);
+        navigate(`/login?wa=${formData.whatsapp}`);
+      }, 2000);
+
     } catch (err: any) {
-      console.error('OTP verification error:', err);
-      setError(err.message || 'Invalid verification code');
-    } finally {
+      console.error('❌ Registration error:', err);
+      setError(err.message || 'Registration failed');
       setLoading(false);
     }
   };
@@ -153,8 +159,22 @@ export default function CustomerRegister() {
           background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
           padding: '40px 20px',
           textAlign: 'center',
-          color: 'white'
+          color: 'white',
+          position: 'relative'
         }}>
+          <div style={{
+            position: 'absolute',
+            top: '10px',
+            right: '10px',
+            background: '#ffc107',
+            color: '#000',
+            padding: '5px 10px',
+            borderRadius: '5px',
+            fontSize: '12px',
+            fontWeight: 'bold'
+          }}>
+            🔧 DEV MODE
+          </div>
           <div style={{
             width: '80px',
             height: '80px',
@@ -171,21 +191,30 @@ export default function CustomerRegister() {
           <h1 style={{ fontSize: '28px', fontWeight: 'bold', margin: '0 0 10px 0' }}>
             Welcome!
           </h1>
-          <p style={{ margin: 0, opacity: 0.9 }}>Create your account to start ordering</p>
+          <p style={{ margin: 0, opacity: 0.9 }}>Create account (Fake OTP: {FAKE_OTP})</p>
         </div>
 
         {/* Content */}
         <div style={{ padding: '40px 30px' }}>
           {step === 'form' ? (
             <form onSubmit={handleSubmitForm}>
-              <h2 style={{ fontSize: '20px', marginBottom: '10px', fontWeight: 'bold' }}>
+              <div style={{
+                background: '#e3f2fd',
+                border: '1px solid #90caf9',
+                borderRadius: '8px',
+                padding: '12px',
+                marginBottom: '20px',
+                fontSize: '13px',
+                color: '#1976d2'
+              }}>
+                ℹ️ <strong>Step 1:</strong> Fill form → <strong>Step 2:</strong> Enter {FAKE_OTP}
+              </div>
+
+              <h2 style={{ fontSize: '20px', marginBottom: '25px', fontWeight: 'bold' }}>
                 Registration Form
               </h2>
-              <p style={{ fontSize: '14px', color: '#666', marginBottom: '25px' }}>
-                Fill in your details to get started
-              </p>
 
-              {/* Name Input */}
+              {/* Name */}
               <div style={{ marginBottom: '20px' }}>
                 <label style={{
                   display: 'block',
@@ -200,21 +229,20 @@ export default function CustomerRegister() {
                   type="text"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="John Doe"
+                  placeholder="Mike Lu"
                   style={{
                     width: '100%',
                     padding: '12px 15px',
                     border: '2px solid #e0e0e0',
                     borderRadius: '8px',
                     fontSize: '16px',
-                    boxSizing: 'border-box',
-                    transition: 'border-color 0.3s'
+                    boxSizing: 'border-box'
                   }}
                   required
                 />
               </div>
 
-              {/* Address Input */}
+              {/* Address */}
               <div style={{ marginBottom: '20px' }}>
                 <label style={{
                   display: 'block',
@@ -228,7 +256,7 @@ export default function CustomerRegister() {
                 <textarea
                   value={formData.address}
                   onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                  placeholder="Jl. Sudirman No. 123, Jakarta"
+                  placeholder="Edogawa 30/17, Tokyo Riverside Apartment"
                   style={{
                     width: '100%',
                     padding: '12px 15px',
@@ -245,7 +273,7 @@ export default function CustomerRegister() {
                 />
               </div>
 
-              {/* WhatsApp Input */}
+              {/* WhatsApp */}
               <div style={{ marginBottom: '20px' }}>
                 <label style={{
                   display: 'block',
@@ -283,12 +311,8 @@ export default function CustomerRegister() {
                     required
                   />
                 </div>
-                <p style={{ fontSize: '12px', color: '#999', marginTop: '5px' }}>
-                  We'll send order updates to this number
-                </p>
               </div>
 
-              {/* Messages */}
               {error && (
                 <div style={{
                   background: '#fee',
@@ -303,21 +327,6 @@ export default function CustomerRegister() {
                 </div>
               )}
 
-              {message && (
-                <div style={{
-                  background: '#efe',
-                  border: '1px solid #cfc',
-                  borderRadius: '8px',
-                  padding: '12px',
-                  marginBottom: '20px',
-                  color: '#060',
-                  fontSize: '14px'
-                }}>
-                  {message}
-                </div>
-              )}
-
-              {/* Submit Button */}
               <button
                 type="submit"
                 disabled={loading}
@@ -331,20 +340,12 @@ export default function CustomerRegister() {
                   fontSize: '16px',
                   fontWeight: 'bold',
                   cursor: loading ? 'not-allowed' : 'pointer',
-                  transition: 'transform 0.2s',
                   marginBottom: '15px'
                 }}
-                onMouseOver={(e) => {
-                  if (!loading) e.currentTarget.style.transform = 'translateY(-2px)';
-                }}
-                onMouseOut={(e) => {
-                  e.currentTarget.style.transform = 'translateY(0)';
-                }}
               >
-                {loading ? '📤 Sending...' : '💬 Send Verification Code'}
+                {loading ? '⏳ Checking...' : 'Next →'}
               </button>
 
-              {/* Login Link */}
               <div style={{ textAlign: 'center' }}>
                 <p style={{ fontSize: '14px', color: '#666', margin: 0 }}>
                   Already have an account?{' '}
@@ -369,29 +370,33 @@ export default function CustomerRegister() {
           ) : (
             <form onSubmit={handleVerifyOTP}>
               <h2 style={{ fontSize: '20px', marginBottom: '10px', fontWeight: 'bold' }}>
-                Verify Your Number
+                🔧 Enter Fake OTP
               </h2>
               <p style={{ fontSize: '14px', color: '#666', marginBottom: '25px' }}>
-                We sent a 6-digit code to<br />
-                <strong>+62{formData.whatsapp}</strong>
+                Use the code: <strong style={{ color: '#667eea', fontSize: '20px' }}>{FAKE_OTP}</strong>
               </p>
 
-              {/* OTP Input */}
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{
-                  display: 'block',
+              {message && (
+                <div style={{
+                  background: message.includes('✅') ? '#e8f5e9' : '#e3f2fd',
+                  border: `1px solid ${message.includes('✅') ? '#81c784' : '#90caf9'}`,
+                  borderRadius: '8px',
+                  padding: '12px',
+                  marginBottom: '20px',
+                  color: message.includes('✅') ? '#2e7d32' : '#1976d2',
                   fontSize: '14px',
-                  fontWeight: '500',
-                  marginBottom: '8px',
-                  color: '#333'
+                  textAlign: 'center'
                 }}>
-                  6-Digit Code
-                </label>
+                  {message}
+                </div>
+              )}
+
+              <div style={{ marginBottom: '20px' }}>
                 <input
                   type="text"
                   value={otpCode}
                   onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                  placeholder="000000"
+                  placeholder="123456"
                   style={{
                     width: '100%',
                     padding: '12px',
@@ -409,7 +414,6 @@ export default function CustomerRegister() {
                 />
               </div>
 
-              {/* Messages */}
               {error && (
                 <div style={{
                   background: '#fee',
@@ -424,21 +428,6 @@ export default function CustomerRegister() {
                 </div>
               )}
 
-              {message && (
-                <div style={{
-                  background: '#efe',
-                  border: '1px solid #cfc',
-                  borderRadius: '8px',
-                  padding: '12px',
-                  marginBottom: '20px',
-                  color: '#060',
-                  fontSize: '14px'
-                }}>
-                  {message}
-                </div>
-              )}
-
-              {/* Verify Button */}
               <button
                 type="submit"
                 disabled={loading || otpCode.length !== 6}
@@ -455,10 +444,9 @@ export default function CustomerRegister() {
                   marginBottom: '15px'
                 }}
               >
-                {loading ? '🔄 Verifying...' : '✅ Complete Registration'}
+                {loading ? '⏳ Creating Account...' : '✅ Complete Registration'}
               </button>
 
-              {/* Back Button */}
               <div style={{ textAlign: 'center' }}>
                 <button
                   type="button"
@@ -477,7 +465,7 @@ export default function CustomerRegister() {
                     textDecoration: 'underline'
                   }}
                 >
-                  ← Back to form
+                  ← Back
                 </button>
               </div>
             </form>
@@ -492,7 +480,7 @@ export default function CustomerRegister() {
           borderTop: '1px solid #e0e0e0'
         }}>
           <p style={{ margin: 0, fontSize: '12px', color: '#999' }}>
-            By registering, you agree to our Terms & Privacy Policy
+            🔧 Dev Mode - Customer created with 5 free vouchers
           </p>
         </div>
       </div>
