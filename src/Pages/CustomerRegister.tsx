@@ -1,11 +1,7 @@
-// src/Pages/CustomerRegister.tsx - Fixed: correct column name + RLS bypass
+// src/Pages/CustomerRegister.tsx - Real WhatsApp OTP via Fazpass
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
-
-// 🔧 DEVELOPMENT MODE - Fake OTP
-const DEV_MODE = true;
-const FAKE_OTP = '123456';
 
 export default function CustomerRegister() {
   const navigate = useNavigate();
@@ -20,6 +16,7 @@ export default function CustomerRegister() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [countdown, setCountdown] = useState(0);
 
   useEffect(() => {
     const wa = searchParams.get('whatsapp') || searchParams.get('wa') || searchParams.get('phone');
@@ -27,6 +24,14 @@ export default function CustomerRegister() {
       setFormData(prev => ({ ...prev, whatsapp: wa }));
     }
   }, [searchParams]);
+
+  // Countdown timer
+  useEffect(() => {
+    if (countdown > 0) {
+      const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [countdown]);
 
   const formatPhoneNumber = (phone: string): string => {
     let cleaned = phone.replace(/\D/g, '');
@@ -52,19 +57,17 @@ export default function CustomerRegister() {
 
       const formattedWhatsApp = formatPhoneNumber(formData.whatsapp);
 
-      // Check if WhatsApp already registered
-      const { data: existingCustomer } = await supabase
-        .from('customers')
-        .select('id')
-        .eq('whatsapp', formattedWhatsApp)
-        .single();
+      // Send OTP via Fazpass
+      const { data, error: functionError } = await supabase.functions.invoke('auth-send-otp', {
+        body: { phone: formattedWhatsApp }
+      });
 
-      if (existingCustomer) {
-        throw new Error('WhatsApp number already registered. Please login instead.');
-      }
+      if (functionError) throw functionError;
+      if (!data.success) throw new Error(data.error);
 
-      setMessage(`🔧 DEV MODE: Use OTP code: ${FAKE_OTP}`);
+      setMessage(`📱 Kode OTP telah dikirim ke WhatsApp ${formattedWhatsApp}`);
       setStep('otp');
+      setCountdown(300); // 5 minutes
       setLoading(false);
     } catch (err: any) {
       console.error('Registration error:', err);
@@ -80,61 +83,67 @@ export default function CustomerRegister() {
     setMessage('Creating your account...');
 
     try {
-      // Check fake OTP
-      if (otpCode !== FAKE_OTP) {
-        throw new Error(`Invalid OTP. Use: ${FAKE_OTP}`);
-      }
-
       const formattedWhatsApp = formatPhoneNumber(formData.whatsapp);
-      console.log('✅ OTP Verified');
-      console.log('🔧 Creating customer record...');
 
-      // ✅ FIXED: Use 'address' not 'addr'
-      const customerData = {
-        name: formData.name,
-        address: formData.address,  // ← FIXED: 'address' not 'addr'
-        whatsapp: formattedWhatsApp,
-        phone: formattedWhatsApp,
-        customer_type: 'pre_pay',
-        voucher_balance: 5,
-        discount: 0,
-        branch: 'Jakarta',
-        auth_user_id: null,
-        created_by: null,
-      };
+      // Verify OTP and create customer
+      const { data, error: functionError } = await supabase.functions.invoke('auth-verify-otp', {
+        body: {
+          phone: formattedWhatsApp,
+          otp: otpCode,
+          name: formData.name,
+          address: formData.address,
+          isRegistration: true
+        }
+      });
 
-      console.log('Customer data:', customerData);
+      if (functionError) throw functionError;
+      if (!data.success) throw new Error(data.error);
 
-      const { data: customer, error: customerError } = await supabase
-        .from('customers')
-        .insert([customerData])
-        .select()
-        .single();
+      console.log('✅ Registration successful:', data);
 
-      if (customerError) {
-        console.error('❌ Customer creation error:', customerError);
-        console.error('Error details:', {
-          code: customerError.code,
-          message: customerError.message,
-          details: customerError.details,
-          hint: customerError.hint
-        });
-        throw new Error(`Failed to create customer: ${customerError.message}`);
-      }
-
-      console.log('✅ Customer created successfully!', customer);
-
-      setMessage('✅ Registration successful! Redirecting to login...');
+      setMessage('✅ Pendaftaran berhasil! Link pesanan telah dikirim ke WhatsApp Anda. Silakan cek WhatsApp untuk melanjutkan.');
       
-      setTimeout(() => {
-        navigate(`/login?wa=${formData.whatsapp}`);
-      }, 2000);
+      // No redirect - user should check WhatsApp for magic link
+      setLoading(false);
 
     } catch (err: any) {
       console.error('❌ Registration error:', err);
       setError(err.message || 'Registration failed');
       setLoading(false);
     }
+  };
+
+  const handleResendOTP = async () => {
+    if (countdown > 0) return;
+    
+    setLoading(true);
+    setError('');
+    setMessage('Resending OTP...');
+
+    try {
+      const formattedWhatsApp = formatPhoneNumber(formData.whatsapp);
+
+      const { data, error: functionError } = await supabase.functions.invoke('auth-send-otp', {
+        body: { phone: formattedWhatsApp }
+      });
+
+      if (functionError) throw functionError;
+      if (!data.success) throw new Error(data.error);
+
+      setMessage('📱 Kode OTP baru telah dikirim!');
+      setCountdown(300);
+      setOtpCode('');
+      setLoading(false);
+    } catch (err: any) {
+      setError(err.message || 'Failed to resend OTP');
+      setLoading(false);
+    }
+  };
+
+  const formatCountdown = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   return (
@@ -159,22 +168,8 @@ export default function CustomerRegister() {
           background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
           padding: '40px 20px',
           textAlign: 'center',
-          color: 'white',
-          position: 'relative'
+          color: 'white'
         }}>
-          <div style={{
-            position: 'absolute',
-            top: '10px',
-            right: '10px',
-            background: '#ffc107',
-            color: '#000',
-            padding: '5px 10px',
-            borderRadius: '5px',
-            fontSize: '12px',
-            fontWeight: 'bold'
-          }}>
-            🔧 DEV MODE
-          </div>
           <div style={{
             width: '80px',
             height: '80px',
@@ -189,9 +184,9 @@ export default function CustomerRegister() {
             👤
           </div>
           <h1 style={{ fontSize: '28px', fontWeight: 'bold', margin: '0 0 10px 0' }}>
-            Welcome!
+            Selamat Datang!
           </h1>
-          <p style={{ margin: 0, opacity: 0.9 }}>Create account (Fake OTP: {FAKE_OTP})</p>
+          <p style={{ margin: 0, opacity: 0.9 }}>Daftar akun baru</p>
         </div>
 
         {/* Content */}
@@ -207,11 +202,11 @@ export default function CustomerRegister() {
                 fontSize: '13px',
                 color: '#1976d2'
               }}>
-                ℹ️ <strong>Step 1:</strong> Fill form → <strong>Step 2:</strong> Enter {FAKE_OTP}
+                ℹ️ <strong>Langkah 1:</strong> Isi formulir → <strong>Langkah 2:</strong> Verifikasi WhatsApp OTP
               </div>
 
               <h2 style={{ fontSize: '20px', marginBottom: '25px', fontWeight: 'bold' }}>
-                Registration Form
+                Formulir Pendaftaran
               </h2>
 
               {/* Name */}
@@ -223,13 +218,13 @@ export default function CustomerRegister() {
                   marginBottom: '8px',
                   color: '#333'
                 }}>
-                  Full Name *
+                  Nama Lengkap *
                 </label>
                 <input
                   type="text"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="Mike Lu"
+                  placeholder="Budi Santoso"
                   style={{
                     width: '100%',
                     padding: '12px 15px',
@@ -251,12 +246,12 @@ export default function CustomerRegister() {
                   marginBottom: '8px',
                   color: '#333'
                 }}>
-                  📍 Delivery Address *
+                  📍 Alamat Pengiriman *
                 </label>
                 <textarea
                   value={formData.address}
                   onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                  placeholder="Edogawa 30/17, Tokyo Riverside Apartment"
+                  placeholder="Jl. Sudirman No. 123, Jakarta Selatan"
                   style={{
                     width: '100%',
                     padding: '12px 15px',
@@ -282,7 +277,7 @@ export default function CustomerRegister() {
                   marginBottom: '8px',
                   color: '#333'
                 }}>
-                  💬 WhatsApp Number *
+                  💬 Nomor WhatsApp *
                 </label>
                 <div style={{ position: 'relative' }}>
                   <span style={{
@@ -343,51 +338,61 @@ export default function CustomerRegister() {
                   marginBottom: '15px'
                 }}
               >
-                {loading ? '⏳ Checking...' : 'Next →'}
+                {loading ? '⏳ Mengirim OTP...' : 'Lanjut →'}
               </button>
 
               <div style={{ textAlign: 'center' }}>
                 <p style={{ fontSize: '14px', color: '#666', margin: 0 }}>
-                  Already have an account?{' '}
-                  <button
-                    type="button"
-                    onClick={() => navigate('/login')}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      color: '#667eea',
-                      fontWeight: 'bold',
-                      cursor: 'pointer',
-                      textDecoration: 'underline',
-                      fontSize: '14px'
-                    }}
-                  >
-                    Login here
-                  </button>
+                  Sudah punya akun?{' '}
+                  <span style={{ color: '#667eea', fontWeight: 'bold' }}>
+                    Cek WhatsApp Anda untuk link pesanan
+                  </span>
                 </p>
               </div>
             </form>
           ) : (
             <form onSubmit={handleVerifyOTP}>
               <h2 style={{ fontSize: '20px', marginBottom: '10px', fontWeight: 'bold' }}>
-                🔧 Enter Fake OTP
+                📱 Verifikasi WhatsApp
               </h2>
               <p style={{ fontSize: '14px', color: '#666', marginBottom: '25px' }}>
-                Use the code: <strong style={{ color: '#667eea', fontSize: '20px' }}>{FAKE_OTP}</strong>
+                Masukkan kode OTP yang dikirim ke WhatsApp Anda
               </p>
+
+              {countdown > 0 && (
+                <div style={{
+                  background: '#fff3cd',
+                  border: '1px solid #ffc107',
+                  borderRadius: '8px',
+                  padding: '12px',
+                  marginBottom: '20px',
+                  color: '#856404',
+                  fontSize: '14px',
+                  textAlign: 'center'
+                }}>
+                  ⏱️ Kode berlaku: <strong>{formatCountdown(countdown)}</strong>
+                </div>
+              )}
 
               {message && (
                 <div style={{
                   background: message.includes('✅') ? '#e8f5e9' : '#e3f2fd',
                   border: `1px solid ${message.includes('✅') ? '#81c784' : '#90caf9'}`,
                   borderRadius: '8px',
-                  padding: '12px',
+                  padding: '15px',
                   marginBottom: '20px',
                   color: message.includes('✅') ? '#2e7d32' : '#1976d2',
                   fontSize: '14px',
-                  textAlign: 'center'
+                  textAlign: 'center',
+                  lineHeight: '1.6'
                 }}>
                   {message}
+                  {message.includes('✅') && (
+                    <div style={{ marginTop: '15px', padding: '12px', background: 'white', borderRadius: '8px', fontSize: '13px' }}>
+                      📱 <strong>Langkah selanjutnya:</strong><br/>
+                      Buka WhatsApp Anda dan klik link yang dikirim untuk mulai memesan!
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -396,7 +401,7 @@ export default function CustomerRegister() {
                   type="text"
                   value={otpCode}
                   onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                  placeholder="123456"
+                  placeholder="000000"
                   style={{
                     width: '100%',
                     padding: '12px',
@@ -444,8 +449,26 @@ export default function CustomerRegister() {
                   marginBottom: '15px'
                 }}
               >
-                {loading ? '⏳ Creating Account...' : '✅ Complete Registration'}
+                {loading ? '⏳ Membuat Akun...' : '✅ Selesaikan Pendaftaran'}
               </button>
+
+              <div style={{ textAlign: 'center', marginBottom: '15px' }}>
+                <button
+                  type="button"
+                  onClick={handleResendOTP}
+                  disabled={countdown > 0 || loading}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: countdown > 0 ? '#999' : '#667eea',
+                    fontSize: '14px',
+                    cursor: countdown > 0 ? 'not-allowed' : 'pointer',
+                    textDecoration: countdown > 0 ? 'none' : 'underline'
+                  }}
+                >
+                  {countdown > 0 ? `Kirim ulang dalam ${formatCountdown(countdown)}` : '🔄 Kirim ulang kode OTP'}
+                </button>
+              </div>
 
               <div style={{ textAlign: 'center' }}>
                 <button
@@ -455,6 +478,7 @@ export default function CustomerRegister() {
                     setOtpCode('');
                     setError('');
                     setMessage('');
+                    setCountdown(0);
                   }}
                   style={{
                     background: 'none',
@@ -465,7 +489,7 @@ export default function CustomerRegister() {
                     textDecoration: 'underline'
                   }}
                 >
-                  ← Back
+                  ← Kembali
                 </button>
               </div>
             </form>
@@ -480,7 +504,7 @@ export default function CustomerRegister() {
           borderTop: '1px solid #e0e0e0'
         }}>
           <p style={{ margin: 0, fontSize: '12px', color: '#999' }}>
-            🔧 Dev Mode - Customer created with 5 free vouchers
+            🎁 Dapat 5 voucher gratis saat pendaftaran
           </p>
         </div>
       </div>

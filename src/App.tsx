@@ -1,12 +1,12 @@
-// src/App.tsx - Using localStorage for auth (no Supabase Auth needed!)
+// src/App.tsx - Magic Link Only Authentication (No Login Page!)
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import CustomerLogin from './Pages/CustomerLogin';
 import CustomerRegister from './Pages/CustomerRegister';
 import CustomerHome from './Pages/CustomerHome';
 import BuyVouchers from './Pages/BuyVouchers';
 import OrderHistory from './Pages/OrderHistory';
 import PlaceOrder from './Pages/PlaceOrder';
+import MagicLinkHandler from './Components/MagicLinkHandler';
 
 function App() {
   const [loading, setLoading] = useState(true);
@@ -25,6 +25,7 @@ function App() {
         console.error('Failed to parse customer data:', err);
         localStorage.removeItem('customer');
         localStorage.removeItem('isLoggedIn');
+        localStorage.removeItem('authToken');
       }
     }
 
@@ -65,18 +66,26 @@ function App() {
   return (
     <Router>
       <Routes>
-        {/* Public routes */}
-        <Route path="/login" element={customer ? <Navigate to="/" replace /> : <CustomerLogin />} />
-        <Route path="/register" element={customer ? <Navigate to="/" replace /> : <CustomerRegister />} />
+        {/* Magic Link Route - Primary authentication method */}
+        <Route 
+          path="/home" 
+          element={<MagicLinkHandler />} 
+        />
 
-        {/* Protected routes */}
+        {/* Public registration - only page that doesn't require authentication */}
+        <Route 
+          path="/register" 
+          element={customer ? <Navigate to="/" replace /> : <CustomerRegister />} 
+        />
+
+        {/* Protected routes - require magic link authentication */}
         <Route
           path="/"
           element={
             customer ? (
               <CustomerHome customer={customer} />
             ) : (
-              <Navigate to="/login" replace />
+              <Navigate to="/register" replace />
             )
           }
         />
@@ -86,7 +95,7 @@ function App() {
             customer ? (
               <BuyVouchers customer={customer} />
             ) : (
-              <Navigate to="/login" replace />
+              <Navigate to="/register" replace />
             )
           }
         />
@@ -96,7 +105,7 @@ function App() {
             customer ? (
               <PlaceOrder customer={customer} />
             ) : (
-              <Navigate to="/login" replace />
+              <Navigate to="/register" replace />
             )
           }
         />
@@ -106,13 +115,13 @@ function App() {
             customer ? (
               <OrderHistory customer={customer} />
             ) : (
-              <Navigate to="/login" replace />
+              <Navigate to="/register" replace />
             )
           }
         />
 
-        {/* Catch all */}
-        <Route path="*" element={<Navigate to="/" replace />} />
+        {/* Catch all - redirect to registration */}
+        <Route path="*" element={<Navigate to="/register" replace />} />
       </Routes>
     </Router>
   );
