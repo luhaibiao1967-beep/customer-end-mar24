@@ -6,6 +6,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+const DEV_MODE = Deno.env.get('ENVIRONMENT') === 'development'
+
 interface RequestBody {
   phone: string
   otp: string
@@ -89,7 +91,12 @@ serve(async (req) => {
       if (customerError) throw customerError
       customer = newCustomer
 
-      await sendWelcomeMessage(customer, supabase)
+      if (DEV_MODE) {
+        console.log('🔧 DEV MODE: Skipping welcome WhatsApp message')
+        console.log(`Magic link: ${Deno.env.get('APP_URL')}/home?token=${customer.auth_token}`)
+      } else {
+        await sendWelcomeMessage(customer, supabase)
+      }
 
     } else {
       if (!existingCustomer) {
@@ -128,6 +135,7 @@ serve(async (req) => {
         },
         magic_link: magicLink,
         auth_token: customer.auth_token,
+        dev_mode: DEV_MODE,
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -182,7 +190,7 @@ ${magicLink}
 - TIDAK PERLU LOGIN lagi - cukup klik link!
 - Link ini berlaku selamanya
 
-Butuh bantung? Hubungi support kami.
+Butuh bantuan? Hubungi support kami.
 Terima kasih! 💧`
 
     const fazpassUrl = 'https://api.fazpass.com/v1/message/send'
@@ -200,7 +208,7 @@ Terima kasih! 💧`
         message: message,
         settings: {
           sender_name: 'Water Delivery',
-          is_dev: Deno.env.get('ENVIRONMENT') !== 'production',
+          is_dev: true,
         }
       }),
     })

@@ -6,9 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-interface RequestBody {
-  phone: string
-}
+const DEV_MODE = Deno.env.get('ENVIRONMENT') === 'development'
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -16,7 +14,7 @@ serve(async (req) => {
   }
 
   try {
-    const { phone }: RequestBody = await req.json()
+    const { phone } = await req.json()
 
     if (!phone || phone.length < 10) {
       throw new Error('Invalid phone number')
@@ -27,7 +25,7 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseKey)
 
-    const otp = generateOTP()
+    const otp = DEV_MODE ? '123456' : generateOTP()
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000)
 
     const { error: otpError } = await supabase
@@ -40,6 +38,32 @@ serve(async (req) => {
       })
 
     if (otpError) throw otpError
+
+    if (DEV_MODE) {
+      console.log(`🔧 DEV MODE: OTP for ${formattedPhone} is: ${otp}`)
+      
+      await supabase.from('whatsapp_messages').insert({
+        phone: formattedPhone,
+        message_type: 'otp',
+        message_content: `DEV MODE - OTP: ${otp}`,
+        status: 'dev_mode',
+        provider_response: JSON.stringify({ dev_mode: true, otp: otp }),
+      })
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          message: 'OTP generated (DEV MODE)',
+          dev_mode: true,
+          otp: otp,
+          expires_in: 300,
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200,
+        }
+      )
+    }
 
     const fazpassApiKey = Deno.env.get('FAZPASS_API_KEY')!
     const fazpassMerchantKey = Deno.env.get('FAZPASS_MERCHANT_KEY')!
@@ -124,7 +148,7 @@ async function sendOTPViaFazpass(
         message: message,
         settings: {
           sender_name: 'Water Delivery',
-          is_dev: Deno.env.get('ENVIRONMENT') !== 'production',
+          is_dev: true,
         }
       }),
     })
