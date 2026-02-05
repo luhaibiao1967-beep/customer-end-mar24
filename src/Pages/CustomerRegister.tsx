@@ -166,14 +166,15 @@ export default function CustomerRegister() {
       const formattedWhatsApp = formatPhoneNumber(formData.whatsapp);
 
       const { data, error: functionError } = await supabase.functions.invoke('auth-verify-otp', {
-        body: {
-          phone: formattedWhatsApp,
-          otp: otpCode,
-          name: formData.name,
-          address: formData.address,
-          isRegistration: true
-        }
-      });
+  body: {
+    phone: formattedWhatsApp,
+    otp: otpCode,
+    customerData: {
+      name: formData.name,
+      address: formData.address
+    }
+  }
+});
 
       console.log('✅ Registration successful:', data);
 
@@ -548,7 +549,7 @@ export default function CustomerRegister() {
                     opacity: registrationSuccess ? 0.5 : 1,
                     cursor: registrationSuccess ? 'not-allowed' : 'text'
                   }}
-                  maxLength={6}
+                  maxLength={4}
                   required
                   autoFocus
                 />
@@ -570,7 +571,7 @@ export default function CustomerRegister() {
 
               <button
                 type="submit"
-                disabled={loading || otpCode.length !== 6 || registrationSuccess}
+                disabled={loading || otpCode.length !== 4 || registrationSuccess}
                 style={{
                   width: '100%',
                   padding: '14px',

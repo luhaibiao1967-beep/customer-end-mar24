@@ -25,21 +25,21 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseKey)
 
+    const otp = DEV_MODE ? '123456' : generateOTP()
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000)
+
+    const { error: otpError } = await supabase
+      .from('auth_otps')
+      .insert({
+        phone: formattedPhone,
+        otp: otp,
+        expires_at: expiresAt.toISOString(),
+        verified: false,
+      })
+
+    if (otpError) throw otpError
+
     if (DEV_MODE) {
-      const otp = '123456'
-      const expiresAt = new Date(Date.now() + 5 * 60 * 1000)
-
-      const { error: otpError } = await supabase
-        .from('auth_otps')
-        .insert({
-          phone: formattedPhone,
-          otp: otp,
-          expires_at: expiresAt.toISOString(),
-          verified: false,
-        })
-
-      if (otpError) throw otpError
-
       console.log(`🔧 DEV MODE: OTP for ${formattedPhone} is: ${otp}`)
       
       await supabase.from('whatsapp_messages').insert({
@@ -65,45 +65,22 @@ serve(async (req) => {
       )
     }
 
-    // PRODUCTION MODE
-    const fazpassGatewayKey = Deno.env.get('FAZPASS_API_KEY')!
+    const fazpassApiKey = Deno.env.get('FAZPASS_API_KEY')!
     const fazpassMerchantKey = Deno.env.get('FAZPASS_MERCHANT_KEY')!
     
     const fazpassResponse = await sendOTPViaFazpass(
       formattedPhone,
-      fazpassGatewayKey,
+      otp,
+      fazpassApiKey,
       fazpassMerchantKey
     )
-
-    if (!fazpassResponse.success) {
-      throw new Error(`Fazpass failed: ${fazpassResponse.data?.message || 'Unknown error'}`)
-    }
-
-    const otpFromFazpass = fazpassResponse.data?.data?.otp
-    
-    if (!otpFromFazpass) {
-      throw new Error('Failed to get OTP from Fazpass')
-    }
-    
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000)
-
-    const { error: otpError } = await supabase
-      .from('auth_otps')
-      .insert({
-        phone: formattedPhone,
-        otp: otpFromFazpass.toString(),
-        expires_at: expiresAt.toISOString(),
-        verified: false,
-      })
-
-    if (otpError) throw otpError
 
     await supabase.from('whatsapp_messages').insert({
       phone: formattedPhone,
       message_type: 'otp',
-      message_content: `OTP: ${otpFromFazpass}`,
-      status: 'sent',
-      provider_response: JSON.stringify(fazpassResponse.data),
+      message_content: `OTP: ${otp}`,
+      status: fazpassResponse.success ? 'sent' : 'failed',
+      provider_response: JSON.stringify(fazpassResponse),
     })
 
     return new Response(
@@ -149,28 +126,37 @@ function generateOTP(): string {
 
 async function sendOTPViaFazpass(
   phone: string,
-  gatewayKey: string,
+  otp: string,
+  apiKey: string,
   merchantKey: string
 ): Promise<any> {
   try {
     const fazpassUrl = 'https://api.fazpass.com/v1/otp/request'
+    const message = `Kode OTP Anda: ${otp}\nBerlaku 5 menit.\nJangan bagikan kode ini!`
     
     const response = await fetch(fazpassUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': merchantKey,
+        'Authorization': `Bearer ${apiKey}`,
+        'X-Merchant-Key': merchantKey,
       },
       body: JSON.stringify({
         phone: phone,
-        gateway_key: gatewayKey,
+        gateway: 'whatsapp',
+        otp: otp,
+        message: message,
+        settings: {
+          sender_name: 'Water Delivery',
+          is_dev: true,
+        }
       }),
     })
 
     const data = await response.json()
     
     return {
-      success: data.status === true,
+      success: response.ok,
       data: data,
       status: response.status,
     }
