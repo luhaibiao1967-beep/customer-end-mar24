@@ -1,4 +1,6 @@
-// src/Pages/CustomerHome.tsx - Updated with pending orders display
+// src/Pages/CustomerHome.tsx - CORRECTED VERSION
+// Fixed: customer_type checks, sessionStorage, logout navigation
+
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
@@ -58,7 +60,6 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
     if (!confirm('Are you sure you want to delete this order?')) return;
 
     try {
-      // Delete order items first
       const { error: itemsError } = await supabase
         .from('order_items')
         .delete()
@@ -66,7 +67,6 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
 
       if (itemsError) throw itemsError;
 
-      // Delete order
       const { error: orderError } = await supabase
         .from('orders')
         .delete()
@@ -83,12 +83,11 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
     }
   };
 
+  // FIXED: Use sessionStorage and navigate to /register
   const handleSignOut = async () => {
     setLoading(true);
-    localStorage.removeItem('customer');
-    localStorage.removeItem('isLoggedIn');
-    await supabase.auth.signOut();
-    navigate('/login');
+    sessionStorage.clear();
+    navigate('/register', { replace: true });
   };
 
   const formatCurrency = (amount: number): string => {
@@ -270,8 +269,8 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
             </div>
           </div>
 
-          {/* Voucher Balance - Only for pre_pay */}
-          {customer.customer_type === 'pre_pay' && (
+          {/* Voucher Balance - FIXED: pre_paid not pre_pay */}
+          {customer.customer_type === 'pre_paid' && (
             <div style={{ marginBottom: '20px' }}>
               <div style={{
                 background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
@@ -387,8 +386,8 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
             </div>
           )}
 
-          {/* Action Buttons */}
-          {customer.customer_type === 'pre_pay' ? (
+          {/* Action Buttons - FIXED: pre_paid not pre_pay */}
+          {customer.customer_type === 'pre_paid' ? (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
               <button
                 onClick={() => navigate('/place-order')}
@@ -443,7 +442,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
           )}
         </div>
 
-        {/* Quick Stats */}
+        {/* Quick Stats - FIXED: pre_paid not pre_pay */}
         <div style={{
           background: 'white',
           borderRadius: '20px',
@@ -457,9 +456,9 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
               <strong>Account Status:</strong> {customer.branch ? '✅ Active' : '⏳ Pending Setup'}
             </p>
             <p style={{ margin: '0 0 10px 0' }}>
-              <strong>Payment Type:</strong> {customer.customer_type === 'pre_pay' ? 'Prepaid (Voucher)' : 'Postpaid (Invoice)'}
+              <strong>Payment Type:</strong> {customer.customer_type === 'pre_paid' ? 'Prepaid (Voucher)' : 'Postpaid (Invoice)'}
             </p>
-            {customer.customer_type === 'pre_pay' && (
+            {customer.customer_type === 'pre_paid' && (
               <p style={{ margin: '0 0 10px 0' }}>
                 <strong>Vouchers:</strong> {customer.voucher_balance} available
               </p>

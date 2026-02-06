@@ -1,5 +1,5 @@
-// src/components/MagicLinkHandler.tsx
-// Place this file in: src/components/MagicLinkHandler.tsx
+// src/Components/MagicLinkHandler.tsx
+// CORRECTED VERSION - Uses sessionStorage and proper navigation
 
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -26,6 +26,8 @@ export default function MagicLinkHandler() {
 
   const validateToken = async (token: string) => {
     try {
+      console.log('🔐 Validating token...');
+
       const { data, error: functionError } = await supabase.functions.invoke('auth-validate-token', {
         body: { token }
       });
@@ -33,25 +35,34 @@ export default function MagicLinkHandler() {
       if (functionError) throw functionError;
       if (!data.success) throw new Error(data.error);
 
-      localStorage.setItem('customer', JSON.stringify(data.customer));
-      localStorage.setItem('isLoggedIn', 'true');
+      console.log('✅ Token valid, customer:', data.customer);
+
+      // Use sessionStorage instead of localStorage
+      sessionStorage.setItem('customer', JSON.stringify(data.customer));
+      sessionStorage.setItem('authenticated', 'true');
       
+      // Store token for potential refresh
       if (data.new_token) {
-        localStorage.setItem('authToken', data.new_token);
+        sessionStorage.setItem('auth_token', data.new_token);
+        console.log('🔄 Token refreshed');
       } else {
-        localStorage.setItem('authToken', token);
+        sessionStorage.setItem('auth_token', token);
       }
 
       setStatus('success');
       setMessage('✅ Login berhasil! Mengalihkan...');
 
+      // Navigate to customer home - App.tsx will pick up the session
       setTimeout(() => {
-        navigate('/');
-        window.location.reload();
+        navigate('/customer-home', { 
+          replace: true
+        });
+        // Trigger a custom event to update App.tsx state
+        window.dispatchEvent(new Event('storage'));
       }, 1500);
 
     } catch (err: any) {
-      console.error('Token validation error:', err);
+      console.error('❌ Token validation error:', err);
       setStatus('error');
       setMessage(err.message || 'Token tidak valid atau kadaluarsa');
       setTimeout(() => navigate('/register'), 3000);

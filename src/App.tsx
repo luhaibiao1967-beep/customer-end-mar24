@@ -1,4 +1,6 @@
-// src/App.tsx - Magic Link Only Authentication (No Login Page!)
+// src/App.tsx - CORRECTED VERSION
+// Fixed: sessionStorage, storage event listener
+
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import CustomerRegister from './Pages/CustomerRegister';
@@ -12,24 +14,36 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [customer, setCustomer] = useState<any>(null);
 
-  useEffect(() => {
-    // Check localStorage for session
-    const isLoggedIn = localStorage.getItem('isLoggedIn');
-    const customerData = localStorage.getItem('customer');
+  // Load customer from sessionStorage
+  const loadCustomer = () => {
+    const isAuthenticated = sessionStorage.getItem('authenticated');
+    const customerData = sessionStorage.getItem('customer');
 
-    if (isLoggedIn === 'true' && customerData) {
+    if (isAuthenticated === 'true' && customerData) {
       try {
         const parsedCustomer = JSON.parse(customerData);
         setCustomer(parsedCustomer);
       } catch (err) {
         console.error('Failed to parse customer data:', err);
-        localStorage.removeItem('customer');
-        localStorage.removeItem('isLoggedIn');
-        localStorage.removeItem('authToken');
+        sessionStorage.clear();
       }
     }
+  };
 
+  useEffect(() => {
+    loadCustomer();
     setLoading(false);
+
+    // Listen for storage events (when MagicLinkHandler updates session)
+    const handleStorageChange = () => {
+      loadCustomer();
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
   }, []);
 
   if (loading) {
@@ -56,7 +70,7 @@ function App() {
             @keyframes spin {
               0% { transform: rotate(0deg); }
               100% { transform: rotate(360deg); }
-            }
+              }
           `}</style>
         </div>
       </div>
@@ -66,21 +80,18 @@ function App() {
   return (
     <Router>
       <Routes>
-        {/* Magic Link Route - Primary authentication method */}
-        <Route 
-          path="/home" 
-          element={<MagicLinkHandler />} 
-        />
+        {/* Magic Link Route - Validates token and redirects */}
+        <Route path="/home" element={<MagicLinkHandler />} />
 
-        {/* Public registration - only page that doesn't require authentication */}
+        {/* Public registration */}
         <Route 
           path="/register" 
-          element={customer ? <Navigate to="/" replace /> : <CustomerRegister />} 
+          element={customer ? <Navigate to="/customer-home" replace /> : <CustomerRegister />} 
         />
 
-        {/* Protected routes - require magic link authentication */}
+        {/* Protected routes - require authentication via magic link */}
         <Route
-          path="/"
+          path="/customer-home"
           element={
             customer ? (
               <CustomerHome customer={customer} />
@@ -120,7 +131,19 @@ function App() {
           }
         />
 
-        {/* Catch all - redirect to registration */}
+        {/* Root path */}
+        <Route
+          path="/"
+          element={
+            customer ? (
+              <Navigate to="/customer-home" replace />
+            ) : (
+              <Navigate to="/register" replace />
+            )
+          }
+        />
+
+        {/* Catch all */}
         <Route path="*" element={<Navigate to="/register" replace />} />
       </Routes>
     </Router>
