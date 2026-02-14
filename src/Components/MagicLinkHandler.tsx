@@ -10,6 +10,7 @@ export default function MagicLinkHandler() {
   const [searchParams] = useSearchParams();
   const [status, setStatus] = useState<'validating' | 'success' | 'error'>('validating');
   const [message, setMessage] = useState('Memvalidasi link...');
+  const [reauthPhone, setReauthPhone] = useState('');
 
   useEffect(() => {
     const token = searchParams.get('token');
@@ -33,6 +34,19 @@ export default function MagicLinkHandler() {
       });
 
       if (functionError) throw functionError;
+      if (data?.reauth_required) {
+        setStatus('error');
+        setMessage('Link kadaluarsa. Silakan verifikasi OTP untuk masuk.');
+        setReauthPhone(data.whatsapp || '');
+        setTimeout(() => {
+          if (data.whatsapp) {
+            navigate(`/reauth?whatsapp=${encodeURIComponent(data.whatsapp)}`);
+          } else {
+            navigate('/reauth');
+          }
+        }, 1500);
+        return;
+      }
       if (!data.success) throw new Error(data.error);
 
       console.log('✅ Token valid, customer:', data.customer);
@@ -52,13 +66,12 @@ export default function MagicLinkHandler() {
       setStatus('success');
       setMessage('✅ Login berhasil! Mengalihkan...');
 
-      // Navigate to customer home - App.tsx will pick up the session
+      // Notify App.tsx and navigate to customer home
       setTimeout(() => {
+        window.dispatchEvent(new Event('session-auth-updated'));
         navigate('/customer-home', { 
           replace: true
         });
-        // Trigger a custom event to update App.tsx state
-        window.dispatchEvent(new Event('storage'));
       }, 1500);
 
     } catch (err: any) {
@@ -159,7 +172,13 @@ export default function MagicLinkHandler() {
               {message}
             </p>
             <button
-              onClick={() => navigate('/register')}
+              onClick={() => {
+                if (reauthPhone) {
+                  navigate(`/reauth?whatsapp=${encodeURIComponent(reauthPhone)}`);
+                } else {
+                  navigate('/register');
+                }
+              }}
               style={{
                 padding: '12px 30px',
                 background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
@@ -171,7 +190,7 @@ export default function MagicLinkHandler() {
                 cursor: 'pointer'
               }}
             >
-              Daftar Akun Baru
+              {reauthPhone ? 'Verifikasi OTP' : 'Daftar Akun Baru'}
             </button>
           </>
         )}

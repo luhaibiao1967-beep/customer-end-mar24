@@ -40,36 +40,12 @@ serve(async (req) => {
     const maxTokenAge = 90 * 24 * 60 * 60 * 1000
     
     if (tokenAge > maxTokenAge) {
-      const newToken = crypto.randomUUID()
-      
-      const { data: updatedCustomer, error: updateError } = await supabase
-        .from('customers')
-        .update({
-          auth_token: newToken,
-          token_created_at: new Date().toISOString(),
-          last_login_at: new Date().toISOString(),
-        })
-        .eq('id', customer.id)
-        .select()
-        .single()
-
-      if (updateError) throw updateError
-
       return new Response(
         JSON.stringify({
-          success: true,
-          message: 'Token refreshed',
-          customer: {
-            id: updatedCustomer.id,
-            name: updatedCustomer.name,
-            address: updatedCustomer.address,
-            whatsapp: updatedCustomer.whatsapp,
-            customer_type: updatedCustomer.customer_type,
-            voucher_balance: updatedCustomer.voucher_balance,
-            branch: updatedCustomer.branch,
-            discount: updatedCustomer.discount,
-          },
-          new_token: newToken,
+          success: false,
+          reauth_required: true,
+          message: 'Token expired, OTP required',
+          whatsapp: customer.whatsapp,
         }),
         {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },

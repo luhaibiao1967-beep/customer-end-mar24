@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.38.0'
+import { buildBodyParams, sendTemplateMessage } from '../_shared/whatsappCloud.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -64,8 +65,8 @@ serve(async (req) => {
     const appUrl = Deno.env.get('APP_URL') || 'https://order.waterapp.com'
     const magicLink = `${appUrl}/home?token=${token}`
 
-    const fazpassApiKey = Deno.env.get('FAZPASS_API_KEY')!
-    const fazpassMerchantKey = Deno.env.get('FAZPASS_MERCHANT_KEY')!
+    const templateName = Deno.env.get('WA_TEMPLATE_MAGIC_LINK') || ''
+    const languageCode = Deno.env.get('WA_TEMPLATE_LANGUAGE') || 'id'
 
     const message = `🔗 Link Pesanan Anda:
 ${magicLink}
@@ -79,35 +80,24 @@ Saldo voucher: ${customer.voucher_balance}
 
 Terima kasih! 💧`
 
-    const fazpassUrl = 'https://api.fazpass.com/v1/message/send'
-    
-    const response = await fetch(fazpassUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${fazpassApiKey}`,
-        'X-Merchant-Key': fazpassMerchantKey,
-      },
-      body: JSON.stringify({
-        phone: customer.whatsapp,
-        gateway: 'whatsapp',
-        message: message,
-        settings: {
-          sender_name: 'Water Delivery',
-          is_dev: Deno.env.get('ENVIRONMENT') !== 'production',
-        }
-      }),
+    const result = await sendTemplateMessage({
+      to: customer.whatsapp,
+      templateName,
+      languageCode,
+      components: buildBodyParams([
+        customer.name,
+        magicLink,
+        customer.voucher_balance,
+      ]),
     })
-
-    const data = await response.json()
 
     await supabase.from('whatsapp_messages').insert({
       customer_id: customer.id,
       phone: customer.whatsapp,
       message_type: 'resend_link',
       message_content: message,
-      status: response.ok ? 'sent' : 'failed',
-      provider_response: JSON.stringify(data),
+      status: result.ok ? 'sent' : 'failed',
+      provider_response: JSON.stringify(result.data),
     })
 
     return new Response(

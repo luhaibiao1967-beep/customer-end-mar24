@@ -166,15 +166,14 @@ export default function CustomerRegister() {
       const formattedWhatsApp = formatPhoneNumber(formData.whatsapp);
 
       const { data, error: functionError } = await supabase.functions.invoke('auth-verify-otp', {
-  body: {
-    phone: formattedWhatsApp,
-    otp: otpCode,
-    customerData: {
-      name: formData.name,
-      address: formData.address
-    }
-  }
-});
+        body: {
+          phone: formattedWhatsApp,
+          otp: otpCode,
+          name: formData.name,
+          address: formData.address,
+          isRegistration: true,
+        }
+      });
 
       console.log('✅ Registration successful:', data);
 
@@ -533,8 +532,8 @@ export default function CustomerRegister() {
                 <input
                   type="text"
                   value={otpCode}
-                  onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                  placeholder="000000"
+                  onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                  placeholder="0000"
                   disabled={registrationSuccess}
                   style={{
                     width: '100%',
@@ -575,13 +574,13 @@ export default function CustomerRegister() {
                 style={{
                   width: '100%',
                   padding: '14px',
-                  background: (loading || otpCode.length !== 6 || registrationSuccess) ? '#ccc' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  background: (loading || otpCode.length !== 4 || registrationSuccess) ? '#ccc' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
                   color: 'white',
                   border: 'none',
                   borderRadius: '8px',
                   fontSize: '16px',
                   fontWeight: 'bold',
-                  cursor: (loading || otpCode.length !== 6 || registrationSuccess) ? 'not-allowed' : 'pointer',
+                  cursor: (loading || otpCode.length !== 4 || registrationSuccess) ? 'not-allowed' : 'pointer',
                   marginBottom: '15px',
                   opacity: registrationSuccess ? 0.5 : 1
                 }}

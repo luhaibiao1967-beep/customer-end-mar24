@@ -26,7 +26,7 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey)
 
     if (DEV_MODE) {
-      const otp = '123456'
+      const otp = '1234'
       const expiresAt = new Date(Date.now() + 5 * 60 * 1000)
 
       const { error: otpError } = await supabase

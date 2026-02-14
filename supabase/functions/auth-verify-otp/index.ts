@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.38.0'
+import { buildBodyParams, sendTemplateMessage } from '../_shared/whatsappCloud.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -77,7 +78,7 @@ serve(async (req) => {
           address: address,
           whatsapp: formattedPhone,
           phone: formattedPhone,
-          customer_type: 'pre_pay',
+          customer_type: 'pre_paid',
           voucher_balance: 5,
           discount: 0,
           branch: 'Jakarta',
@@ -107,6 +108,7 @@ serve(async (req) => {
         .from('customers')
         .update({
           last_login_at: new Date().toISOString(),
+          token_created_at: new Date().toISOString(),
         })
         .eq('id', existingCustomer.id)
         .select()
@@ -170,10 +172,10 @@ function formatPhoneNumber(phone: string): string {
 
 async function sendWelcomeMessage(customer: any, supabase: any) {
   try {
-    const fazpassApiKey = Deno.env.get('FAZPASS_API_KEY')!
-    const fazpassMerchantKey = Deno.env.get('FAZPASS_MERCHANT_KEY')!
     const appUrl = Deno.env.get('APP_URL') || 'https://order.waterapp.com'
     const magicLink = `${appUrl}/home?token=${customer.auth_token}`
+    const templateName = Deno.env.get('WA_TEMPLATE_WELCOME') || ''
+    const languageCode = Deno.env.get('WA_TEMPLATE_LANGUAGE') || 'id'
 
     const message = `👋 Selamat datang ${customer.name}!
 
@@ -193,38 +195,27 @@ ${magicLink}
 Butuh bantuan? Hubungi support kami.
 Terima kasih! 💧`
 
-    const fazpassUrl = 'https://api.fazpass.com/v1/message/send'
-    
-    const response = await fetch(fazpassUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${fazpassApiKey}`,
-        'X-Merchant-Key': fazpassMerchantKey,
-      },
-      body: JSON.stringify({
-        phone: customer.whatsapp,
-        gateway: 'whatsapp',
-        message: message,
-        settings: {
-          sender_name: 'Water Delivery',
-          is_dev: true,
-        }
-      }),
+    const result = await sendTemplateMessage({
+      to: customer.whatsapp,
+      templateName,
+      languageCode,
+      components: buildBodyParams([
+        customer.name,
+        customer.voucher_balance,
+        magicLink,
+      ]),
     })
-
-    const data = await response.json()
 
     await supabase.from('whatsapp_messages').insert({
       customer_id: customer.id,
       phone: customer.whatsapp,
       message_type: 'welcome',
       message_content: message,
-      status: response.ok ? 'sent' : 'failed',
-      provider_response: JSON.stringify(data),
+      status: result.ok ? 'sent' : 'failed',
+      provider_response: JSON.stringify(result.data),
     })
 
-    console.log('Welcome message sent:', data)
+    console.log('Welcome message sent:', result.data)
   } catch (error: any) {
     console.error('Failed to send welcome message:', error)
   }

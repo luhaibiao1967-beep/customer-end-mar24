@@ -4,6 +4,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import CustomerRegister from './Pages/CustomerRegister';
+import CustomerReauth from './Pages/CustomerReauth';
 import CustomerHome from './Pages/CustomerHome';
 import BuyVouchers from './Pages/BuyVouchers';
 import OrderHistory from './Pages/OrderHistory';
@@ -34,15 +35,17 @@ function App() {
     loadCustomer();
     setLoading(false);
 
-    // Listen for storage events (when MagicLinkHandler updates session)
-    const handleStorageChange = () => {
+    // Listen for auth updates from MagicLinkHandler
+    const handleAuthUpdate = () => {
       loadCustomer();
     };
 
-    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('storage', handleAuthUpdate);
+    window.addEventListener('session-auth-updated', handleAuthUpdate);
     
     return () => {
-      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('storage', handleAuthUpdate);
+      window.removeEventListener('session-auth-updated', handleAuthUpdate);
     };
   }, []);
 
@@ -87,6 +90,12 @@ function App() {
         <Route 
           path="/register" 
           element={customer ? <Navigate to="/customer-home" replace /> : <CustomerRegister />} 
+        />
+
+        {/* Re-authentication via OTP */}
+        <Route
+          path="/reauth"
+          element={customer ? <Navigate to="/customer-home" replace /> : <CustomerReauth />}
         />
 
         {/* Protected routes - require authentication via magic link */}
