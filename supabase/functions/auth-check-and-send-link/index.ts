@@ -86,27 +86,56 @@ Saldo voucher: ${customer.voucher_balance}
 
 Terima kasih! 💧`
 
-      const result = await sendTemplateMessage({
-        to: customer.whatsapp,
-        templateName,
-        languageCode,
-        components: buildBodyParams([
-          customer.name,
-          magicLink,
-          customer.voucher_balance,
-        ]),
-      })
+      try {
+        if (!templateName) {
+          console.error('WA_TEMPLATE_MAGIC_LINK is not set in Supabase Secrets')
+          messageSent = false
+          await supabase.from('whatsapp_messages').insert({
+            customer_id: customer.id,
+            phone: customer.whatsapp,
+            message_type: 'login_link',
+            message_content: message,
+            status: 'failed',
+            provider_response: JSON.stringify({ error: 'WA_TEMPLATE_MAGIC_LINK not set' }),
+          })
+        } else {
+          const result = await sendTemplateMessage({
+            to: customer.whatsapp,
+            templateName,
+            languageCode,
+            components: buildBodyParams([
+              customer.name,
+              magicLink,
+              customer.voucher_balance,
+            ]),
+          })
 
-      messageSent = result.ok
+          messageSent = result.ok
+          if (!result.ok) {
+            console.error('WhatsApp send failed:', result.status, result.data)
+          }
 
-      await supabase.from('whatsapp_messages').insert({
-        customer_id: customer.id,
-        phone: customer.whatsapp,
-        message_type: 'login_link',
-        message_content: message,
-        status: result.ok ? 'sent' : 'failed',
-        provider_response: JSON.stringify(result.data),
-      })
+          await supabase.from('whatsapp_messages').insert({
+            customer_id: customer.id,
+            phone: customer.whatsapp,
+            message_type: 'login_link',
+            message_content: message,
+            status: result.ok ? 'sent' : 'failed',
+            provider_response: JSON.stringify(result.data),
+          })
+        }
+      } catch (sendErr: any) {
+        console.error('WhatsApp send error:', sendErr)
+        messageSent = false
+        await supabase.from('whatsapp_messages').insert({
+          customer_id: customer.id,
+          phone: customer.whatsapp,
+          message_type: 'login_link',
+          message_content: message,
+          status: 'failed',
+          provider_response: JSON.stringify({ error: sendErr?.message }),
+        })
+      }
     }
 
     return new Response(

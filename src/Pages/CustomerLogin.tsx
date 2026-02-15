@@ -15,6 +15,8 @@ const translations = {
     buttonLoading: 'Memeriksa...',
     linkSent: 'Link pesanan telah dikirim ke WhatsApp Anda!',
     linkSentHint: 'Buka WhatsApp dan klik link untuk masuk.',
+    linkSendFailed: 'Link tidak dapat dikirim. Silakan coba lagi atau verifikasi via OTP.',
+    getLinkViaOtp: 'Dapatkan link via OTP',
     newCustomer: 'Nomor belum terdaftar. Silakan daftar.',
     registerNow: 'Daftar Sekarang',
     noAccount: 'Belum punya akun?',
@@ -29,6 +31,8 @@ const translations = {
     buttonLoading: 'Checking...',
     linkSent: 'Order link has been sent to your WhatsApp!',
     linkSentHint: 'Open WhatsApp and click the link to enter.',
+    linkSendFailed: 'Link could not be sent. Please try again or verify via OTP.',
+    getLinkViaOtp: 'Get link via OTP',
     newCustomer: 'Number not registered. Please register.',
     registerNow: 'Register Now',
     noAccount: "Don't have an account?",
@@ -43,7 +47,7 @@ export default function CustomerLogin() {
   const [phoneNumber, setPhoneNumber] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [status, setStatus] = useState<'idle' | 'link_sent' | 'new_customer'>('idle')
+  const [status, setStatus] = useState<'idle' | 'link_sent' | 'link_failed' | 'new_customer'>('idle')
   const [devMagicLink, setDevMagicLink] = useState('')
 
   const t = translations[language]
@@ -83,9 +87,13 @@ export default function CustomerLogin() {
       if (functionError) throw functionError
 
       if (data.exists) {
-        setStatus('link_sent')
-        if (data.dev_mode && data.magic_link) {
-          setDevMagicLink(data.magic_link)
+        if (data.message_sent === false) {
+          setStatus('link_failed')
+        } else {
+          setStatus('link_sent')
+          if (data.dev_mode && data.magic_link) {
+            setDevMagicLink(data.magic_link)
+          }
         }
       } else {
         setStatus('new_customer')
@@ -235,6 +243,56 @@ export default function CustomerLogin() {
                   </a>
                 </div>
               )}
+            </div>
+          ) : status === 'link_failed' ? (
+            <div>
+              <div style={{
+                background: '#ffebee',
+                border: '1px solid #ef5350',
+                borderRadius: '8px',
+                padding: '20px',
+                marginBottom: '20px',
+                color: '#c62828',
+                fontSize: '15px',
+                textAlign: 'center',
+              }}>
+                ⚠️ {t.linkSendFailed}
+              </div>
+              <a
+                href="/reauth"
+                onClick={(e) => { e.preventDefault(); navigate(`/reauth${phoneNumber ? `?whatsapp=${encodeURIComponent(phoneNumber)}` : ''}`); }}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  padding: '14px',
+                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  color: 'white',
+                  textAlign: 'center',
+                  borderRadius: '8px',
+                  fontSize: '16px',
+                  fontWeight: 'bold',
+                  textDecoration: 'none',
+                  marginBottom: '12px',
+                }}
+              >
+                {t.getLinkViaOtp}
+              </a>
+              <button
+                type="button"
+                onClick={() => setStatus('idle')}
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  background: 'transparent',
+                  color: '#667eea',
+                  border: '1px solid #667eea',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  cursor: 'pointer',
+                }}
+              >
+                Coba lagi
+              </button>
             </div>
           ) : status === 'new_customer' ? (
             <div>

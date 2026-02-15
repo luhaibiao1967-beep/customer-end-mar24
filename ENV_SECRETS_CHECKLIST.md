@@ -10,30 +10,30 @@
 
 ---
 
-## auth-check-and-send-link 需要的 Supabase Secrets
+## 生产环境 Supabase Secrets（必需）
 
-| 变量名 | 是否必需 | 说明 |
+| 变量名 | 生产环境 | 说明 |
 |-------|----------|------|
-| SUPABASE_URL | ✅ 自动注入 | Supabase 项目 URL，通常自动提供 |
-| SUPABASE_SERVICE_ROLE_KEY | ✅ 自动注入 | Service Role Key，通常自动提供 |
-| APP_URL | ⚠️ 建议设置 | 应用域名，如 `https://order.waterapp.com`，未设置时默认 `https://order.waterapp.com` |
-| WA_TEMPLATE_MAGIC_LINK | ⚠️ 必需（生产） | WhatsApp 模板名称，用于发送 Magic Link |
-| WA_TEMPLATE_LANGUAGE | 可选 | 语言代码，默认 `id` |
-| WA_CLOUD_API_TOKEN | ✅ 必需（生产） | WhatsApp Cloud API Token |
-| WA_CLOUD_PHONE_NUMBER_ID | ✅ 必需（生产） | WhatsApp 电话号码 ID |
-| ENVIRONMENT | 可选 | 设为 `development` 时跳过 WhatsApp 发送，仅返回 magic_link |
+| ENVIRONMENT | `production` 或不设置 | ⚠️ **切勿设为 `development`**，否则不会发送 WhatsApp |
+| APP_URL | 你的生产域名 | 如 `https://order.waterapp.com` 或 Vercel 地址 |
+| WA_TEMPLATE_MAGIC_LINK | 模板名 | 与 admin-resend-magic-link 相同 |
+| WA_CLOUD_API_TOKEN | Token | WhatsApp Cloud API |
+| WA_CLOUD_PHONE_NUMBER_ID | ID | WhatsApp 电话号码 ID |
+| WA_TEMPLATE_LANGUAGE | `id` | 可选，默认 id |
 
 ---
 
-## 命名一致性
+## 生产环境测试清单
 
-- 与 `admin-resend-magic-link`、`auth-verify-otp` 使用相同变量名
-- 无需在 `.env` 中重复配置，Supabase Secrets 对所有 Edge Functions 生效
+- [ ] Supabase Secrets 中 **ENVIRONMENT** 不为 `development`（或删除该变量）
+- [ ] **APP_URL** 指向实际生产域名（Magic Link 会使用此域名）
+- [ ] 前端已部署到生产（Vercel 等）
+- [ ] 若 `admin-resend-magic-link` 能发 WhatsApp，则 Secrets 已正确
 
 ---
 
 ## 设置步骤
 
 1. 打开 https://supabase.com/dashboard/project/zpxdxyjzseuvdhxbuqpc/settings/functions
-2. 在 **Secrets** 中确认或添加上述变量
-3. 若 `admin-resend-magic-link` 已能发送 WhatsApp，则 Secrets 已配置，`auth-check-and-send-link` 可直接使用
+2. 在 **Secrets** 中确认：`ENVIRONMENT` 不是 `development`，`APP_URL` 为生产域名
+3. 若 `admin-resend-magic-link` 已能发送 WhatsApp，则 `auth-check-and-send-link` 可直接使用
