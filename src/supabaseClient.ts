@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 
-const mode = import.meta.env.VITE_SUPABASE_MODE || "local";
+// Default to "cloud" for production (Vercel). Use VITE_SUPABASE_MODE=local for local dev with Supabase CLI.
+const mode = import.meta.env.VITE_SUPABASE_MODE || "cloud";
 const localUrl = import.meta.env.VITE_SUPABASE_URL_LOCAL || "/supabase";
 const cloudUrl = import.meta.env.VITE_SUPABASE_URL_CLOUD || "https://zpxdxyjzseuvdhxbuqpc.supabase.co";
 const rawSupabaseUrl = mode === "local" ? localUrl : cloudUrl;
