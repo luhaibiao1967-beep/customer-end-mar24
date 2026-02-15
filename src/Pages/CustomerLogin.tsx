@@ -15,6 +15,7 @@ const translations = {
     buttonLoading: 'Memeriksa...',
     linkSent: 'Link pesanan telah dikirim ke WhatsApp Anda!',
     linkSentHint: 'Buka WhatsApp dan klik link untuk masuk.',
+    openChatToFind: 'Buka chat dengan kami untuk melihat pesan',
     linkSendFailed: 'Link tidak dapat dikirim. Silakan coba lagi atau verifikasi via OTP.',
     getLinkViaOtp: 'Dapatkan link via OTP',
     newCustomer: 'Nomor belum terdaftar. Silakan daftar.',
@@ -31,6 +32,7 @@ const translations = {
     buttonLoading: 'Checking...',
     linkSent: 'Order link has been sent to your WhatsApp!',
     linkSentHint: 'Open WhatsApp and click the link to enter.',
+    openChatToFind: 'Open chat with us to find the message',
     linkSendFailed: 'Link could not be sent. Please try again or verify via OTP.',
     getLinkViaOtp: 'Get link via OTP',
     newCustomer: 'Number not registered. Please register.',
@@ -49,6 +51,7 @@ export default function CustomerLogin() {
   const [error, setError] = useState('')
   const [status, setStatus] = useState<'idle' | 'link_sent' | 'link_failed' | 'new_customer'>('idle')
   const [devMagicLink, setDevMagicLink] = useState('')
+  const [waMeUrl, setWaMeUrl] = useState('')
 
   const t = translations[language]
 
@@ -91,9 +94,8 @@ export default function CustomerLogin() {
           setStatus('link_failed')
         } else {
           setStatus('link_sent')
-          if (data.dev_mode && data.magic_link) {
-            setDevMagicLink(data.magic_link)
-          }
+          if (data.magic_link) setDevMagicLink(data.magic_link)
+          if (data.wa_me_url) setWaMeUrl(data.wa_me_url)
         }
       } else {
         setStatus('new_customer')
@@ -211,25 +213,40 @@ export default function CustomerLogin() {
                 ✅ {t.linkSent}
                 <br />
                 <span style={{ fontSize: '14px', opacity: 0.9 }}>{t.linkSentHint}</span>
+                {devMagicLink && (
+                  <span style={{ display: 'block', marginTop: '12px', fontSize: '13px', color: '#666' }}>
+                    {language === 'id' ? 'Tidak menerima? Klik tombol di bawah.' : "Didn't receive? Click the button below."}
+                  </span>
+                )}
               </div>
               {devMagicLink && (
                 <div style={{ marginBottom: '20px' }}>
-                  <p style={{ fontSize: '12px', color: '#666', marginBottom: '8px' }}>🔧 Dev mode - link:</p>
-                  <div style={{
-                    background: '#f5f5f5',
-                    borderRadius: '8px',
-                    padding: '12px',
-                    fontSize: '12px',
-                    wordBreak: 'break-all',
-                    fontFamily: 'monospace',
-                  }}>
-                    {devMagicLink}
-                  </div>
+                  {waMeUrl && (
+                    <a
+                      href={waMeUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        display: 'block',
+                        width: '100%',
+                        padding: '14px',
+                        background: '#25D366',
+                        color: 'white',
+                        textAlign: 'center',
+                        borderRadius: '8px',
+                        fontWeight: 'bold',
+                        textDecoration: 'none',
+                        marginBottom: '12px',
+                      }}
+                    >
+                      💬 {t.openChatToFind}
+                    </a>
+                  )}
                   <a
                     href={devMagicLink}
                     style={{
                       display: 'block',
-                      marginTop: '12px',
+                      width: '100%',
                       padding: '14px',
                       background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
                       color: 'white',
@@ -239,7 +256,7 @@ export default function CustomerLogin() {
                       textDecoration: 'none',
                     }}
                   >
-                    Masuk ke Dashboard
+                    {language === 'id' ? 'Masuk ke Dashboard' : 'Enter Dashboard'}
                   </a>
                 </div>
               )}

@@ -23,6 +23,7 @@ https://supabase.com/dashboard/project/zpxdxyjzseuvdhxbuqpc/settings/functions
 | WA_TEMPLATE_MAGIC_LINK | （模板名） | 与 admin-resend-magic-link 相同 |
 | APP_URL | `https://你的生产域名` | 如 order.waterapp.com |
 | ENVIRONMENT | `production` | 或不设置（切勿用 development） |
+| WA_BUSINESS_WHATSAPP_NUMBER | `15551703205` 或 `628xxxxxxxx` | 用于 wa.me 链接，帮助客户找到消息 |
 
 ### 3. 保存后无需重新部署
 

@@ -1,6 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.38.0'
-import { buildBodyParams, sendTemplateMessage } from '../_shared/whatsappCloud.ts'
+import { buildBodyParams, buildButtonUrlComponents, sendTemplateMessage } from '../_shared/whatsappCloud.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -30,7 +30,9 @@ serve(async (req) => {
   }
 
   try {
-    const { phone }: RequestBody = await req.json()
+    const body = await req.json()
+    const { phone }: RequestBody = body
+    console.log('[auth-check-and-send-link] Request:', { phone: phone ? `${phone.slice(0, 6)}***` : 'missing' })
 
     if (!phone) {
       throw new Error('Phone number is required')
@@ -87,8 +89,9 @@ Saldo voucher: ${customer.voucher_balance}
 Terima kasih! 💧`
 
       try {
-        if (!templateName) {
-          console.error('WA_TEMPLATE_MAGIC_LINK is not set in Supabase Secrets')
+        const simpleTemplate = Deno.env.get('WA_TEMPLATE_MAGIC_LINK_SIMPLE') || ''
+        if (!templateName && !simpleTemplate) {
+          console.error('WA_TEMPLATE_MAGIC_LINK or WA_TEMPLATE_MAGIC_LINK_SIMPLE not set')
           messageSent = false
           await supabase.from('whatsapp_messages').insert({
             customer_id: customer.id,
@@ -99,23 +102,26 @@ Terima kasih! 💧`
             provider_response: JSON.stringify({ error: 'WA_TEMPLATE_MAGIC_LINK not set' }),
           })
         } else {
+          // magic_link_simple: body [name, link]. magic_link_login: button URL only.
+          const useTemplate = simpleTemplate || templateName
+          const useComponents = simpleTemplate
+            ? buildBodyParams([customer.name, magicLink])
+            : buildButtonUrlComponents(magicLink)
           const result = await sendTemplateMessage({
             to: customer.whatsapp,
-            templateName,
+            templateName: useTemplate,
             languageCode,
-            components: buildBodyParams([
-              customer.name,
-              magicLink,
-              customer.voucher_balance,
-            ]),
+            components: useComponents,
           })
 
           messageSent = result.ok
-          if (!result.ok) {
+          if (result.ok) {
+            console.log('WhatsApp send OK, message_id:', result.data?.messages?.[0]?.id)
+          } else {
             console.error('WhatsApp send failed:', result.status, result.data)
           }
 
-          await supabase.from('whatsapp_messages').insert({
+          const { error: insertErr } = await supabase.from('whatsapp_messages').insert({
             customer_id: customer.id,
             phone: customer.whatsapp,
             message_type: 'login_link',
@@ -123,6 +129,7 @@ Terima kasih! 💧`
             status: result.ok ? 'sent' : 'failed',
             provider_response: JSON.stringify(result.data),
           })
+          if (insertErr) console.error('whatsapp_messages insert failed:', insertErr)
         }
       } catch (sendErr: any) {
         console.error('WhatsApp send error:', sendErr)
@@ -138,6 +145,9 @@ Terima kasih! 💧`
       }
     }
 
+    const waBusinessNumber = Deno.env.get('WA_BUSINESS_WHATSAPP_NUMBER') || ''
+    const waMeUrl = waBusinessNumber ? `https://wa.me/${waBusinessNumber.replace(/\D/g, '')}` : null
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -145,7 +155,8 @@ Terima kasih! 💧`
         message_sent: messageSent,
         message: 'Magic link sent to your WhatsApp. Please click the link to enter.',
         dev_mode: DEV_MODE,
-        magic_link: DEV_MODE ? magicLink : undefined,
+        magic_link: magicLink, // Always return so user can click if WhatsApp not received
+        wa_me_url: waMeUrl, // Open chat with business to find the message
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
