@@ -582,8 +582,8 @@ export default function CustomerRegister() {
                 <input
                   type="text"
                   value={otpCode}
-                  onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                  placeholder="0000"
+                  onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                  placeholder="000000"
                   disabled={registrationSuccess}
                   style={{
                     width: '100%',
@@ -598,7 +598,7 @@ export default function CustomerRegister() {
                     opacity: registrationSuccess ? 0.5 : 1,
                     cursor: registrationSuccess ? 'not-allowed' : 'text'
                   }}
-                  maxLength={4}
+                  maxLength={8}
                   required
                   autoFocus
                 />
@@ -620,17 +620,17 @@ export default function CustomerRegister() {
 
               <button
                 type="submit"
-                disabled={loading || otpCode.length !== 4 || registrationSuccess}
+                disabled={loading || otpCode.length < 4 || registrationSuccess}
                 style={{
                   width: '100%',
                   padding: '14px',
-                  background: (loading || otpCode.length !== 4 || registrationSuccess) ? '#ccc' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  background: (loading || otpCode.length < 4 || registrationSuccess) ? '#ccc' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
                   color: 'white',
                   border: 'none',
                   borderRadius: '8px',
                   fontSize: '16px',
                   fontWeight: 'bold',
-                  cursor: (loading || otpCode.length !== 4 || registrationSuccess) ? 'not-allowed' : 'pointer',
+                  cursor: (loading || otpCode.length < 4 || registrationSuccess) ? 'not-allowed' : 'pointer',
                   marginBottom: '15px',
                   opacity: registrationSuccess ? 0.5 : 1
                 }}
