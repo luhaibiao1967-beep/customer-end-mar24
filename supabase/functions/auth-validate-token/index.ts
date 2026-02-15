@@ -54,9 +54,13 @@ serve(async (req) => {
       )
     }
 
+    // Sliding expiry: extend token validity on each successful use (3 months from last use)
     await supabase
       .from('customers')
-      .update({ last_login_at: new Date().toISOString() })
+      .update({
+        last_login_at: new Date().toISOString(),
+        token_created_at: new Date().toISOString(),
+      })
       .eq('id', customer.id)
 
     return new Response(

@@ -88,6 +88,7 @@ export default function CustomerRegister() {
   const [message, setMessage] = useState('');
   const [countdown, setCountdown] = useState(0);
   const [registrationSuccess, setRegistrationSuccess] = useState(false);
+  const [devMagicLink, setDevMagicLink] = useState('');
 
   const t = translations[language];
 
@@ -129,8 +130,11 @@ export default function CustomerRegister() {
 
       const formattedWhatsApp = formatPhoneNumber(formData.whatsapp);
 
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_MODE === 'cloud'
+        ? (import.meta.env.VITE_SUPABASE_URL_CLOUD || 'https://zpxdxyjzseuvdhxbuqpc.supabase.co')
+        : `${window.location.origin}/supabase`;
       console.log('Calling Edge Function:', {
-        url: `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/auth-send-otp`,
+        url: `${supabaseUrl}/functions/v1/auth-send-otp`,
         phone: formattedWhatsApp
       });
 
@@ -140,8 +144,11 @@ export default function CustomerRegister() {
 
       console.log('Edge Function response:', { data, functionError });
 
-      if (functionError) throw functionError;
-      if (!data.success) throw new Error(data.error);
+      if (functionError) {
+        const errMsg = data?.error || functionError.message;
+        throw new Error(errMsg);
+      }
+      if (!data?.success) throw new Error(data?.error || 'OTP send failed');
 
       setMessage(`📱 ${language === 'id' ? 'Kode OTP telah dikirim ke WhatsApp' : 'OTP code has been sent to WhatsApp'} ${formattedWhatsApp}`);
       setStep('otp');
@@ -177,11 +184,17 @@ export default function CustomerRegister() {
 
       console.log('✅ Registration successful:', data);
 
-      if (functionError) throw functionError;
-      if (!data.success) throw new Error(data.error);
+      if (functionError) {
+        const errMsg = data?.error || functionError.message;
+        throw new Error(errMsg);
+      }
+      if (!data?.success) throw new Error(data?.error || 'Verification failed');
 
       setRegistrationSuccess(true);
       setMessage(t.successMessage);
+      if (data.dev_mode && data.magic_link) {
+        setDevMagicLink(data.magic_link);
+      }
       setLoading(false);
 
     } catch (err: any) {
@@ -205,8 +218,11 @@ export default function CustomerRegister() {
         body: { phone: formattedWhatsApp }
       });
 
-      if (functionError) throw functionError;
-      if (!data.success) throw new Error(data.error);
+      if (functionError) {
+        const errMsg = data?.error || functionError.message;
+        throw new Error(errMsg);
+      }
+      if (!data?.success) throw new Error(data?.error || 'Resend failed');
 
       setMessage(language === 'id' ? '📱 Kode OTP baru telah dikirim!' : '📱 New OTP code has been sent!');
       setCountdown(300);
@@ -522,7 +538,22 @@ export default function CustomerRegister() {
                   {registrationSuccess && (
                     <div style={{ marginTop: '15px', padding: '12px', background: 'white', borderRadius: '8px', fontSize: '13px' }}>
                       📱 <strong>{t.nextStep}</strong><br/>
-                      {t.openWhatsapp}
+                      {devMagicLink ? (
+                        <>
+                          {language === 'id' ? '🔧 Mode pengujian - klik link di bawah:' : '🔧 Test mode - click link below:'}
+                          <br/>
+                          <a
+                            href={devMagicLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ color: '#667eea', fontWeight: 'bold', wordBreak: 'break-all', display: 'inline-block', marginTop: '8px' }}
+                          >
+                            {devMagicLink}
+                          </a>
+                        </>
+                      ) : (
+                        t.openWhatsapp
+                      )}
                     </div>
                   )}
                 </div>

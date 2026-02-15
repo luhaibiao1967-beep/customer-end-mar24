@@ -47,7 +47,7 @@ serve(async (req) => {
         message_type: 'otp',
         message_content: `DEV MODE - OTP: ${otp}`,
         status: 'dev_mode',
-        provider_response: JSON.stringify({ dev_mode: true, otp: otp }),
+        provider_response: { dev_mode: true, otp },
       })
 
       return new Response(
@@ -66,7 +66,7 @@ serve(async (req) => {
     }
 
     // PRODUCTION MODE
-    const fazpassGatewayKey = Deno.env.get('FAZPASS_API_KEY')!
+    const fazpassGatewayKey = Deno.env.get('FAZPASS_GATEWAY_KEY')!
     const fazpassMerchantKey = Deno.env.get('FAZPASS_MERCHANT_KEY')!
     
     const fazpassResponse = await sendOTPViaFazpass(
@@ -103,7 +103,7 @@ serve(async (req) => {
       message_type: 'otp',
       message_content: `OTP: ${otpFromFazpass}`,
       status: 'sent',
-      provider_response: JSON.stringify(fazpassResponse.data),
+      provider_response: fazpassResponse.data ?? {},
     })
 
     return new Response(
