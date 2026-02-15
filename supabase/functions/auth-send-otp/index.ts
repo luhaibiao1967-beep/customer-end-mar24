@@ -69,8 +69,10 @@ serve(async (req) => {
     const fazpassGatewayKey = Deno.env.get('FAZPASS_GATEWAY_KEY')!
     const fazpassMerchantKey = Deno.env.get('FAZPASS_MERCHANT_KEY')!
     
+    // Fazpass expects phone without + (e.g. 6281251617360)
+    const phoneForFazpass = formattedPhone.replace(/^\+/, '')
     const fazpassResponse = await sendOTPViaFazpass(
-      formattedPhone,
+      phoneForFazpass,
       fazpassGatewayKey,
       fazpassMerchantKey
     )
@@ -79,19 +81,24 @@ serve(async (req) => {
       throw new Error(`Fazpass failed: ${fazpassResponse.data?.message || 'Unknown error'}`)
     }
 
+    // Try multiple response paths - Fazpass structure may vary
     const otpFromFazpass = fazpassResponse.data?.data?.otp
+      ?? fazpassResponse.data?.otp
+      ?? fazpassResponse.data?.data?.otp_code
     
     if (!otpFromFazpass) {
+      console.error('Fazpass response structure:', JSON.stringify(Object.keys(fazpassResponse.data || {})))
       throw new Error('Failed to get OTP from Fazpass')
     }
     
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000)
 
+    const otpToStore = String(otpFromFazpass).trim()
     const { error: otpError } = await supabase
       .from('auth_otps')
       .insert({
         phone: formattedPhone,
-        otp: otpFromFazpass.toString(),
+        otp: otpToStore,
         expires_at: expiresAt.toISOString(),
         verified: false,
       })

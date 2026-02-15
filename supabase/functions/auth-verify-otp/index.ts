@@ -2,6 +2,25 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.38.0'
 import { buildBodyParams, sendTemplateMessage } from '../_shared/whatsappCloud.ts'
 
+// Fazpass OTP validate - use when available to verify against Fazpass directly
+async function validateOTPViaFazpass(phone: string, otp: string): Promise<boolean> {
+  try {
+    const gatewayKey = Deno.env.get('FAZPASS_GATEWAY_KEY')
+    const merchantKey = Deno.env.get('FAZPASS_MERCHANT_KEY')
+    if (!gatewayKey || !merchantKey) return false
+    const phoneNoPlus = phone.replace(/^\+/, '')
+    const res = await fetch('https://api.fazpass.com/v1/otp/validate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': merchantKey },
+      body: JSON.stringify({ phone: phoneNoPlus, otp, gateway_key: gatewayKey }),
+    })
+    const data = await res.json()
+    return data?.status === true
+  } catch (_) {
+    return false
+  }
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -34,29 +53,45 @@ serve(async (req) => {
     }
 
     const formattedPhone = formatPhoneNumber(phone)
+    const otpTrimmed = String(otp || '').trim()
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseKey)
 
-    const { data: otpRecord, error: otpError } = await supabase
-      .from('auth_otps')
-      .select('*')
-      .eq('phone', formattedPhone)
-      .eq('otp', otp)
-      .eq('verified', false)
-      .gt('expires_at', new Date().toISOString())
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single()
+    // Try Fazpass validate first (more reliable), fallback to our DB
+    const fazpassValid = await validateOTPViaFazpass(formattedPhone, otpTrimmed)
+    let otpRecord: any = null
 
-    if (otpError || !otpRecord) {
-      throw new Error('Invalid or expired OTP')
+    if (fazpassValid) {
+      // Mark the most recent OTP as verified in our DB for consistency
+      const { data: records } = await supabase
+        .from('auth_otps')
+        .select('id')
+        .eq('phone', formattedPhone)
+        .eq('verified', false)
+        .order('created_at', { ascending: false })
+        .limit(1)
+      if (records?.[0]) {
+        await supabase.from('auth_otps').update({ verified: true }).eq('id', records[0].id)
+      }
+    } else {
+      const { data: record, error: otpError } = await supabase
+        .from('auth_otps')
+        .select('*')
+        .eq('phone', formattedPhone)
+        .eq('otp', otpTrimmed)
+        .eq('verified', false)
+        .gt('expires_at', new Date().toISOString())
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single()
+
+      if (otpError || !record) {
+        throw new Error('Invalid or expired OTP')
+      }
+      otpRecord = record
+      await supabase.from('auth_otps').update({ verified: true }).eq('id', otpRecord.id)
     }
-
-    await supabase
-      .from('auth_otps')
-      .update({ verified: true })
-      .eq('id', otpRecord.id)
 
     const { data: existingCustomer } = await supabase
       .from('customers')
