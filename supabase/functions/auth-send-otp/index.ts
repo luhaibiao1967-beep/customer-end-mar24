@@ -81,10 +81,16 @@ serve(async (req) => {
       throw new Error(`Fazpass failed: ${fazpassResponse.data?.message || 'Unknown error'}`)
     }
 
+    // Log Fazpass response structure for debugging (no sensitive values)
+    console.log('Fazpass request response keys:', {
+      top: Object.keys(fazpassResponse.data || {}),
+      data: fazpassResponse.data?.data ? Object.keys(fazpassResponse.data.data) : [],
+    })
+
     // Try multiple response paths - Fazpass structure may vary
-    const otpFromFazpass = fazpassResponse.data?.data?.otp
-      ?? fazpassResponse.data?.otp
-      ?? fazpassResponse.data?.data?.otp_code
+    const d = fazpassResponse.data?.data
+    const otpFromFazpass = d?.otp ?? fazpassResponse.data?.otp ?? d?.otp_code
+    const requestId = d?.id ?? d?.request_id ?? d?.ref_id ?? fazpassResponse.data?.request_id
     
     if (!otpFromFazpass) {
       console.error('Fazpass response structure:', JSON.stringify(Object.keys(fazpassResponse.data || {})))
@@ -92,17 +98,22 @@ serve(async (req) => {
     }
     
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000)
-
     const otpToStore = String(otpFromFazpass).trim()
-    const { error: otpError } = await supabase
-      .from('auth_otps')
-      .insert({
-        phone: formattedPhone,
-        otp: otpToStore,
-        expires_at: expiresAt.toISOString(),
-        verified: false,
-      })
+    console.log('Storing OTP:', { phoneLast4: formattedPhone.slice(-4), otpLen: otpToStore.length, hasRequestId: !!requestId })
 
+    const insertPayload: Record<string, unknown> = {
+      phone: formattedPhone,
+      otp: otpToStore,
+      expires_at: expiresAt.toISOString(),
+      verified: false,
+    }
+    if (requestId) insertPayload.request_id = String(requestId)
+    let { error: otpError } = await supabase.from('auth_otps').insert(insertPayload)
+    if (otpError && requestId) {
+      delete insertPayload.request_id
+      const retry = await supabase.from('auth_otps').insert(insertPayload)
+      otpError = retry.error
+    }
     if (otpError) throw otpError
 
     await supabase.from('whatsapp_messages').insert({
