@@ -212,7 +212,7 @@ Terima kasih! 💧`
       message_type: 'welcome',
       message_content: message,
       status: result.ok ? 'sent' : 'failed',
-      provider_response: JSON.stringify(result.data),
+      provider_response: result.data ?? {},
     })
 
     console.log('Welcome message sent:', result.data)
