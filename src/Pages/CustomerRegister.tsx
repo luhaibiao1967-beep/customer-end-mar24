@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
+import { FunctionsHttpError } from '@supabase/supabase-js';
 
 type Language = 'id' | 'en';
 
@@ -145,7 +146,13 @@ export default function CustomerRegister() {
       console.log('Edge Function response:', { data, functionError });
 
       if (functionError) {
-        const errMsg = data?.error || functionError.message;
+        let errMsg = data?.error || functionError.message;
+        if (functionError instanceof FunctionsHttpError && functionError.context) {
+          try {
+            const body = await functionError.context.json();
+            errMsg = body?.error || errMsg;
+          } catch (_) {}
+        }
         throw new Error(errMsg);
       }
       if (!data?.success) throw new Error(data?.error || 'OTP send failed');
@@ -182,10 +189,16 @@ export default function CustomerRegister() {
         }
       });
 
-      console.log('✅ Registration successful:', data);
+      console.log('Registration response:', { data, functionError });
 
       if (functionError) {
-        const errMsg = data?.error || functionError.message;
+        let errMsg = data?.error || functionError.message;
+        if (functionError instanceof FunctionsHttpError && functionError.context) {
+          try {
+            const body = await functionError.context.json();
+            errMsg = body?.error || errMsg;
+          } catch (_) {}
+        }
         throw new Error(errMsg);
       }
       if (!data?.success) throw new Error(data?.error || 'Verification failed');
@@ -219,7 +232,13 @@ export default function CustomerRegister() {
       });
 
       if (functionError) {
-        const errMsg = data?.error || functionError.message;
+        let errMsg = data?.error || functionError.message;
+        if (functionError instanceof FunctionsHttpError && functionError.context) {
+          try {
+            const body = await functionError.context.json();
+            errMsg = body?.error || errMsg;
+          } catch (_) {}
+        }
         throw new Error(errMsg);
       }
       if (!data?.success) throw new Error(data?.error || 'Resend failed');
