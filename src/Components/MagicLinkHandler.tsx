@@ -18,7 +18,7 @@ export default function MagicLinkHandler() {
     if (!token) {
       setStatus('error');
       setMessage('Token tidak ditemukan');
-      setTimeout(() => navigate('/register'), 3000);
+      setTimeout(() => navigate('/'), 3000);
       return;
     }
 
@@ -78,7 +78,7 @@ export default function MagicLinkHandler() {
       console.error('❌ Token validation error:', err);
       setStatus('error');
       setMessage(err.message || 'Token tidak valid atau kadaluarsa');
-      setTimeout(() => navigate('/register'), 3000);
+      setTimeout(() => navigate('/'), 3000);
     }
   };
 
@@ -176,7 +176,7 @@ export default function MagicLinkHandler() {
                 if (reauthPhone) {
                   navigate(`/reauth?whatsapp=${encodeURIComponent(reauthPhone)}`);
                 } else {
-                  navigate('/register');
+                  navigate('/');
                 }
               }}
               style={{

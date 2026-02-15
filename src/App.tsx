@@ -3,6 +3,7 @@
 
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
+import CustomerLogin from './Pages/CustomerLogin';
 import CustomerRegister from './Pages/CustomerRegister';
 import CustomerReauth from './Pages/CustomerReauth';
 import CustomerHome from './Pages/CustomerHome';
@@ -86,6 +87,16 @@ function App() {
         {/* Magic Link Route - Validates token and redirects */}
         <Route path="/home" element={<MagicLinkHandler />} />
 
+        {/* Login - Entry point: enter WhatsApp, old customer gets link, new goes to register */}
+        <Route
+          path="/"
+          element={customer ? <Navigate to="/customer-home" replace /> : <CustomerLogin />}
+        />
+        <Route
+          path="/login"
+          element={customer ? <Navigate to="/customer-home" replace /> : <CustomerLogin />}
+        />
+
         {/* Public registration */}
         <Route 
           path="/register" 
@@ -105,7 +116,7 @@ function App() {
             customer ? (
               <CustomerHome customer={customer} />
             ) : (
-              <Navigate to="/register" replace />
+              <Navigate to="/" replace />
             )
           }
         />
@@ -115,7 +126,7 @@ function App() {
             customer ? (
               <BuyVouchers customer={customer} />
             ) : (
-              <Navigate to="/register" replace />
+              <Navigate to="/" replace />
             )
           }
         />
@@ -125,7 +136,7 @@ function App() {
             customer ? (
               <PlaceOrder customer={customer} />
             ) : (
-              <Navigate to="/register" replace />
+              <Navigate to="/" replace />
             )
           }
         />
@@ -135,25 +146,13 @@ function App() {
             customer ? (
               <OrderHistory customer={customer} />
             ) : (
-              <Navigate to="/register" replace />
-            )
-          }
-        />
-
-        {/* Root path */}
-        <Route
-          path="/"
-          element={
-            customer ? (
-              <Navigate to="/customer-home" replace />
-            ) : (
-              <Navigate to="/register" replace />
+              <Navigate to="/" replace />
             )
           }
         />
 
         {/* Catch all */}
-        <Route path="*" element={<Navigate to="/register" replace />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Router>
   );

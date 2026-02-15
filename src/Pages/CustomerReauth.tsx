@@ -7,7 +7,8 @@ export default function CustomerReauth() {
   const [searchParams] = useSearchParams()
   const [phoneNumber, setPhoneNumber] = useState('')
   const [otpCode, setOtpCode] = useState('')
-  const [step, setStep] = useState<'phone' | 'otp'>('phone')
+  const [step, setStep] = useState<'phone' | 'otp' | 'success'>('phone')
+  const [successMagicLink, setSuccessMagicLink] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
@@ -80,12 +81,17 @@ export default function CustomerReauth() {
         sessionStorage.setItem('auth_token', data.auth_token)
       }
 
-      setMessage('✅ Verifikasi berhasil, mengalihkan...')
-
-      setTimeout(() => {
-        window.dispatchEvent(new Event('session-auth-updated'))
-        navigate('/customer-home', { replace: true })
-      }, 1000)
+      if (data.magic_link) {
+        setSuccessMagicLink(data.magic_link)
+        setStep('success')
+      } else {
+        setMessage('✅ Verifikasi berhasil, mengalihkan...')
+        setTimeout(() => {
+          window.dispatchEvent(new Event('session-auth-updated'))
+          navigate('/customer-home', { replace: true })
+        }, 1000)
+      }
+      setLoading(false)
     } catch (err: any) {
       setError(err.message || 'OTP tidak valid')
       setLoading(false)
@@ -197,6 +203,68 @@ export default function CustomerReauth() {
                 {loading ? '⏳ Mengirim...' : 'Kirim OTP'}
               </button>
             </form>
+          ) : step === 'success' && successMagicLink ? (
+            <div>
+              <div style={{
+                background: '#e8f5e9',
+                border: '1px solid #81c784',
+                borderRadius: '8px',
+                padding: '16px',
+                marginBottom: '20px',
+                color: '#2e7d32',
+                fontSize: '14px',
+                textAlign: 'center'
+              }}>
+                ✅ Verifikasi berhasil! Simpan link ini untuk masuk tanpa OTP lain kali.
+              </div>
+              <div style={{
+                background: '#f5f5f5',
+                borderRadius: '8px',
+                padding: '12px',
+                marginBottom: '12px',
+                fontSize: '12px',
+                wordBreak: 'break-all',
+                fontFamily: 'monospace'
+              }}>
+                {successMagicLink}
+              </div>
+              <button
+                type="button"
+                onClick={() => navigator.clipboard.writeText(successMagicLink)}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  background: '#e0e0e0',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  marginBottom: '16px',
+                  cursor: 'pointer'
+                }}
+              >
+                📋 Salin Link
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  window.dispatchEvent(new Event('session-auth-updated'))
+                  navigate('/customer-home', { replace: true })
+                }}
+                style={{
+                  width: '100%',
+                  padding: '14px',
+                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontSize: '16px',
+                  fontWeight: 'bold',
+                  cursor: 'pointer'
+                }}
+              >
+                Masuk ke Dashboard
+              </button>
+            </div>
           ) : (
             <form onSubmit={handleVerifyOTP}>
               {message && (
@@ -217,7 +285,7 @@ export default function CustomerReauth() {
               <input
                 type="text"
                 value={otpCode}
-                onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 8))}
                 placeholder="0000"
                 style={{
                   width: '100%',
@@ -231,7 +299,7 @@ export default function CustomerReauth() {
                   boxSizing: 'border-box',
                   marginBottom: '20px'
                 }}
-                maxLength={4}
+                maxLength={8}
                 required
                 autoFocus
               />

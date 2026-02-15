@@ -509,11 +509,30 @@ export default function CustomerRegister() {
               </button>
 
               <div style={{ textAlign: 'center' }}>
-                <p style={{ fontSize: '14px', color: '#666', margin: 0 }}>
+                <p style={{ fontSize: '14px', color: '#666', margin: '0 0 8px 0' }}>
                   {t.haveAccount}{' '}
                   <span style={{ color: '#667eea', fontWeight: 'bold' }}>
                     {t.checkWhatsapp}
                   </span>
+                </p>
+                <p style={{ fontSize: '13px', color: '#999', margin: '0 0 4px 0' }}>
+                  {language === 'id' ? 'Hilang link? ' : 'Lost your link? '}
+                  <a
+                    href="/reauth"
+                    onClick={(e) => { e.preventDefault(); navigate('/reauth'); }}
+                    style={{ color: '#667eea', textDecoration: 'underline' }}
+                  >
+                    {language === 'id' ? 'Dapatkan link baru' : 'Get new link'}
+                  </a>
+                </p>
+                <p style={{ fontSize: '13px', color: '#999', margin: 0 }}>
+                  <a
+                    href="/"
+                    onClick={(e) => { e.preventDefault(); navigate('/'); }}
+                    style={{ color: '#667eea', textDecoration: 'underline' }}
+                  >
+                    {language === 'id' ? '← Kembali ke login' : '← Back to login'}
+                  </a>
                 </p>
               </div>
             </form>

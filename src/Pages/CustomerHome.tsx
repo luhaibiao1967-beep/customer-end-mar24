@@ -87,7 +87,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
   const handleSignOut = async () => {
     setLoading(true);
     sessionStorage.clear();
-    navigate('/register', { replace: true });
+    navigate('/', { replace: true });
   };
 
   const formatCurrency = (amount: number): string => {
