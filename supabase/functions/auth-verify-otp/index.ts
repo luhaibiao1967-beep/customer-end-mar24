@@ -2,35 +2,28 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.38.0'
 import { buildBodyParams, sendTemplateMessage } from '../_shared/whatsappCloud.ts'
 
-// Fazpass OTP validate - verify against Fazpass API directly
-async function validateOTPViaFazpass(phone: string, otp: string, requestId?: string): Promise<{ valid: boolean; debug?: string }> {
+// Fazpass OTP verify - per docs: POST /v1/otp/verify, body: { otp_id, otp }, Bearer merchant_key
+async function validateOTPViaFazpass(phone: string, otp: string, otpId?: string): Promise<{ valid: boolean; debug?: string }> {
   try {
-    const gatewayKey = Deno.env.get('FAZPASS_GATEWAY_KEY')
     const merchantKey = Deno.env.get('FAZPASS_MERCHANT_KEY')
-    if (!gatewayKey || !merchantKey) return { valid: false, debug: 'missing_keys' }
-    const phoneNoPlus = phone.replace(/^\+/, '')
-    // Try multiple body formats - Fazpass docs may vary
-    const bodies = [
-      ...(requestId ? [{ phone: phoneNoPlus, otp, gateway_key: gatewayKey, request_id: requestId }] : []),
-      { phone: phoneNoPlus, otp, gateway_key: gatewayKey },
-      { phone: phoneNoPlus, otp_code: otp, gateway_key: gatewayKey },
-    ]
-    for (const body of bodies) {
-      const res = await fetch('https://api.fazpass.com/v1/otp/validate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': merchantKey },
-        body: JSON.stringify(body),
-      })
-      const data = await res.json()
-      const valid = data?.status === true
-      if (valid) return { valid: true }
-      if (res.status !== 404) {
-        console.log('Fazpass validate:', { status: res.status, dataKeys: Object.keys(data || {}), message: data?.message })
-      }
+    if (!merchantKey) return { valid: false, debug: 'missing_merchant_key' }
+    if (!otpId) return { valid: false, debug: 'missing_otp_id' }
+    const authHeader = merchantKey.startsWith('Bearer ') ? merchantKey : `Bearer ${merchantKey}`
+    const res = await fetch('https://api.fazpass.com/v1/otp/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': authHeader },
+      body: JSON.stringify({ otp_id: otpId, otp }),
+    })
+    const data = await res.json()
+    const valid = data?.status === true
+    if (valid) {
+      console.log('Fazpass verify SUCCESS')
+      return { valid: true }
     }
-    return { valid: false, debug: 'fazpass_rejected' }
+    console.log('Fazpass verify:', { status: res.status, message: data?.message, code: data?.code })
+    return { valid: false, debug: data?.message }
   } catch (e: any) {
-    console.error('Fazpass validate error:', e?.message)
+    console.error('Fazpass verify error:', e?.message)
     return { valid: false, debug: e?.message }
   }
 }
@@ -72,8 +65,8 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseKey)
 
-    // Get request_id from latest OTP record (Fazpass may require it for validate)
-    let requestId: string | undefined
+    // Get otp_id (request_id) from latest OTP - Fazpass verify requires it
+    let otpId: string | undefined
     const { data: latestRecords, error: reqIdErr } = await supabase
       .from('auth_otps')
       .select('request_id')
@@ -82,10 +75,10 @@ serve(async (req) => {
       .gt('expires_at', new Date().toISOString())
       .order('created_at', { ascending: false })
       .limit(1)
-    if (!reqIdErr) requestId = latestRecords?.[0]?.request_id
+    if (!reqIdErr) otpId = latestRecords?.[0]?.request_id
 
-    // Try Fazpass validate first (more reliable), fallback to our DB
-    const { valid: fazpassValid } = await validateOTPViaFazpass(formattedPhone, otpTrimmed, requestId)
+    // Try Fazpass verify first (per docs: otp_id + otp), fallback to our DB
+    const { valid: fazpassValid } = await validateOTPViaFazpass(formattedPhone, otpTrimmed, otpId)
     let otpRecord: any = null
 
     if (fazpassValid) {
@@ -116,16 +109,34 @@ serve(async (req) => {
         throw new Error('Invalid or expired OTP')
       }
 
-      const normalizeOtp = (v: string) => String(v || '').trim().replace(/^0+/, '') || '0'
-      const otpNorm = normalizeOtp(otpTrimmed)
+      const digitsOnly = (v: string) => String(v || '').replace(/\D/g, '')
+      const normalizeOtp = (v: string) => {
+        const s = String(v || '').trim()
+        const digits = s.replace(/\D/g, '')
+        return digits || s || '0'
+      }
+      const userDigits = digitsOnly(otpTrimmed)
       const record = records?.find((r) => {
-        const stored = normalizeOtp(r.otp)
-        return otpNorm === stored || otpTrimmed === String(r.otp || '').trim()
+        const storedRaw = String(r.otp ?? '')
+        const storedDigits = digitsOnly(storedRaw)
+        const storedNorm = normalizeOtp(storedRaw)
+        const userNorm = normalizeOtp(otpTrimmed)
+        return (
+          userDigits === storedDigits ||
+          userNorm === storedNorm ||
+          otpTrimmed === storedRaw.trim()
+        )
       })
 
       if (!record) {
         const hasRecords = (records?.length ?? 0) > 0
-        console.error('OTP mismatch:', { phoneLast4: formattedPhone.slice(-4), otpLen: otpTrimmed.length, recordsCount: records?.length ?? 0 })
+        const storedLen = records?.[0] ? String(records[0].otp ?? '').length : 0
+        console.error('OTP mismatch:', {
+          phoneLast4: formattedPhone.slice(-4),
+          otpLen: otpTrimmed.length,
+          storedLen,
+          recordsCount: records?.length ?? 0,
+        })
         throw new Error(hasRecords
           ? 'Invalid or expired OTP'
           : 'Invalid or expired OTP. Please request a new code.')

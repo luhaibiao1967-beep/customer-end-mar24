@@ -90,7 +90,7 @@ serve(async (req) => {
     // Try multiple response paths - Fazpass structure may vary
     const d = fazpassResponse.data?.data
     const otpFromFazpass = d?.otp ?? fazpassResponse.data?.otp ?? d?.otp_code
-    const requestId = d?.id ?? d?.request_id ?? d?.ref_id ?? fazpassResponse.data?.request_id
+    const requestId = d?.id ?? d?.request_id ?? d?.ref_id ?? d?.ref ?? fazpassResponse.data?.request_id ?? fazpassResponse.data?.ref
     
     if (!otpFromFazpass) {
       console.error('Fazpass response structure:', JSON.stringify(Object.keys(fazpassResponse.data || {})))
@@ -173,11 +173,12 @@ async function sendOTPViaFazpass(
   try {
     const fazpassUrl = 'https://api.fazpass.com/v1/otp/request'
     
+    const authHeader = merchantKey.startsWith('Bearer ') ? merchantKey : `Bearer ${merchantKey}`
     const response = await fetch(fazpassUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': merchantKey,
+        'Authorization': authHeader,
       },
       body: JSON.stringify({
         phone: phone,
