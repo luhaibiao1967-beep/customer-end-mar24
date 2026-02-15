@@ -205,7 +205,7 @@ export default function CustomerRegister() {
 
       setRegistrationSuccess(true);
       setMessage(t.successMessage);
-      if (data.dev_mode && data.magic_link) {
+      if (data.magic_link) {
         setDevMagicLink(data.magic_link);
       }
       setLoading(false);
@@ -559,15 +559,25 @@ export default function CustomerRegister() {
                       📱 <strong>{t.nextStep}</strong><br/>
                       {devMagicLink ? (
                         <>
-                          {language === 'id' ? '🔧 Mode pengujian - klik link di bawah:' : '🔧 Test mode - click link below:'}
+                          {language === 'id' ? 'Atau klik link di bawah untuk langsung masuk:' : 'Or click the link below to enter directly:'}
                           <br/>
                           <a
                             href={devMagicLink}
                             target="_blank"
                             rel="noopener noreferrer"
-                            style={{ color: '#667eea', fontWeight: 'bold', wordBreak: 'break-all', display: 'inline-block', marginTop: '8px' }}
+                            style={{
+                              color: '#667eea',
+                              fontWeight: 'bold',
+                              wordBreak: 'break-all',
+                              display: 'inline-block',
+                              marginTop: '8px',
+                              padding: '8px 12px',
+                              background: '#e8eaf6',
+                              borderRadius: '8px',
+                              textDecoration: 'none',
+                            }}
                           >
-                            {devMagicLink}
+                            🔗 {language === 'id' ? 'Masuk ke Dashboard' : 'Enter Dashboard'}
                           </a>
                         </>
                       ) : (
