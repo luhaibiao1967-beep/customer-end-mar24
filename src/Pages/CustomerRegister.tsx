@@ -96,7 +96,11 @@ export default function CustomerRegister() {
 
   const t = translations[language];
 
-  const deviceId = searchParams.get('device_id') || getOrCreateDeviceId();
+  const [deviceId, setDeviceId] = useState<string | null>(() => searchParams.get('device_id'));
+
+  useEffect(() => {
+    if (!deviceId) getOrCreateDeviceId().then(setDeviceId);
+  }, []);
 
   useEffect(() => {
     const wa = searchParams.get('whatsapp') || searchParams.get('wa') || searchParams.get('phone');
@@ -134,9 +138,10 @@ export default function CustomerRegister() {
       }
 
       const formattedWhatsApp = formatPhoneNumber(formData.whatsapp);
+      const resolvedDeviceId = deviceId ?? await getOrCreateDeviceId();
 
       const { data: checkData } = await supabase.functions.invoke('auth-check-device-login', {
-        body: { phone: formattedWhatsApp, device_id: deviceId || 'dummy' },
+        body: { phone: formattedWhatsApp, device_id: resolvedDeviceId || 'dummy' },
       });
       if (checkData?.bound || checkData?.needs_otp) {
         setError(language === 'id' ? 'Nomor sudah terdaftar. Silakan login.' : 'Number already registered. Please login.');
@@ -145,7 +150,7 @@ export default function CustomerRegister() {
       }
 
       const { data, error: functionError } = await supabase.functions.invoke('auth-send-otp', {
-        body: { phone: formattedWhatsApp, device_id: deviceId || undefined }
+        body: { phone: formattedWhatsApp, device_id: resolvedDeviceId }
       });
 
       if (functionError) {
@@ -181,12 +186,13 @@ export default function CustomerRegister() {
 
     try {
       const formattedWhatsApp = formatPhoneNumber(formData.whatsapp);
+      const resolvedDeviceId = deviceId ?? await getOrCreateDeviceId();
 
       const { data, error: functionError } = await supabase.functions.invoke('auth-verify-otp', {
         body: {
           phone: formattedWhatsApp,
           otp: otpCode,
-          device_id: deviceId || undefined,
+          device_id: resolvedDeviceId,
           name: formData.name,
           address: formData.address,
           isRegistration: true,
@@ -230,9 +236,10 @@ export default function CustomerRegister() {
 
     try {
       const formattedWhatsApp = formatPhoneNumber(formData.whatsapp);
+      const resolvedDeviceId = deviceId ?? await getOrCreateDeviceId();
 
       const { data, error: functionError } = await supabase.functions.invoke('auth-send-otp', {
-        body: { phone: formattedWhatsApp, device_id: deviceId || undefined }
+        body: { phone: formattedWhatsApp, device_id: resolvedDeviceId }
       });
 
       if (functionError) {

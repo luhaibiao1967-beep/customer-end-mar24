@@ -143,9 +143,10 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
         >
           ← Back
         </button>
-        <h1 style={{ color: 'white', fontSize: '24px', margin: 0 }}>
-          🎫 Buy Vouchers
-        </h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <img src="/logo.png" alt="Logo" style={{ height: '32px', objectFit: 'contain' }} />
+          <h1 style={{ color: 'white', fontSize: '24px', margin: 0 }}>🎫 Buy Vouchers</h1>
+        </div>
         <div style={{ width: '100px' }} /> {/* Spacer */}
       </div>
 

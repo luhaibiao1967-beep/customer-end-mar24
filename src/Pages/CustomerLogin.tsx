@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
-import { getOrCreateDeviceId } from '../lib/deviceId'
+import { getOrCreateDeviceId, getStoredDeviceId } from '../lib/deviceId'
 
 type Language = 'id' | 'en'
 
@@ -43,7 +43,7 @@ export default function CustomerLogin() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [status, setStatus] = useState<'idle' | 'new_customer'>('idle')
-  const [deviceId] = useState(() => getOrCreateDeviceId())
+  const [deviceId, setDeviceId] = useState<string | null>(() => getStoredDeviceId())
   const [language, setLanguage] = useState<Language>(() => (searchParams.get('lang') === 'en' ? 'en' : 'id'))
 
   const t = translations[language]
@@ -52,6 +52,10 @@ export default function CustomerLogin() {
     const wa = searchParams.get('whatsapp') || searchParams.get('wa') || searchParams.get('phone')
     if (wa) setPhoneNumber(wa)
   }, [searchParams])
+
+  useEffect(() => {
+    if (!deviceId) getOrCreateDeviceId().then(setDeviceId)
+  }, [])
 
   const formatPhoneNumber = (phone: string): string => {
     let cleaned = phone.replace(/\D/g, '')
@@ -68,9 +72,10 @@ export default function CustomerLogin() {
 
     try {
       const formattedPhone = formatPhoneNumber(phoneNumber)
+      const resolvedDeviceId = deviceId ?? await getOrCreateDeviceId()
 
       const { data, error: functionError } = await supabase.functions.invoke('auth-check-device-login', {
-        body: { phone: formattedPhone, device_id: deviceId },
+        body: { phone: formattedPhone, device_id: resolvedDeviceId },
       })
 
       if (functionError) throw functionError
@@ -85,7 +90,7 @@ export default function CustomerLogin() {
       }
 
       if (data.needs_otp) {
-        navigate(`/reauth?whatsapp=${encodeURIComponent(formattedPhone)}&device_id=${encodeURIComponent(deviceId)}`, { replace: true })
+        navigate(`/reauth?whatsapp=${encodeURIComponent(formattedPhone)}&device_id=${encodeURIComponent(resolvedDeviceId)}`, { replace: true })
         return
       }
 
@@ -99,8 +104,9 @@ export default function CustomerLogin() {
     }
   }
 
-  const handleRegister = () => {
-    navigate(`/register?whatsapp=${encodeURIComponent(phoneNumber)}&device_id=${encodeURIComponent(deviceId)}`)
+  const handleRegister = async () => {
+    const id = deviceId ?? getStoredDeviceId() ?? await getOrCreateDeviceId()
+    navigate(`/register?whatsapp=${encodeURIComponent(phoneNumber)}&device_id=${encodeURIComponent(id)}`)
   }
 
   return (
@@ -168,15 +174,12 @@ export default function CustomerLogin() {
           <div style={{
             width: '80px',
             height: '80px',
-            background: 'white',
-            borderRadius: '50%',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             margin: '0 auto 15px',
-            fontSize: '40px',
           }}>
-            💧
+            <img src="/logo.png" alt="Logo" style={{ width: '80px', height: '80px', objectFit: 'contain' }} />
           </div>
           <h1 style={{ fontSize: '28px', fontWeight: 'bold', margin: '0 0 10px 0' }}>{t.title}</h1>
           <p style={{ margin: 0, opacity: 0.9 }}>{t.subtitle}</p>

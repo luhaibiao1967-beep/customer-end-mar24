@@ -144,9 +144,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
         justifyContent: 'space-between',
         alignItems: 'center'
       }}>
-        <h1 style={{ color: 'white', fontSize: '24px', margin: 0 }}>
-          💧 Water Delivery
-        </h1>
+        <img src="/logo.png" alt="Water Delivery" style={{ height: '36px', objectFit: 'contain' }} />
         <button
           onClick={handleSignOut}
           disabled={loading}

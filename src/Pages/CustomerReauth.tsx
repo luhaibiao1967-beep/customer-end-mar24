@@ -13,7 +13,11 @@ export default function CustomerReauth() {
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
 
-  const deviceId = searchParams.get('device_id') || getOrCreateDeviceId()
+  const [deviceId, setDeviceId] = useState<string | null>(() => searchParams.get('device_id'))
+
+  useEffect(() => {
+    if (!deviceId) getOrCreateDeviceId().then(setDeviceId)
+  }, [])
 
   useEffect(() => {
     const wa = searchParams.get('whatsapp') || searchParams.get('wa') || searchParams.get('phone')
@@ -39,9 +43,10 @@ export default function CustomerReauth() {
 
     try {
       const formattedPhone = formatPhoneNumber(phoneNumber)
+      const resolvedDeviceId = deviceId ?? await getOrCreateDeviceId()
 
       const { data, error: functionError } = await supabase.functions.invoke('auth-send-otp', {
-        body: { phone: formattedPhone, device_id: deviceId || undefined }
+        body: { phone: formattedPhone, device_id: resolvedDeviceId }
       })
 
       if (functionError) throw functionError
@@ -63,12 +68,13 @@ export default function CustomerReauth() {
 
     try {
       const formattedPhone = formatPhoneNumber(phoneNumber)
+      const resolvedDeviceId = deviceId ?? await getOrCreateDeviceId()
 
       const { data, error: functionError } = await supabase.functions.invoke('auth-verify-otp', {
         body: {
           phone: formattedPhone,
           otp: otpCode,
-          device_id: deviceId || undefined,
+          device_id: resolvedDeviceId,
           isRegistration: false,
         }
       })
