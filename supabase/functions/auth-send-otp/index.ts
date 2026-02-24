@@ -1,10 +1,13 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.38.0'
+import { sendOTPViaFazpass } from '../_shared/fazpass.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
+
+const RATE_LIMIT_SECONDS = 60
 
 const DEV_MODE = Deno.env.get('ENVIRONMENT') === 'development'
 
@@ -14,7 +17,8 @@ serve(async (req) => {
   }
 
   try {
-    const { phone } = await req.json()
+    const body = await req.json()
+    const { phone, device_id } = body as { phone?: string; device_id?: string }
 
     if (!phone || phone.length < 10) {
       throw new Error('Invalid phone number')
@@ -25,23 +29,44 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseKey)
 
+    // Rate limit: 60s per device_id (when device_id provided)
+    if (device_id && device_id.length >= 8) {
+      const cutoff = new Date(Date.now() - RATE_LIMIT_SECONDS * 1000).toISOString()
+      const { data: recent } = await supabase
+        .from('otp_send_log')
+        .select('id')
+        .eq('device_id', device_id)
+        .gte('sent_at', cutoff)
+        .limit(1)
+      if (recent && recent.length > 0) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: `Please wait ${RATE_LIMIT_SECONDS} seconds before requesting another OTP`,
+            retry_after: RATE_LIMIT_SECONDS,
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 429 }
+        )
+      }
+    }
+
     if (DEV_MODE) {
       const otp = '1234'
       const expiresAt = new Date(Date.now() + 5 * 60 * 1000)
 
-      const { error: otpError } = await supabase
-        .from('auth_otps')
-        .insert({
-          phone: formattedPhone,
-          otp: otp,
-          expires_at: expiresAt.toISOString(),
-          verified: false,
-        })
+      await supabase.from('auth_otps').insert({
+        phone: formattedPhone,
+        otp: otp,
+        expires_at: expiresAt.toISOString(),
+        verified: false,
+      })
 
-      if (otpError) throw otpError
+      if (device_id) {
+        await supabase.from('otp_send_log').insert({ device_id, sent_at: new Date().toISOString() })
+      }
 
       console.log(`🔧 DEV MODE: OTP for ${formattedPhone} is: ${otp}`)
-      
+
       await supabase.from('whatsapp_messages').insert({
         phone: formattedPhone,
         message_type: 'otp',
@@ -58,18 +83,13 @@ serve(async (req) => {
           otp: otp,
           expires_in: 300,
         }),
-        {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 200,
-        }
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
       )
     }
 
-    // PRODUCTION MODE
+    // PRODUCTION - Fazpass
     const fazpassGatewayKey = Deno.env.get('FAZPASS_GATEWAY_KEY')!
     const fazpassMerchantKey = Deno.env.get('FAZPASS_MERCHANT_KEY')!
-    
-    // Fazpass expects phone without + (e.g. 6281251617360)
     const phoneForFazpass = formattedPhone.replace(/^\+/, '')
     const fazpassResponse = await sendOTPViaFazpass(
       phoneForFazpass,
@@ -81,25 +101,17 @@ serve(async (req) => {
       throw new Error(`Fazpass failed: ${fazpassResponse.data?.message || 'Unknown error'}`)
     }
 
-    // Log Fazpass response structure for debugging (no sensitive values)
-    console.log('Fazpass request response keys:', {
-      top: Object.keys(fazpassResponse.data || {}),
-      data: fazpassResponse.data?.data ? Object.keys(fazpassResponse.data.data) : [],
-    })
-
-    // Try multiple response paths - Fazpass structure may vary
     const d = fazpassResponse.data?.data
     const otpFromFazpass = d?.otp ?? fazpassResponse.data?.otp ?? d?.otp_code
     const requestId = d?.id ?? d?.request_id ?? d?.ref_id ?? d?.ref ?? fazpassResponse.data?.request_id ?? fazpassResponse.data?.ref
-    
+
     if (!otpFromFazpass) {
       console.error('Fazpass response structure:', JSON.stringify(Object.keys(fazpassResponse.data || {})))
       throw new Error('Failed to get OTP from Fazpass')
     }
-    
+
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000)
     const otpToStore = String(otpFromFazpass).trim()
-    console.log('Storing OTP:', { phoneLast4: formattedPhone.slice(-4), otpLen: otpToStore.length, hasRequestId: !!requestId })
 
     const insertPayload: Record<string, unknown> = {
       phone: formattedPhone,
@@ -116,6 +128,10 @@ serve(async (req) => {
     }
     if (otpError) throw otpError
 
+    if (device_id) {
+      await supabase.from('otp_send_log').insert({ device_id, sent_at: new Date().toISOString() })
+    }
+
     await supabase.from('whatsapp_messages').insert({
       phone: formattedPhone,
       message_type: 'otp',
@@ -130,74 +146,20 @@ serve(async (req) => {
         message: 'OTP sent successfully',
         expires_in: 300,
       }),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200,
-      }
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
     )
   } catch (error: any) {
     console.error('Error:', error)
     return new Response(
-      JSON.stringify({
-        success: false,
-        error: error.message,
-      }),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 400,
-      }
+      JSON.stringify({ success: false, error: error.message }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
     )
   }
 })
 
 function formatPhoneNumber(phone: string): string {
   let cleaned = phone.replace(/\D/g, '')
-  if (cleaned.startsWith('0')) {
-    cleaned = '62' + cleaned.substring(1)
-  }
-  if (!cleaned.startsWith('62')) {
-    cleaned = '62' + cleaned
-  }
+  if (cleaned.startsWith('0')) cleaned = '62' + cleaned.substring(1)
+  if (!cleaned.startsWith('62')) cleaned = '62' + cleaned
   return '+' + cleaned
-}
-
-function generateOTP(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString()
-}
-
-async function sendOTPViaFazpass(
-  phone: string,
-  gatewayKey: string,
-  merchantKey: string
-): Promise<any> {
-  try {
-    const fazpassUrl = 'https://api.fazpass.com/v1/otp/request'
-    
-    const authHeader = merchantKey.startsWith('Bearer ') ? merchantKey : `Bearer ${merchantKey}`
-    const response = await fetch(fazpassUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': authHeader,
-      },
-      body: JSON.stringify({
-        phone: phone,
-        gateway_key: gatewayKey,
-      }),
-    })
-
-    const data = await response.json()
-    
-    return {
-      success: data.status === true,
-      data: data,
-      status: response.status,
-    }
-  } catch (error: any) {
-    console.error('Fazpass error:', error)
-    return {
-      success: false,
-      error: error.message,
-    }
-  }
 }

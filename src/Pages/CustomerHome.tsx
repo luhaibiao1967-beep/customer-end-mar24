@@ -83,10 +83,12 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
     }
   };
 
-  // FIXED: Use sessionStorage and navigate to /register
-  const handleSignOut = async () => {
+  const handleSignOut = () => {
     setLoading(true);
-    sessionStorage.clear();
+    sessionStorage.removeItem('customer');
+    sessionStorage.removeItem('auth_token');
+    sessionStorage.removeItem('authenticated');
+    window.dispatchEvent(new Event('session-auth-updated'));
     navigate('/', { replace: true });
   };
 

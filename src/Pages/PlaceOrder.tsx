@@ -83,12 +83,13 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
     }
   };
 
-  const handleSignOut = async () => {
+  const handleSignOut = () => {
     setLoading(true);
-    localStorage.removeItem('customer');
-    localStorage.removeItem('isLoggedIn');
-    await supabase.auth.signOut();
-    navigate('/login');
+    sessionStorage.removeItem('customer');
+    sessionStorage.removeItem('auth_token');
+    sessionStorage.removeItem('authenticated');
+    window.dispatchEvent(new Event('session-auth-updated'));
+    navigate('/', { replace: true });
   };
 
   const formatCurrency = (amount: number): string => {

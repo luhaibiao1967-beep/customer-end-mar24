@@ -17,7 +17,7 @@
 | ENVIRONMENT | `production` 或不设置 | ⚠️ **切勿设为 `development`**，否则不会发送 WhatsApp |
 | APP_URL | 你的生产域名 | 如 `https://order.waterapp.com` 或 Vercel 地址 |
 | WA_TEMPLATE_MAGIC_LINK | 模板名 | 与 admin-resend-magic-link 相同 |
-| WA_CLOUD_API_TOKEN | Token | WhatsApp Cloud API |
+| WA_CLOUD_API_TOKEN | Token | WhatsApp Cloud API（⚠️ 会过期，需定期更新） |
 | WA_CLOUD_PHONE_NUMBER_ID | ID | WhatsApp 电话号码 ID |
 | WA_TEMPLATE_LANGUAGE | `id` | 可选，默认 id |
 
@@ -29,6 +29,17 @@
 - [ ] **APP_URL** 指向实际生产域名（Magic Link 会使用此域名）
 - [ ] 前端已部署到生产（Vercel 等）
 - [ ] 若 `admin-resend-magic-link` 能发 WhatsApp，则 Secrets 已正确
+
+---
+
+## ⚠️ Token 过期处理
+
+若诊断显示 `Error validating access token: Session has expired`：
+
+1. 打开 [Meta for Developers](https://developers.facebook.com/) → 你的应用 → **WhatsApp** → **API Setup**
+2. 在 **Temporary access token** 区域点击 **Generate** 获取短期 Token，或配置 **System User** 获取长期 Token（60 天）
+3. 复制新 Token，在 Supabase Secrets 中更新 `WA_CLOUD_API_TOKEN`
+4. 保存后无需重新部署 Edge Function
 
 ---
 

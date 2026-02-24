@@ -31,6 +31,21 @@ Secrets 修改后，已部署的 Edge Function 会自动使用新值，**无需�
 
 ---
 
+## 部署新 Edge Function
+
+若新增了 `auth-magic-link-diagnostics` 等函数，需执行：
+
+```bash
+supabase functions deploy auth-magic-link-diagnostics
+```
+
+## 诊断页面
+
+访问 `/diagnostics` 可查看 Magic Link 发送诊断：
+- 环境配置状态
+- 最近 20 条 login_link 发送记录（status、错误详情）
+- 排查建议
+
 ## 验证
 
 配置完成后，在 Login 页输入已注册的 WhatsApp 号码，应能收到 Magic Link 消息。

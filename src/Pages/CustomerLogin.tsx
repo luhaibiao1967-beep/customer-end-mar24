@@ -1,7 +1,9 @@
-// src/Pages/CustomerLogin.tsx - Entry page: enter WhatsApp → old customer gets link, new customer goes to register
-import { useState, useEffect } from 'react'
+// src/Pages/CustomerLogin.tsx - Device binding + WhatsApp login
+// 设备绑定：已绑定则静默登录，未绑定则 OTP 或注册
+import React, { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
+import { getOrCreateDeviceId } from '../lib/deviceId'
 
 type Language = 'id' | 'en'
 
@@ -13,15 +15,11 @@ const translations = {
     whatsappPlaceholder: '812-3456-7890',
     buttonSubmit: 'Lanjut',
     buttonLoading: 'Memeriksa...',
-    linkSent: 'Link pesanan telah dikirim ke WhatsApp Anda!',
-    linkSentHint: 'Buka WhatsApp dan klik link untuk masuk.',
-    openChatToFind: 'Buka chat dengan kami untuk melihat pesan',
-    linkSendFailed: 'Link tidak dapat dikirim. Silakan coba lagi atau verifikasi via OTP.',
-    getLinkViaOtp: 'Dapatkan link via OTP',
     newCustomer: 'Nomor belum terdaftar. Silakan daftar.',
     registerNow: 'Daftar Sekarang',
     noAccount: 'Belum punya akun?',
     registerHere: 'Daftar di sini',
+    verifyOtp: 'Verifikasi via OTP',
   },
   en: {
     title: 'Order Water',
@@ -30,46 +28,35 @@ const translations = {
     whatsappPlaceholder: '812-3456-7890',
     buttonSubmit: 'Continue',
     buttonLoading: 'Checking...',
-    linkSent: 'Order link has been sent to your WhatsApp!',
-    linkSentHint: 'Open WhatsApp and click the link to enter.',
-    openChatToFind: 'Open chat with us to find the message',
-    linkSendFailed: 'Link could not be sent. Please try again or verify via OTP.',
-    getLinkViaOtp: 'Get link via OTP',
     newCustomer: 'Number not registered. Please register.',
     registerNow: 'Register Now',
     noAccount: "Don't have an account?",
     registerHere: 'Register here',
+    verifyOtp: 'Verify via OTP',
   },
 }
 
 export default function CustomerLogin() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const [language, setLanguage] = useState<Language>('id')
   const [phoneNumber, setPhoneNumber] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [status, setStatus] = useState<'idle' | 'link_sent' | 'link_failed' | 'new_customer'>('idle')
-  const [devMagicLink, setDevMagicLink] = useState('')
-  const [waMeUrl, setWaMeUrl] = useState('')
+  const [status, setStatus] = useState<'idle' | 'new_customer'>('idle')
+  const [deviceId] = useState(() => getOrCreateDeviceId())
+  const [language, setLanguage] = useState<Language>(() => (searchParams.get('lang') === 'en' ? 'en' : 'id'))
 
   const t = translations[language]
 
   useEffect(() => {
     const wa = searchParams.get('whatsapp') || searchParams.get('wa') || searchParams.get('phone')
-    if (wa) {
-      setPhoneNumber(wa)
-    }
+    if (wa) setPhoneNumber(wa)
   }, [searchParams])
 
   const formatPhoneNumber = (phone: string): string => {
     let cleaned = phone.replace(/\D/g, '')
-    if (cleaned.startsWith('0')) {
-      cleaned = '62' + cleaned.substring(1)
-    }
-    if (!cleaned.startsWith('62')) {
-      cleaned = '62' + cleaned
-    }
+    if (cleaned.startsWith('0')) cleaned = '62' + cleaned.substring(1)
+    if (!cleaned.startsWith('62')) cleaned = '62' + cleaned
     return '+' + cleaned
   }
 
@@ -78,26 +65,31 @@ export default function CustomerLogin() {
     setLoading(true)
     setError('')
     setStatus('idle')
-    setDevMagicLink('')
 
     try {
       const formattedPhone = formatPhoneNumber(phoneNumber)
 
-      const { data, error: functionError } = await supabase.functions.invoke('auth-check-and-send-link', {
-        body: { phone: formattedPhone },
+      const { data, error: functionError } = await supabase.functions.invoke('auth-check-device-login', {
+        body: { phone: formattedPhone, device_id: deviceId },
       })
 
       if (functionError) throw functionError
 
-      if (data.exists) {
-        if (data.message_sent === false) {
-          setStatus('link_failed')
-        } else {
-          setStatus('link_sent')
-          if (data.magic_link) setDevMagicLink(data.magic_link)
-          if (data.wa_me_url) setWaMeUrl(data.wa_me_url)
-        }
-      } else {
+      if (data.bound && data.customer && data.auth_token) {
+        sessionStorage.setItem('customer', JSON.stringify(data.customer))
+        sessionStorage.setItem('auth_token', data.auth_token)
+        sessionStorage.setItem('authenticated', 'true')
+        window.dispatchEvent(new Event('session-auth-updated'))
+        navigate('/customer-home', { replace: true })
+        return
+      }
+
+      if (data.needs_otp) {
+        navigate(`/reauth?whatsapp=${encodeURIComponent(formattedPhone)}&device_id=${encodeURIComponent(deviceId)}`, { replace: true })
+        return
+      }
+
+      if (data.new_customer) {
         setStatus('new_customer')
       }
     } catch (err: any) {
@@ -108,7 +100,7 @@ export default function CustomerLogin() {
   }
 
   const handleRegister = () => {
-    navigate(`/register${phoneNumber ? `?whatsapp=${encodeURIComponent(phoneNumber)}` : ''}`)
+    navigate(`/register?whatsapp=${encodeURIComponent(phoneNumber)}&device_id=${encodeURIComponent(deviceId)}`)
   }
 
   return (
@@ -128,7 +120,6 @@ export default function CustomerLogin() {
         maxWidth: '420px',
         overflow: 'hidden',
       }}>
-        {/* Language toggle */}
         <div style={{
           display: 'flex',
           justifyContent: 'flex-end',
@@ -168,7 +159,6 @@ export default function CustomerLogin() {
           </button>
         </div>
 
-        {/* Header */}
         <div style={{
           background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
           padding: '40px 20px',
@@ -188,130 +178,12 @@ export default function CustomerLogin() {
           }}>
             💧
           </div>
-          <h1 style={{ fontSize: '28px', fontWeight: 'bold', margin: '0 0 10px 0' }}>
-            {t.title}
-          </h1>
-          <p style={{ margin: 0, opacity: 0.9 }}>
-            {t.subtitle}
-          </p>
+          <h1 style={{ fontSize: '28px', fontWeight: 'bold', margin: '0 0 10px 0' }}>{t.title}</h1>
+          <p style={{ margin: 0, opacity: 0.9 }}>{t.subtitle}</p>
         </div>
 
-        {/* Content */}
         <div style={{ padding: '40px 30px' }}>
-          {status === 'link_sent' ? (
-            <div>
-              <div style={{
-                background: '#e8f5e9',
-                border: '1px solid #81c784',
-                borderRadius: '8px',
-                padding: '20px',
-                marginBottom: '20px',
-                color: '#2e7d32',
-                fontSize: '15px',
-                textAlign: 'center',
-              }}>
-                ✅ {t.linkSent}
-                <br />
-                <span style={{ fontSize: '14px', opacity: 0.9 }}>{t.linkSentHint}</span>
-                {devMagicLink && (
-                  <span style={{ display: 'block', marginTop: '12px', fontSize: '13px', color: '#666' }}>
-                    {language === 'id' ? 'Tidak menerima? Klik tombol di bawah.' : "Didn't receive? Click the button below."}
-                  </span>
-                )}
-              </div>
-              {devMagicLink && (
-                <div style={{ marginBottom: '20px' }}>
-                  {waMeUrl && (
-                    <a
-                      href={waMeUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{
-                        display: 'block',
-                        width: '100%',
-                        padding: '14px',
-                        background: '#25D366',
-                        color: 'white',
-                        textAlign: 'center',
-                        borderRadius: '8px',
-                        fontWeight: 'bold',
-                        textDecoration: 'none',
-                        marginBottom: '12px',
-                      }}
-                    >
-                      💬 {t.openChatToFind}
-                    </a>
-                  )}
-                  <a
-                    href={devMagicLink}
-                    style={{
-                      display: 'block',
-                      width: '100%',
-                      padding: '14px',
-                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                      color: 'white',
-                      textAlign: 'center',
-                      borderRadius: '8px',
-                      fontWeight: 'bold',
-                      textDecoration: 'none',
-                    }}
-                  >
-                    {language === 'id' ? 'Masuk ke Dashboard' : 'Enter Dashboard'}
-                  </a>
-                </div>
-              )}
-            </div>
-          ) : status === 'link_failed' ? (
-            <div>
-              <div style={{
-                background: '#ffebee',
-                border: '1px solid #ef5350',
-                borderRadius: '8px',
-                padding: '20px',
-                marginBottom: '20px',
-                color: '#c62828',
-                fontSize: '15px',
-                textAlign: 'center',
-              }}>
-                ⚠️ {t.linkSendFailed}
-              </div>
-              <a
-                href="/reauth"
-                onClick={(e) => { e.preventDefault(); navigate(`/reauth${phoneNumber ? `?whatsapp=${encodeURIComponent(phoneNumber)}` : ''}`); }}
-                style={{
-                  display: 'block',
-                  width: '100%',
-                  padding: '14px',
-                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                  color: 'white',
-                  textAlign: 'center',
-                  borderRadius: '8px',
-                  fontSize: '16px',
-                  fontWeight: 'bold',
-                  textDecoration: 'none',
-                  marginBottom: '12px',
-                }}
-              >
-                {t.getLinkViaOtp}
-              </a>
-              <button
-                type="button"
-                onClick={() => setStatus('idle')}
-                style={{
-                  width: '100%',
-                  padding: '12px',
-                  background: 'transparent',
-                  color: '#667eea',
-                  border: '1px solid #667eea',
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  cursor: 'pointer',
-                }}
-              >
-                Coba lagi
-              </button>
-            </div>
-          ) : status === 'new_customer' ? (
+          {status === 'new_customer' ? (
             <div>
               <div style={{
                 background: '#fff3e0',

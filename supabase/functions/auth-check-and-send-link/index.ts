@@ -102,7 +102,7 @@ Terima kasih! 💧`
             provider_response: JSON.stringify({ error: 'WA_TEMPLATE_MAGIC_LINK not set' }),
           })
         } else {
-          // magic_link_simple: body [name, link]. magic_link_login: button URL only.
+          // magic_link_simple: body [name, link]. magic_link_login/button: button URL only.
           const useTemplate = simpleTemplate || templateName
           const useComponents = simpleTemplate
             ? buildBodyParams([customer.name, magicLink])

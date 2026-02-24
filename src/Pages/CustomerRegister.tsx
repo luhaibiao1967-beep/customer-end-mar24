@@ -1,8 +1,9 @@
 // src/Pages/CustomerRegister.tsx - Bilingual with button disable after success
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { FunctionsHttpError } from '@supabase/supabase-js';
+import { getOrCreateDeviceId } from '../lib/deviceId';
 
 type Language = 'id' | 'en';
 
@@ -90,14 +91,16 @@ export default function CustomerRegister() {
   const [countdown, setCountdown] = useState(0);
   const [registrationSuccess, setRegistrationSuccess] = useState(false);
   const [devMagicLink, setDevMagicLink] = useState('');
+  const [alreadyRegistered, setAlreadyRegistered] = useState(false);
+  const [waMeUrl, setWaMeUrl] = useState('');
 
   const t = translations[language];
 
+  const deviceId = searchParams.get('device_id') || getOrCreateDeviceId();
+
   useEffect(() => {
     const wa = searchParams.get('whatsapp') || searchParams.get('wa') || searchParams.get('phone');
-    if (wa) {
-      setFormData(prev => ({ ...prev, whatsapp: wa }));
-    }
+    if (wa) setFormData(prev => ({ ...prev, whatsapp: wa }));
   }, [searchParams]);
 
   useEffect(() => {
@@ -123,6 +126,7 @@ export default function CustomerRegister() {
     setLoading(true);
     setError('');
     setMessage('');
+    setAlreadyRegistered(false);
 
     try {
       if (!formData.name || !formData.address || !formData.whatsapp) {
@@ -131,19 +135,18 @@ export default function CustomerRegister() {
 
       const formattedWhatsApp = formatPhoneNumber(formData.whatsapp);
 
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_MODE === 'cloud'
-        ? (import.meta.env.VITE_SUPABASE_URL_CLOUD || 'https://zpxdxyjzseuvdhxbuqpc.supabase.co')
-        : `${window.location.origin}/supabase`;
-      console.log('Calling Edge Function:', {
-        url: `${supabaseUrl}/functions/v1/auth-send-otp`,
-        phone: formattedWhatsApp
+      const { data: checkData } = await supabase.functions.invoke('auth-check-device-login', {
+        body: { phone: formattedWhatsApp, device_id: deviceId || 'dummy' },
       });
+      if (checkData?.bound || checkData?.needs_otp) {
+        setError(language === 'id' ? 'Nomor sudah terdaftar. Silakan login.' : 'Number already registered. Please login.');
+        setLoading(false);
+        return;
+      }
 
       const { data, error: functionError } = await supabase.functions.invoke('auth-send-otp', {
-        body: { phone: formattedWhatsApp }
+        body: { phone: formattedWhatsApp, device_id: deviceId || undefined }
       });
-
-      console.log('Edge Function response:', { data, functionError });
 
       if (functionError) {
         let errMsg = data?.error || functionError.message;
@@ -183,6 +186,7 @@ export default function CustomerRegister() {
         body: {
           phone: formattedWhatsApp,
           otp: otpCode,
+          device_id: deviceId || undefined,
           name: formData.name,
           address: formData.address,
           isRegistration: true,
@@ -228,7 +232,7 @@ export default function CustomerRegister() {
       const formattedWhatsApp = formatPhoneNumber(formData.whatsapp);
 
       const { data, error: functionError } = await supabase.functions.invoke('auth-send-otp', {
-        body: { phone: formattedWhatsApp }
+        body: { phone: formattedWhatsApp, device_id: deviceId || undefined }
       });
 
       if (functionError) {
@@ -346,19 +350,93 @@ export default function CustomerRegister() {
             margin: '0 auto 15px',
             fontSize: '40px'
           }}>
-            {registrationSuccess ? '✅' : '👤'}
+            {registrationSuccess || alreadyRegistered ? '✅' : '👤'}
           </div>
           <h1 style={{ fontSize: '28px', fontWeight: 'bold', margin: '0 0 10px 0' }}>
-            {registrationSuccess ? t.registrationComplete : t.title}
+            {registrationSuccess ? t.registrationComplete : alreadyRegistered ? (language === 'id' ? 'Sudah Terdaftar' : 'Already Registered') : t.title}
           </h1>
           <p style={{ margin: 0, opacity: 0.9 }}>
-            {registrationSuccess ? t.successTitle : t.subtitle}
+            {registrationSuccess ? t.successTitle : alreadyRegistered ? (language === 'id' ? 'Link masuk dikirim ke WhatsApp Anda' : 'Login link sent to your WhatsApp') : t.subtitle}
           </p>
         </div>
 
         {/* Content */}
         <div style={{ padding: '40px 30px' }}>
-          {step === 'form' ? (
+          {alreadyRegistered ? (
+            <div>
+              <div style={{
+                background: '#e8f5e9',
+                border: '1px solid #81c784',
+                borderRadius: '8px',
+                padding: '20px',
+                marginBottom: '20px',
+                color: '#2e7d32',
+                fontSize: '15px',
+                textAlign: 'center',
+              }}>
+                ✅ {language === 'id' ? 'Anda sudah terdaftar!' : "You're already registered!"}
+                <br />
+                <span style={{ fontSize: '14px', opacity: 0.9 }}>
+                  {language === 'id' ? 'Link masuk telah dikirim ke WhatsApp Anda.' : 'Login link has been sent to your WhatsApp.'}
+                </span>
+                {devMagicLink && (
+                  <span style={{ display: 'block', marginTop: '12px', fontSize: '13px', color: '#666' }}>
+                    {language === 'id' ? 'Tidak menerima? Klik tombol di bawah.' : "Didn't receive? Click the button below."}
+                  </span>
+                )}
+              </div>
+              {devMagicLink && (
+                <div style={{ marginBottom: '20px' }}>
+                  {waMeUrl && (
+                    <a
+                      href={waMeUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        display: 'block',
+                        width: '100%',
+                        padding: '14px',
+                        background: '#25D366',
+                        color: 'white',
+                        textAlign: 'center',
+                        borderRadius: '8px',
+                        fontWeight: 'bold',
+                        textDecoration: 'none',
+                        marginBottom: '12px',
+                      }}
+                    >
+                      💬 {language === 'id' ? 'Buka chat dengan kami' : 'Open chat with us'}
+                    </a>
+                  )}
+                  <a
+                    href={devMagicLink}
+                    style={{
+                      display: 'block',
+                      width: '100%',
+                      padding: '14px',
+                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                      color: 'white',
+                      textAlign: 'center',
+                      borderRadius: '8px',
+                      fontWeight: 'bold',
+                      textDecoration: 'none',
+                    }}
+                  >
+                    {language === 'id' ? 'Masuk ke Dashboard' : 'Enter Dashboard'}
+                  </a>
+                </div>
+              )}
+              <p style={{ fontSize: '13px', color: '#999', margin: 0, textAlign: 'center' }}>
+                <a
+                  href="/"
+                  onClick={(e) => { e.preventDefault(); navigate('/'); }}
+                  style={{ color: '#667eea', textDecoration: 'underline' }}
+                >
+                  {language === 'id' ? '← Kembali ke login' : '← Back to login'}
+                </a>
+              </p>
+            </div>
+          ) : step === 'form' ? (
             <form onSubmit={handleSubmitForm}>
               <div style={{
                 background: '#e3f2fd',

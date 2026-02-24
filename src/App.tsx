@@ -1,6 +1,7 @@
 // src/App.tsx - CORRECTED VERSION
 // Fixed: sessionStorage, storage event listener
 
+import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import CustomerLogin from './Pages/CustomerLogin';
@@ -11,6 +12,7 @@ import BuyVouchers from './Pages/BuyVouchers';
 import OrderHistory from './Pages/OrderHistory';
 import PlaceOrder from './Pages/PlaceOrder';
 import MagicLinkHandler from './Components/MagicLinkHandler';
+import MagicLinkDiagnostics from './Pages/MagicLinkDiagnostics';
 
 function App() {
   const [loading, setLoading] = useState(true);
@@ -28,7 +30,11 @@ function App() {
       } catch (err) {
         console.error('Failed to parse customer data:', err);
         sessionStorage.clear();
+        setCustomer(null);
       }
+    } else {
+      // Explicitly clear customer when session is invalid or signed out
+      setCustomer(null);
     }
   };
 
@@ -86,6 +92,9 @@ function App() {
       <Routes>
         {/* Magic Link Route - Validates token and redirects */}
         <Route path="/home" element={<MagicLinkHandler />} />
+
+        {/* Magic Link diagnostics - no auth required */}
+        <Route path="/diagnostics" element={<MagicLinkDiagnostics />} />
 
         {/* Login - Entry point: enter WhatsApp, old customer gets link, new goes to register */}
         <Route

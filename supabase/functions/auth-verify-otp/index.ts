@@ -38,6 +38,7 @@ const DEV_MODE = Deno.env.get('ENVIRONMENT') === 'development'
 interface RequestBody {
   phone: string
   otp: string
+  device_id?: string
   name?: string
   address?: string
   isRegistration?: boolean
@@ -49,7 +50,7 @@ serve(async (req) => {
   }
 
   try {
-    const { phone, otp, name, address, isRegistration }: RequestBody = await req.json()
+    const { phone, otp, device_id, name, address, isRegistration }: RequestBody = await req.json()
 
     if (!phone || !otp) {
       throw new Error('Phone and OTP are required')
@@ -203,6 +204,18 @@ serve(async (req) => {
 
       if (updateError) throw updateError
       customer = updatedCustomer
+    }
+
+    // Create device binding after successful verification
+    if (device_id && device_id.length >= 8) {
+      await supabase.from('device_whatsapp_bindings').upsert(
+        {
+          device_id,
+          whatsapp: formattedPhone,
+          customer_id: customer.id,
+        },
+        { onConflict: 'device_id,whatsapp' }
+      )
     }
 
     const appUrl = Deno.env.get('APP_URL') || 'https://order.waterapp.com'
