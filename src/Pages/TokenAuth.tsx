@@ -8,7 +8,7 @@ interface Customer {
   name: string;
   address: string;
   whatsapp: string;
-  customer_type: 'pre_paid' | 'later_paid';
+  customer_type: 'pre_pay' | 'later_pay';
   voucher_balance: number;
   discount: number;
   branch: string;

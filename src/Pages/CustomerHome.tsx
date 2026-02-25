@@ -35,6 +35,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [pendingOrders, setPendingOrders] = useState<Order[]>([]);
+  const canOrder = customer.branch && customer.branch !== 'Pending';
 
   useEffect(() => {
     loadPendingOrders();
@@ -252,7 +253,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
             }}>
               <p style={{ fontSize: '11px', color: '#999', margin: '0 0 8px 0' }}>🏢 Service Branch</p>
               <p style={{ fontSize: '13px', color: '#333', margin: 0, fontWeight: '500' }}>
-                {customer.branch || 'Not assigned'}
+                {customer.branch === 'Pending' ? 'Pending Setup' : (customer.branch || 'Not assigned')}
               </p>
             </div>
 
@@ -269,8 +270,8 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
             </div>
           </div>
 
-          {/* Voucher Balance - FIXED: pre_paid not pre_pay */}
-          {customer.customer_type === 'pre_paid' && (
+          {/* Voucher Balance - pre_pay (matches water depot schema) */}
+          {customer.customer_type === 'pre_pay' && (
             <div style={{ marginBottom: '20px' }}>
               <div style={{
                 background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
@@ -386,21 +387,21 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
             </div>
           )}
 
-          {/* Action Buttons - FIXED: pre_paid not pre_pay */}
-          {customer.customer_type === 'pre_paid' ? (
+          {/* Action Buttons - pre_pay (matches water depot schema) */}
+          {customer.customer_type === 'pre_pay' ? (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
               <button
                 onClick={() => navigate('/place-order')}
-                disabled={!customer.branch}
+                disabled={!canOrder}
                 style={{
                   padding: '14px',
-                  background: customer.branch ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : '#ccc',
+                  background: canOrder ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : '#ccc',
                   color: 'white',
                   border: 'none',
                   borderRadius: '8px',
                   fontSize: '16px',
                   fontWeight: 'bold',
-                  cursor: customer.branch ? 'pointer' : 'not-allowed'
+                  cursor: canOrder ? 'pointer' : 'not-allowed'
                 }}
               >
                 🛒 Order Delivery
@@ -424,17 +425,17 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
           ) : (
             <button
               onClick={() => navigate('/place-order')}
-              disabled={!customer.branch}
+              disabled={!canOrder}
               style={{
                 width: '100%',
                 padding: '14px',
-                background: customer.branch ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : '#ccc',
+                background: canOrder ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : '#ccc',
                 color: 'white',
                 border: 'none',
                 borderRadius: '8px',
                 fontSize: '16px',
                 fontWeight: 'bold',
-                cursor: customer.branch ? 'pointer' : 'not-allowed'
+                cursor: canOrder ? 'pointer' : 'not-allowed'
               }}
             >
               🛒 Order Delivery
@@ -442,7 +443,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
           )}
         </div>
 
-        {/* Quick Stats - FIXED: pre_paid not pre_pay */}
+        {/* Quick Stats - pre_pay (matches water depot schema) */}
         <div style={{
           background: 'white',
           borderRadius: '20px',
@@ -453,12 +454,12 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
           
           <div style={{ fontSize: '14px', color: '#666', lineHeight: '1.8' }}>
             <p style={{ margin: '0 0 10px 0' }}>
-              <strong>Account Status:</strong> {customer.branch ? '✅ Active' : '⏳ Pending Setup'}
+              <strong>Account Status:</strong> {canOrder ? '✅ Active' : '⏳ Pending Setup'}
             </p>
             <p style={{ margin: '0 0 10px 0' }}>
-              <strong>Payment Type:</strong> {customer.customer_type === 'pre_paid' ? 'Prepaid (Voucher)' : 'Postpaid (Invoice)'}
+              <strong>Payment Type:</strong> {customer.customer_type === 'pre_pay' ? 'Prepaid (Voucher)' : 'Postpaid (Invoice)'}
             </p>
-            {customer.customer_type === 'pre_paid' && (
+            {customer.customer_type === 'pre_pay' && (
               <p style={{ margin: '0 0 10px 0' }}>
                 <strong>Vouchers:</strong> {customer.voucher_balance} available
               </p>
