@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../supabaseClient';
+import { supabase, SUPABASE_DEBUG } from '../supabaseClient';
 
 interface Customer {
   id: string;
@@ -169,41 +169,23 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
         maxWidth: '800px',
         margin: '0 auto'
       }}>
-        {/* Welcome Card */}
+        {/* Customer Card */}
         <div style={{
           background: 'white',
           borderRadius: '20px',
-          padding: '40px',
+          padding: '24px',
           marginBottom: '20px',
           boxShadow: '0 10px 40px rgba(0,0,0,0.2)'
         }}>
-          <div style={{ textAlign: 'center', marginBottom: '30px' }}>
-            <div style={{
-              width: '100px',
-              height: '100px',
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-              borderRadius: '50%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              margin: '0 auto 20px',
-              fontSize: '50px'
-            }}>
-              👋
-            </div>
-            <h2 style={{ fontSize: '32px', margin: '0 0 10px 0' }}>
-              Welcome, {customer.name}!
-            </h2>
-            <p style={{ color: '#666', margin: 0 }}>
-              Your water delivery dashboard
-            </p>
-          </div>
+          <h2 style={{ fontSize: '20px', margin: '0 0 20px 0', fontWeight: '600' }}>
+            {customer.name}
+          </h2>
 
-          {/* Customer Info - ONE ROW */}
+          {/* Customer Info - stacked vertically */}
           <div style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 1fr 1fr',
-            gap: '15px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px',
             marginBottom: '20px'
           }}>
             {/* Address with Edit */}
@@ -468,6 +450,22 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
               <strong>Pending Orders:</strong> {pendingOrders.length}
             </p>
           </div>
+        </div>
+
+        {/* 调试：当前连接的 Supabase 项目 */}
+        <div style={{
+          marginTop: '20px',
+          padding: '12px 16px',
+          background: 'rgba(0,0,0,0.15)',
+          borderRadius: '8px',
+          fontSize: '12px',
+          color: 'rgba(255,255,255,0.9)',
+          fontFamily: 'monospace'
+        }}>
+          🔧 Supabase: <strong>{SUPABASE_DEBUG.projectRef}</strong>
+          {SUPABASE_DEBUG.projectRef !== 'jzdnvdebwmuebjbergsp' && (
+            <span style={{ color: '#ffeb3b', marginLeft: '8px' }}>⚠️ 非 water depot 项目</span>
+          )}
         </div>
       </div>
     </div>

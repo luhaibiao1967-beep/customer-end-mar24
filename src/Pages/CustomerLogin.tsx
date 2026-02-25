@@ -2,7 +2,7 @@
 // 设备绑定：已绑定则静默登录，未绑定则 OTP 或注册
 import React, { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { supabase } from '../supabaseClient'
+import { supabase, SUPABASE_DEBUG } from '../supabaseClient'
 import { getOrCreateDeviceId, getStoredDeviceId } from '../lib/deviceId'
 
 type Language = 'id' | 'en'
@@ -318,6 +318,19 @@ export default function CustomerLogin() {
               </p>
             </form>
           )}
+        </div>
+
+        {/* 调试：当前连接的 Supabase 项目 */}
+        <div style={{
+          padding: '8px 16px',
+          background: 'rgba(0,0,0,0.1)',
+          fontSize: '11px',
+          color: 'rgba(255,255,255,0.8)',
+          fontFamily: 'monospace',
+          textAlign: 'center',
+        }}>
+          Supabase: {SUPABASE_DEBUG.projectRef}
+          {SUPABASE_DEBUG.projectRef !== 'jzdnvdebwmuebjbergsp' && ' ⚠️'}
         </div>
       </div>
     </div>
