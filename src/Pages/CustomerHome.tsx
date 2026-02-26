@@ -4,6 +4,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase, SUPABASE_DEBUG } from '../supabaseClient';
+import BottomNav from '../Components/BottomNav';
+import { theme } from '../theme';
 
 interface Customer {
   id: string;
@@ -112,9 +114,9 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
   const getStatusColor = (status: string): string => {
     switch (status) {
       case 'pending':
-        return '#ffc107';
+        return theme.warning;
       case 'scheduled':
-        return '#2196f3';
+        return theme.info;
       default:
         return '#999';
     }
@@ -134,8 +136,9 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
   return (
     <div style={{
       minHeight: '100vh',
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-      padding: '20px'
+      background: theme.gradientPrimary,
+      padding: '20px',
+      paddingBottom: '80px',
     }}>
       {/* Navigation Bar */}
       <div style={{
@@ -213,7 +216,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
                   style={{
                     background: 'none',
                     border: 'none',
-                    color: '#667eea',
+                    color: theme.primary,
                     fontSize: '11px',
                     cursor: 'pointer',
                     padding: 0
@@ -256,7 +259,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
           {customer.customer_type === 'pre_pay' && (
             <div style={{ marginBottom: '20px' }}>
               <div style={{
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                background: theme.gradientPrimary,
                 padding: '20px',
                 borderRadius: '12px',
                 textAlign: 'center',
@@ -278,7 +281,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
           {/* Pending Orders Section */}
           {pendingOrders.length > 0 && (
             <div style={{ marginBottom: '20px' }}>
-              <h3 style={{ fontSize: '18px', marginBottom: '15px', color: '#667eea' }}>
+              <h3 style={{ fontSize: '18px', marginBottom: '15px', color: theme.primary }}>
                 📋 Your Pending Orders
               </h3>
               {pendingOrders.map((order) => (
@@ -309,7 +312,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
                       <p style={{ fontSize: '14px', color: '#666', margin: '5px 0' }}>
                         🗓️ Delivery: <strong>{formatDate(order.delivery_date)}</strong>
                       </p>
-                      <p style={{ fontSize: '16px', color: '#28a745', fontWeight: 'bold', margin: '5px 0' }}>
+                        <p style={{ fontSize: '16px', color: theme.success, fontWeight: 'bold', margin: '5px 0' }}>
                         💰 {formatCurrency(order.total_amount)}
                       </p>
                     </div>
@@ -322,7 +325,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
                         onClick={() => navigate(`/place-order?edit=${order.id}`)}
                         style={{
                           padding: '10px',
-                          background: '#2196f3',
+                          background: theme.info,
                           color: 'white',
                           border: 'none',
                           borderRadius: '8px',
@@ -337,7 +340,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
                         onClick={() => handleDeleteOrder(order.id)}
                         style={{
                           padding: '10px',
-                          background: '#dc3545',
+                          background: theme.error,
                           color: 'white',
                           border: 'none',
                           borderRadius: '8px',
@@ -392,7 +395,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
                 onClick={() => navigate('/buy-vouchers')}
                 style={{
                   padding: '14px',
-                  background: 'linear-gradient(135deg, #28a745 0%, #20c997 100%)',
+                  background: theme.gradientSuccess,
                   color: 'white',
                   border: 'none',
                   borderRadius: '8px',
@@ -468,6 +471,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
           )}
         </div>
       </div>
+      <BottomNav customer={customer} />
     </div>
   );
 }

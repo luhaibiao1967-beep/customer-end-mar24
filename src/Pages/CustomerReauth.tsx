@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 import { getOrCreateDeviceId } from '../lib/deviceId'
+import { theme } from '../theme'
 
 export default function CustomerReauth() {
   const navigate = useNavigate()
@@ -105,7 +106,7 @@ export default function CustomerReauth() {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+      background: theme.gradientPrimary,
       padding: '20px'
     }}>
       <div style={{
@@ -117,7 +118,7 @@ export default function CustomerReauth() {
         overflow: 'hidden'
       }}>
         <div style={{
-          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          background: theme.gradientPrimary,
           padding: '40px 20px',
           textAlign: 'center',
           color: 'white'
@@ -263,7 +264,7 @@ export default function CustomerReauth() {
                 style={{
                   width: '100%',
                   padding: '14px',
-                  background: (loading || otpCode.length < 4) ? '#ccc' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  background: (loading || otpCode.length < 4) ? theme.disabled : theme.gradientPrimary,
                   color: 'white',
                   border: 'none',
                   borderRadius: '8px',

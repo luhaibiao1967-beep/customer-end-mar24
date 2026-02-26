@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase, SUPABASE_DEBUG } from '../supabaseClient'
 import { getOrCreateDeviceId, getStoredDeviceId } from '../lib/deviceId'
+import { theme } from '../theme'
 
 type Language = 'id' | 'en'
 
@@ -115,7 +116,7 @@ export default function CustomerLogin() {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+      background: theme.gradientPrimary,
       padding: '20px',
     }}>
       <div style={{
@@ -137,10 +138,10 @@ export default function CustomerLogin() {
             onClick={() => setLanguage('id')}
             style={{
               padding: '6px 14px',
-              background: language === 'id' ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : 'transparent',
+              background: language === 'id' ? theme.gradientPrimary : 'transparent',
               border: 'none',
               borderRadius: '16px',
-              color: language === 'id' ? 'white' : '#667eea',
+              color: language === 'id' ? 'white' : theme.primary,
               fontWeight: 'bold',
               cursor: 'pointer',
               fontSize: '13px',
@@ -152,10 +153,10 @@ export default function CustomerLogin() {
             onClick={() => setLanguage('en')}
             style={{
               padding: '6px 14px',
-              background: language === 'en' ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : 'transparent',
+              background: language === 'en' ? theme.gradientPrimary : 'transparent',
               border: 'none',
               borderRadius: '16px',
-              color: language === 'en' ? 'white' : '#667eea',
+              color: language === 'en' ? 'white' : theme.primary,
               fontWeight: 'bold',
               cursor: 'pointer',
               fontSize: '13px',
@@ -166,7 +167,7 @@ export default function CustomerLogin() {
         </div>
 
         <div style={{
-          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          background: theme.gradientPrimary,
           padding: '40px 20px',
           textAlign: 'center',
           color: 'white',
@@ -206,7 +207,7 @@ export default function CustomerLogin() {
                 style={{
                   width: '100%',
                   padding: '14px',
-                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  background: theme.gradientPrimary,
                   color: 'white',
                   border: 'none',
                   borderRadius: '8px',
@@ -225,8 +226,8 @@ export default function CustomerLogin() {
                   padding: '12px',
                   marginTop: '12px',
                   background: 'transparent',
-                  color: '#667eea',
-                  border: '1px solid #667eea',
+                  color: theme.primary,
+                  border: `1px solid ${theme.primary}`,
                   borderRadius: '8px',
                   fontSize: '14px',
                   cursor: 'pointer',
@@ -294,7 +295,7 @@ export default function CustomerLogin() {
                 style={{
                   width: '100%',
                   padding: '14px',
-                  background: loading ? '#ccc' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  background: loading ? theme.disabled : theme.gradientPrimary,
                   color: 'white',
                   border: 'none',
                   borderRadius: '8px',
@@ -311,7 +312,7 @@ export default function CustomerLogin() {
                 <a
                   href="/register"
                   onClick={(e) => { e.preventDefault(); navigate('/register'); }}
-                  style={{ color: '#667eea', fontWeight: 'bold', textDecoration: 'underline' }}
+                  style={{ color: theme.primary, fontWeight: 'bold', textDecoration: 'underline' }}
                 >
                   {t.registerHere}
                 </a>

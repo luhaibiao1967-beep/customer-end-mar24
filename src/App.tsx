@@ -11,8 +11,11 @@ import CustomerHome from './Pages/CustomerHome';
 import BuyVouchers from './Pages/BuyVouchers';
 import OrderHistory from './Pages/OrderHistory';
 import PlaceOrder from './Pages/PlaceOrder';
+import MyAccount from './Pages/MyAccount';
 import MagicLinkHandler from './Components/MagicLinkHandler';
 import MagicLinkDiagnostics from './Pages/MagicLinkDiagnostics';
+import BottomNav from './Components/BottomNav';
+import { theme } from './theme';
 
 function App() {
   const [loading, setLoading] = useState(true);
@@ -63,7 +66,7 @@ function App() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+        background: theme.gradientPrimary
       }}>
         <div style={{ textAlign: 'center', color: 'white' }}>
           <div style={{
@@ -154,6 +157,16 @@ function App() {
           element={
             customer ? (
               <OrderHistory customer={customer} />
+            ) : (
+              <Navigate to="/" replace />
+            )
+          }
+        />
+        <Route
+          path="/account"
+          element={
+            customer ? (
+              <MyAccount customer={customer} />
             ) : (
               <Navigate to="/" replace />
             )

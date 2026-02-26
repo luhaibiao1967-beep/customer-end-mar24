@@ -2,10 +2,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
+import BottomNav from '../Components/BottomNav';
+import { theme } from '../theme';
 
 interface Customer {
   id: string;
   name: string;
+  customer_type: string;
 }
 
 interface Order {
@@ -55,13 +58,13 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
   const getStatusColor = (status: string): string => {
     switch (status) {
       case 'pending':
-        return '#ffc107';
+        return theme.warning;
       case 'in_progress':
-        return '#2196f3';
+        return theme.info;
       case 'delivered':
-        return '#28a745';
+        return theme.success;
       case 'cancelled':
-        return '#dc3545';
+        return theme.error;
       default:
         return '#999';
     }
@@ -101,8 +104,9 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
   return (
     <div style={{
       minHeight: '100vh',
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-      padding: '20px'
+      background: theme.gradientPrimary,
+      padding: '20px',
+      paddingBottom: '80px',
     }}>
       {/* Header */}
       <div style={{
@@ -113,7 +117,7 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
         alignItems: 'center'
       }}>
         <button
-          onClick={() => navigate('/')}
+          onClick={() => navigate('/customer-home')}
           style={{
             padding: '10px 20px',
             background: 'rgba(255,255,255,0.2)',
@@ -151,7 +155,7 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
               width: '50px',
               height: '50px',
               border: '4px solid #f3f3f3',
-              borderTop: '4px solid #667eea',
+              borderTop: `4px solid ${theme.primary}`,
               borderRadius: '50%',
               margin: '0 auto 20px',
               animation: 'spin 1s linear infinite'
@@ -179,7 +183,7 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
               onClick={fetchOrders}
               style={{
                 padding: '12px 30px',
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                background: theme.gradientPrimary,
                 color: 'white',
                 border: 'none',
                 borderRadius: '8px',
@@ -206,10 +210,10 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
               Start ordering to see your history here!
             </p>
             <button
-              onClick={() => navigate('/')}
+              onClick={() => navigate('/customer-home')}
               style={{
                 padding: '12px 30px',
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                background: theme.gradientPrimary,
                 color: 'white',
                 border: 'none',
                 borderRadius: '8px',
@@ -292,7 +296,7 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
                         fontSize: '14px',
                         fontWeight: '500',
                         margin: 0,
-                        color: order.payment_status === 'paid' ? '#28a745' : '#dc3545'
+                        color: order.payment_status === 'paid' ? theme.success : theme.error
                       }}>
                         {order.payment_status === 'paid' ? '✅ Paid' : '⏳ Unpaid'}
                       </p>
@@ -308,6 +312,7 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
           </div>
         )}
       </div>
+      <BottomNav customer={customer} />
     </div>
   );
 }

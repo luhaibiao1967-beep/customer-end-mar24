@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { FunctionsHttpError } from '@supabase/supabase-js';
 import { getOrCreateDeviceId } from '../lib/deviceId';
+import { theme } from '../theme';
 
 type Language = 'id' | 'en';
 
@@ -276,7 +277,7 @@ export default function CustomerRegister() {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+      background: theme.gradientPrimary,
       padding: '20px'
     }}>
       <div style={{
@@ -306,10 +307,10 @@ export default function CustomerRegister() {
             disabled={registrationSuccess}
             style={{
               padding: '6px 14px',
-              background: language === 'id' ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : 'transparent',
+              background: language === 'id' ? theme.gradientPrimary : 'transparent',
               border: 'none',
               borderRadius: '16px',
-              color: language === 'id' ? 'white' : '#667eea',
+              color: language === 'id' ? 'white' : theme.primary,
               fontWeight: 'bold',
               cursor: registrationSuccess ? 'not-allowed' : 'pointer',
               fontSize: '13px',
@@ -324,10 +325,10 @@ export default function CustomerRegister() {
             disabled={registrationSuccess}
             style={{
               padding: '6px 14px',
-              background: language === 'en' ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : 'transparent',
+              background: language === 'en' ? theme.gradientPrimary : 'transparent',
               border: 'none',
               borderRadius: '16px',
-              color: language === 'en' ? 'white' : '#667eea',
+              color: language === 'en' ? 'white' : theme.primary,
               fontWeight: 'bold',
               cursor: registrationSuccess ? 'not-allowed' : 'pointer',
               fontSize: '13px',
@@ -341,7 +342,7 @@ export default function CustomerRegister() {
 
         {/* Header */}
         <div style={{
-          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          background: theme.gradientPrimary,
           padding: '40px 20px',
           textAlign: 'center',
           color: 'white'
@@ -421,7 +422,7 @@ export default function CustomerRegister() {
                       display: 'block',
                       width: '100%',
                       padding: '14px',
-                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                      background: theme.gradientPrimary,
                       color: 'white',
                       textAlign: 'center',
                       borderRadius: '8px',
@@ -437,7 +438,7 @@ export default function CustomerRegister() {
                 <a
                   href="/"
                   onClick={(e) => { e.preventDefault(); navigate('/'); }}
-                  style={{ color: '#667eea', textDecoration: 'underline' }}
+                  style={{ color: theme.primary, textDecoration: 'underline' }}
                 >
                   {language === 'id' ? '← Kembali ke login' : '← Back to login'}
                 </a>
@@ -580,7 +581,7 @@ export default function CustomerRegister() {
                 style={{
                   width: '100%',
                   padding: '14px',
-                  background: loading ? '#ccc' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  background: loading ? theme.disabled : theme.gradientPrimary,
                   color: 'white',
                   border: 'none',
                   borderRadius: '8px',
@@ -596,7 +597,7 @@ export default function CustomerRegister() {
               <div style={{ textAlign: 'center' }}>
                 <p style={{ fontSize: '14px', color: '#666', margin: '0 0 8px 0' }}>
                   {t.haveAccount}{' '}
-                  <span style={{ color: '#667eea', fontWeight: 'bold' }}>
+                  <span style={{ color: theme.primary, fontWeight: 'bold' }}>
                     {t.checkWhatsapp}
                   </span>
                 </p>
@@ -605,7 +606,7 @@ export default function CustomerRegister() {
                   <a
                     href="/reauth"
                     onClick={(e) => { e.preventDefault(); navigate('/reauth'); }}
-                    style={{ color: '#667eea', textDecoration: 'underline' }}
+                    style={{ color: theme.primary, textDecoration: 'underline' }}
                   >
                     {language === 'id' ? 'Dapatkan link baru' : 'Get new link'}
                   </a>
@@ -614,7 +615,7 @@ export default function CustomerRegister() {
                   <a
                     href="/"
                     onClick={(e) => { e.preventDefault(); navigate('/'); }}
-                    style={{ color: '#667eea', textDecoration: 'underline' }}
+                    style={{ color: theme.primary, textDecoration: 'underline' }}
                   >
                     {language === 'id' ? '← Kembali ke login' : '← Back to login'}
                   </a>
@@ -633,7 +634,7 @@ export default function CustomerRegister() {
               {countdown > 0 && !registrationSuccess && (
                 <div style={{
                   background: '#fff3cd',
-                  border: '1px solid #ffc107',
+                  border: `1px solid ${theme.warning}`,
                   borderRadius: '8px',
                   padding: '12px',
                   marginBottom: '20px',
@@ -670,7 +671,7 @@ export default function CustomerRegister() {
                             target="_blank"
                             rel="noopener noreferrer"
                             style={{
-                              color: '#667eea',
+                              color: theme.primary,
                               fontWeight: 'bold',
                               wordBreak: 'break-all',
                               display: 'inline-block',
@@ -738,7 +739,7 @@ export default function CustomerRegister() {
                 style={{
                   width: '100%',
                   padding: '14px',
-                  background: (loading || otpCode.length < 4 || registrationSuccess) ? '#ccc' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  background: (loading || otpCode.length < 4 || registrationSuccess) ? theme.disabled : theme.gradientPrimary,
                   color: 'white',
                   border: 'none',
                   borderRadius: '8px',
@@ -762,7 +763,7 @@ export default function CustomerRegister() {
                       style={{
                         background: 'none',
                         border: 'none',
-                        color: countdown > 0 ? '#999' : '#667eea',
+                        color: countdown > 0 ? '#999' : theme.primary,
                         fontSize: '14px',
                         cursor: countdown > 0 ? 'not-allowed' : 'pointer',
                         textDecoration: countdown > 0 ? 'none' : 'underline'
@@ -785,7 +786,7 @@ export default function CustomerRegister() {
                       style={{
                         background: 'none',
                         border: 'none',
-                        color: '#667eea',
+                        color: theme.primary,
                         fontSize: '14px',
                         cursor: 'pointer',
                         textDecoration: 'underline'

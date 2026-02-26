@@ -1,6 +1,8 @@
 // src/Pages/BuyVouchers.tsx - Voucher purchase page
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import BottomNav from '../Components/BottomNav';
+import { theme } from '../theme';
 
 interface Customer {
   id: string;
@@ -75,7 +77,7 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
     return (
       <div style={{
         minHeight: '100vh',
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        background: theme.gradientPrimary,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -95,10 +97,10 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
             Vouchers are only for prepaid customers.
           </p>
           <button
-            onClick={() => navigate('/')}
+            onClick={() => navigate('/customer-home')}
             style={{
               padding: '12px 30px',
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              background: theme.gradientPrimary,
               color: 'white',
               border: 'none',
               borderRadius: '8px',
@@ -110,6 +112,7 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
             ← Back to Home
           </button>
         </div>
+        <BottomNav customer={customer} />
       </div>
     );
   }
@@ -117,8 +120,9 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
   return (
     <div style={{
       minHeight: '100vh',
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-      padding: '20px'
+      background: theme.gradientPrimary,
+      padding: '20px',
+      paddingBottom: '80px',
     }}>
       {/* Header */}
       <div style={{
@@ -129,7 +133,7 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
         alignItems: 'center'
       }}>
         <button
-          onClick={() => navigate('/')}
+          onClick={() => navigate('/customer-home')}
           style={{
             padding: '10px 20px',
             background: 'rgba(255,255,255,0.2)',
@@ -165,7 +169,7 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
           <p style={{ fontSize: '14px', color: '#999', margin: '0 0 10px 0' }}>
             Current Balance
           </p>
-          <p style={{ fontSize: '48px', fontWeight: 'bold', margin: '0 0 5px 0', color: '#667eea' }}>
+          <p style={{ fontSize: '48px', fontWeight: 'bold', margin: '0 0 5px 0', color: theme.primary }}>
             {customer.voucher_balance}
           </p>
           <p style={{ fontSize: '14px', color: '#666', margin: 0 }}>
@@ -191,7 +195,7 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
               padding: '30px',
               boxShadow: '0 10px 40px rgba(0,0,0,0.2)',
               position: 'relative',
-              border: pkg.popular ? '3px solid #ffc107' : 'none'
+              border: pkg.popular ? `3px solid ${theme.warning}` : 'none'
             }}
           >
             {pkg.popular && (
@@ -200,7 +204,7 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
                 top: '-15px',
                 left: '50%',
                 transform: 'translateX(-50%)',
-                background: '#ffc107',
+                background: theme.warning,
                 color: '#000',
                 padding: '5px 20px',
                 borderRadius: '20px',
@@ -214,7 +218,7 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
             <div style={{ textAlign: 'center', marginBottom: '20px' }}>
               <p style={{ fontSize: '48px', margin: '0 0 10px 0' }}>🎫</p>
               <h3 style={{ fontSize: '20px', margin: '0 0 10px 0' }}>{pkg.name}</h3>
-              <p style={{ fontSize: '36px', fontWeight: 'bold', color: '#667eea', margin: '0 0 5px 0' }}>
+              <p style={{ fontSize: '36px', fontWeight: 'bold', color: theme.primary, margin: '0 0 5px 0' }}>
                 {pkg.vouchers}
               </p>
               <p style={{ fontSize: '14px', color: '#999', margin: 0 }}>vouchers</p>
@@ -231,7 +235,7 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
                 {formatCurrency(pkg.price)}
               </p>
               {pkg.savings && (
-                <p style={{ fontSize: '12px', color: '#28a745', margin: 0, fontWeight: 'bold' }}>
+                <p style={{ fontSize: '12px', color: theme.success, margin: 0, fontWeight: 'bold' }}>
                   💰 Save {formatCurrency(pkg.savings)}
                 </p>
               )}
@@ -242,7 +246,7 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
               style={{
                 width: '100%',
                 padding: '14px',
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                background: theme.gradientPrimary,
                 color: 'white',
                 border: 'none',
                 borderRadius: '8px',
@@ -298,7 +302,7 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
 
             <div style={{
               background: '#fff3cd',
-              border: '1px solid #ffc107',
+              border: `1px solid ${theme.warning}`,
               borderRadius: '12px',
               padding: '15px',
               marginBottom: '20px',

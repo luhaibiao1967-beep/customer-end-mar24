@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
+import { theme } from '../theme';
 
 export default function MagicLinkHandler() {
   const navigate = useNavigate();
@@ -88,7 +89,7 @@ export default function MagicLinkHandler() {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+      background: theme.gradientPrimary,
       padding: '20px'
     }}>
       <div style={{
@@ -106,7 +107,7 @@ export default function MagicLinkHandler() {
               width: '80px',
               height: '80px',
               border: '6px solid #f3f3f3',
-              borderTop: '6px solid #667eea',
+              borderTop: `6px solid ${theme.primary}`,
               borderRadius: '50%',
               margin: '0 auto 30px',
               animation: 'spin 1s linear infinite'
@@ -181,7 +182,7 @@ export default function MagicLinkHandler() {
               }}
               style={{
                 padding: '12px 30px',
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                background: theme.gradientPrimary,
                 color: 'white',
                 border: 'none',
                 borderRadius: '8px',
