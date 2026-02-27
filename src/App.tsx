@@ -12,6 +12,7 @@ import BuyVouchers from './Pages/BuyVouchers';
 import OrderHistory from './Pages/OrderHistory';
 import PlaceOrder from './Pages/PlaceOrder';
 import MyAccount from './Pages/MyAccount';
+import OrderDelivery from './Pages/OrderDelivery';
 import MagicLinkHandler from './Components/MagicLinkHandler';
 import MagicLinkDiagnostics from './Pages/MagicLinkDiagnostics';
 import BottomNav from './Components/BottomNav';
@@ -157,6 +158,16 @@ function App() {
           element={
             customer ? (
               <OrderHistory customer={customer} />
+            ) : (
+              <Navigate to="/" replace />
+            )
+          }
+        />
+        <Route
+          path="/orders/:orderId/delivery"
+          element={
+            customer ? (
+              <OrderDelivery />
             ) : (
               <Navigate to="/" replace />
             )

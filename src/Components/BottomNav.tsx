@@ -14,8 +14,8 @@ export default function BottomNav({ customer }: BottomNavProps) {
 
   const navItems = [
     { path: '/customer-home', label: 'Home', icon: '🏠' },
-    { path: '/buy-vouchers', label: 'Buy Vouchers', icon: '🎫' },  // Order → 购买水票
-    { path: '/place-order', label: 'Order Delivery', icon: '🛒' }, // Orders → Order Delivery
+    { path: '/orders', label: 'My Orders', icon: '📦' },
+    { path: '/place-order', label: 'New Order', icon: '🛒' },
     { path: '/account', label: 'My Account', icon: '👤' },
   ];
 
