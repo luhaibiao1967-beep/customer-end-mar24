@@ -29,3 +29,12 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 public/test-compression.html
+
+# Supabase CLI temp files
+supabase/.temp/
+
+# Claude memory
+.claude/
+
+# Plan docs
+docs/plans/
