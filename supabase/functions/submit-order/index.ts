@@ -14,6 +14,11 @@ interface OrderItem {
   discount: number
 }
 
+interface ProductDeduction {
+  product_id: string
+  quantity: number
+}
+
 interface RequestBody {
   token: string
   order: {
@@ -23,7 +28,9 @@ interface RequestBody {
     payment_status: string
   }
   items: OrderItem[]
-  vouchers_to_deduct: number
+  // New: per-product deductions. Legacy vouchers_to_deduct still accepted for backwards compat.
+  product_deductions?: ProductDeduction[]
+  vouchers_to_deduct?: number
   edit_order_id?: string
 }
 
@@ -34,7 +41,7 @@ serve(async (req) => {
 
   try {
     const body: RequestBody = await req.json()
-    const { token, order, items, vouchers_to_deduct, edit_order_id } = body
+    const { token, order, items, product_deductions, edit_order_id } = body
 
     if (!token) throw new Error('Token is required')
     if (!order || !items || items.length === 0) throw new Error('Order data is required')
@@ -54,10 +61,39 @@ serve(async (req) => {
       throw new Error('Invalid or expired token')
     }
 
-    // Check voucher balance if needed
-    if (vouchers_to_deduct > 0) {
-      if (customer.voucher_balance < vouchers_to_deduct) {
-        throw new Error('Insufficient voucher balance')
+    const isPrePay = customer.customer_type === 'pre_pay'
+
+    // Validate per-product voucher balances for pre_pay customers
+    if (isPrePay && product_deductions && product_deductions.length > 0) {
+      for (const deduction of product_deductions) {
+        if (deduction.quantity <= 0) continue
+
+        const { data: row } = await supabase
+          .from('customer_product_vouchers')
+          .select('balance')
+          .eq('customer_id', customer.id)
+          .eq('product_id', deduction.product_id)
+          .single()
+
+        const available = row?.balance ?? 0
+        if (available < deduction.quantity) {
+          throw new Error(`Insufficient vouchers for product (need ${deduction.quantity}, have ${available})`)
+        }
+      }
+    }
+
+    // For later_pay daily: block new orders if there are unpaid delivered orders
+    if (!isPrePay && customer.payment_term === 'daily' && !edit_order_id) {
+      const { data: unpaidOrders } = await supabase
+        .from('orders')
+        .select('id')
+        .eq('customer_id', customer.id)
+        .eq('payment_status', 'unpaid')
+        .eq('status', 'delivered')
+        .limit(1)
+
+      if (unpaidOrders && unpaidOrders.length > 0) {
+        throw new Error('UNPAID_ORDERS')
       }
     }
 
@@ -72,11 +108,10 @@ serve(async (req) => {
           updated_at: new Date().toISOString(),
         })
         .eq('id', edit_order_id)
-        .eq('customer_id', customer.id) // safety check: only own orders
+        .eq('customer_id', customer.id)
 
       if (updateError) throw new Error('Failed to update order: ' + updateError.message)
 
-      // Replace order items
       await supabase.from('order_items').delete().eq('order_id', edit_order_id)
 
       const { error: itemsError } = await supabase.from('order_items').insert(
@@ -116,14 +151,31 @@ serve(async (req) => {
       )
       if (itemsError) throw new Error('Failed to create order items: ' + itemsError.message)
 
-      // Deduct vouchers for pre_pay customers
-      if (vouchers_to_deduct > 0) {
-        const { error: voucherError } = await supabase
-          .from('customers')
-          .update({ voucher_balance: customer.voucher_balance - vouchers_to_deduct })
-          .eq('id', customer.id)
+      // Deduct per-product vouchers (pre_pay)
+      if (isPrePay && product_deductions && product_deductions.length > 0) {
+        for (const deduction of product_deductions) {
+          if (deduction.quantity <= 0) continue
 
-        if (voucherError) throw new Error('Failed to deduct vouchers: ' + voucherError.message)
+          const { data: row } = await supabase
+            .from('customer_product_vouchers')
+            .select('balance')
+            .eq('customer_id', customer.id)
+            .eq('product_id', deduction.product_id)
+            .single()
+
+          const current = row?.balance ?? 0
+          const newBalance = Math.max(0, current - deduction.quantity)
+
+          const { error: deductErr } = await supabase
+            .from('customer_product_vouchers')
+            .upsert({
+              customer_id: customer.id,
+              product_id: deduction.product_id,
+              balance: newBalance,
+            })
+
+          if (deductErr) throw new Error('Failed to deduct vouchers: ' + deductErr.message)
+        }
       }
     }
 

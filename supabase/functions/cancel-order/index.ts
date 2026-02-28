@@ -23,7 +23,7 @@ serve(async (req) => {
     // Validate token and get customer
     const { data: customer, error: customerError } = await supabase
       .from('customers')
-      .select('id')
+      .select('id, customer_type')
       .eq('auth_token', token)
       .single()
 
@@ -40,7 +40,45 @@ serve(async (req) => {
     if (orderError || !order) throw new Error('Order not found')
     if (order.status !== 'pending') throw new Error('Only pending orders can be cancelled')
 
-    // Delete order items first (cascade should handle this, but explicit is safer)
+    // For pre_pay: refund vouchers back to customer
+    if (customer.customer_type === 'pre_pay') {
+      const { data: items } = await supabase
+        .from('order_items')
+        .select('product, quantity')
+        .eq('order_id', order_id)
+
+      for (const item of items || []) {
+        if (!item.product || !item.quantity) continue
+
+        // Look up product_id by name
+        const { data: product } = await supabase
+          .from('products')
+          .select('id')
+          .eq('name', item.product)
+          .single()
+
+        if (!product) continue
+
+        const { data: row } = await supabase
+          .from('customer_product_vouchers')
+          .select('balance')
+          .eq('customer_id', customer.id)
+          .eq('product_id', product.id)
+          .single()
+
+        const current = row?.balance ?? 0
+
+        await supabase
+          .from('customer_product_vouchers')
+          .upsert({
+            customer_id: customer.id,
+            product_id: product.id,
+            balance: current + item.quantity,
+          })
+      }
+    }
+
+    // Delete order items first
     await supabase.from('order_items').delete().eq('order_id', order_id)
 
     // Delete the order

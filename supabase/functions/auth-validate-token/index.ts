@@ -73,6 +73,7 @@ serve(async (req) => {
           address: customer.address,
           whatsapp: customer.whatsapp,
           customer_type: customer.customer_type,
+          payment_term: customer.payment_term,
           voucher_balance: customer.voucher_balance,
           branch: customer.branch,
           discount: customer.discount,

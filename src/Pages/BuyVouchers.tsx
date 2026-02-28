@@ -1,6 +1,7 @@
-// src/Pages/BuyVouchers.tsx - Voucher purchase page
-import { useState } from 'react';
+// src/Pages/BuyVouchers.tsx - Buy per-product vouchers via Midtrans Snap
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { supabase } from '../supabaseClient';
 import BottomNav from '../Components/BottomNav';
 import { theme } from '../theme';
 
@@ -17,100 +18,101 @@ interface BuyVouchersProps {
 
 interface VoucherPackage {
   id: string;
-  name: string;
-  vouchers: number;
+  product_id: string;
+  qty: number;
   price: number;
-  savings?: number;
-  popular?: boolean;
+  label: string;
+  sort_order: number;
+  products: { name: string } | null;
 }
 
-const VOUCHER_PACKAGES: VoucherPackage[] = [
-  {
-    id: 'single',
-    name: 'Single Voucher',
-    vouchers: 1,
-    price: 15000,
-  },
-  {
-    id: 'package_10',
-    name: '10 Vouchers',
-    vouchers: 10,
-    price: 140000,
-    savings: 10000,
-  },
-  {
-    id: 'package_20',
-    name: '20 Vouchers',
-    vouchers: 20,
-    price: 270000,
-    savings: 30000,
-    popular: true,
-  },
-  {
-    id: 'package_50',
-    name: '50 Vouchers',
-    vouchers: 50,
-    price: 650000,
-    savings: 100000,
-  },
-];
+const loadSnap = (clientKey: string): Promise<void> =>
+  new Promise((resolve) => {
+    if ((window as any).snap) return resolve();
+    const env = import.meta.env.VITE_MIDTRANS_ENV || 'sandbox';
+    const src = env === 'production'
+      ? 'https://app.midtrans.com/snap/snap.js'
+      : 'https://app.sandbox.midtrans.com/snap/snap.js';
+    const script = document.createElement('script');
+    script.src = src;
+    script.setAttribute('data-client-key', clientKey);
+    script.onload = () => resolve();
+    document.head.appendChild(script);
+  });
 
 export default function BuyVouchers({ customer }: BuyVouchersProps) {
   const navigate = useNavigate();
-  const [selectedPackage, setSelectedPackage] = useState<VoucherPackage | null>(null);
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [packages, setPackages] = useState<VoucherPackage[]>([]);
+  const [currentVouchers, setCurrentVouchers] = useState<Map<string, number>>(new Map());
+  const [loading, setLoading] = useState(true);
+  const [paying, setPaying] = useState<string | null>(null);
 
-  const formatCurrency = (amount: number): string => {
-    return new Intl.NumberFormat('id-ID', {
-      style: 'currency',
-      currency: 'IDR',
-      minimumFractionDigits: 0,
-    }).format(amount);
+  useEffect(() => { loadData(); }, []);
+
+  const loadData = async () => {
+    try {
+      const [pkgRes, vRes] = await Promise.all([
+        supabase
+          .from('voucher_packages')
+          .select('id, product_id, qty, price, label, sort_order, products(name)')
+          .eq('is_active', true)
+          .order('sort_order'),
+        supabase
+          .from('customer_product_vouchers')
+          .select('product_id, balance')
+          .eq('customer_id', customer.id),
+      ]);
+
+      setPackages((pkgRes.data as VoucherPackage[]) || []);
+      const map = new Map<string, number>();
+      for (const row of vRes.data || []) map.set(row.product_id, row.balance);
+      setCurrentVouchers(map);
+    } catch {
+      // silently fail
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleBuyNow = (pkg: VoucherPackage) => {
-    setSelectedPackage(pkg);
-    setShowPaymentModal(true);
+  const handleBuy = async (pkg: VoucherPackage) => {
+    setPaying(pkg.id);
+    try {
+      const token = sessionStorage.getItem('auth_token');
+      if (!token) throw new Error('Session expired');
+
+      const { data, error } = await supabase.functions.invoke('create-voucher-payment', {
+        body: { token, package_id: pkg.id },
+      });
+
+      if (error) throw new Error(error.message);
+      if (!data?.success) throw new Error(data?.error || 'Failed to create payment');
+
+      await loadSnap(data.client_key);
+
+      (window as any).snap.pay(data.snap_token, {
+        onSuccess: () => loadData(),
+        onPending: () => alert('Payment pending. Vouchers will be added once confirmed.'),
+        onError: (result: any) => alert('Payment failed: ' + (result?.status_message || 'Unknown error')),
+        onClose: () => {},
+      });
+    } catch (err: any) {
+      alert('Error: ' + err.message);
+    } finally {
+      setPaying(null);
+    }
   };
+
+  const formatCurrency = (amount: number) =>
+    new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(amount);
 
   if (customer.customer_type !== 'pre_pay') {
     return (
-      <div style={{
-        minHeight: '100vh',
-        background: theme.gradientPrimary,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '20px'
-      }}>
-        <div style={{
-          background: 'white',
-          borderRadius: '20px',
-          padding: '40px',
-          maxWidth: '500px',
-          textAlign: 'center'
-        }}>
+      <div style={{ minHeight: '100vh', background: theme.gradientPrimary, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+        <div style={{ background: 'white', borderRadius: '20px', padding: '40px', maxWidth: '500px', textAlign: 'center' }}>
           <p style={{ fontSize: '48px', margin: '0 0 20px 0' }}>ℹ️</p>
           <h2 style={{ fontSize: '24px', marginBottom: '15px' }}>Vouchers Not Available</h2>
-          <p style={{ color: '#666', marginBottom: '30px' }}>
-            Your account is set to postpaid (invoice) mode.<br />
-            Vouchers are only for prepaid customers.
-          </p>
-          <button
-            onClick={() => navigate('/customer-home')}
-            style={{
-              padding: '12px 30px',
-              background: theme.gradientPrimary,
-              color: 'white',
-              border: 'none',
-              borderRadius: '8px',
-              fontSize: '16px',
-              fontWeight: 'bold',
-              cursor: 'pointer'
-            }}
-          >
-            ← Back to Home
-          </button>
+          <p style={{ color: '#666', marginBottom: '30px' }}>Your account is postpaid mode.<br />Vouchers are only for prepaid customers.</p>
+          <button onClick={() => navigate('/customer-home')} style={{ padding: '12px 30px', background: theme.gradientPrimary, color: 'white', border: 'none', borderRadius: '8px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer' }}>← Back to Home</button>
         </div>
         <BottomNav customer={customer} />
       </div>
@@ -118,245 +120,72 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
   }
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      background: theme.gradientPrimary,
-      padding: '20px',
-      paddingBottom: '80px',
-    }}>
+    <div style={{ minHeight: '100vh', background: theme.gradientPrimary, padding: '20px', paddingBottom: '80px' }}>
+
       {/* Header */}
-      <div style={{
-        maxWidth: '1200px',
-        margin: '0 auto 30px',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center'
-      }}>
-        <button
-          onClick={() => navigate('/customer-home')}
-          style={{
-            padding: '10px 20px',
-            background: 'rgba(255,255,255,0.2)',
-            color: 'white',
-            border: '2px solid white',
-            borderRadius: '8px',
-            fontSize: '14px',
-            fontWeight: 'bold',
-            cursor: 'pointer'
-          }}
-        >
-          ← Back
-        </button>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <img src="/logo.png" alt="Logo" style={{ height: '32px', objectFit: 'contain' }} />
-          <h1 style={{ color: 'white', fontSize: '24px', margin: 0 }}>🎫 Buy Vouchers</h1>
-        </div>
-        <div style={{ width: '100px' }} /> {/* Spacer */}
+      <div style={{ maxWidth: '800px', margin: '0 auto 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <button onClick={() => navigate('/customer-home')} style={{ padding: '10px 20px', background: 'rgba(255,255,255,0.2)', color: 'white', border: '2px solid white', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}>← Back</button>
+        <h1 style={{ color: 'white', fontSize: '22px', margin: 0 }}>🎫 Buy Vouchers</h1>
+        <div style={{ width: '80px' }} />
       </div>
 
-      {/* Current Balance */}
-      <div style={{
-        maxWidth: '1200px',
-        margin: '0 auto 30px'
-      }}>
-        <div style={{
-          background: 'white',
-          borderRadius: '20px',
-          padding: '30px',
-          textAlign: 'center',
-          boxShadow: '0 10px 40px rgba(0,0,0,0.2)'
-        }}>
-          <p style={{ fontSize: '14px', color: '#999', margin: '0 0 10px 0' }}>
-            Current Balance
-          </p>
-          <p style={{ fontSize: '48px', fontWeight: 'bold', margin: '0 0 5px 0', color: theme.primary }}>
-            {customer.voucher_balance}
-          </p>
-          <p style={{ fontSize: '14px', color: '#666', margin: 0 }}>
-            vouchers available
-          </p>
-        </div>
-      </div>
+      <div style={{ maxWidth: '800px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
-      {/* Voucher Packages */}
-      <div style={{
-        maxWidth: '1200px',
-        margin: '0 auto',
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
-        gap: '20px'
-      }}>
-        {VOUCHER_PACKAGES.map((pkg) => (
-          <div
-            key={pkg.id}
-            style={{
-              background: 'white',
-              borderRadius: '20px',
-              padding: '30px',
-              boxShadow: '0 10px 40px rgba(0,0,0,0.2)',
-              position: 'relative',
-              border: pkg.popular ? `3px solid ${theme.warning}` : 'none'
-            }}
-          >
-            {pkg.popular && (
-              <div style={{
-                position: 'absolute',
-                top: '-15px',
-                left: '50%',
-                transform: 'translateX(-50%)',
-                background: theme.warning,
-                color: '#000',
-                padding: '5px 20px',
-                borderRadius: '20px',
-                fontSize: '12px',
-                fontWeight: 'bold'
-              }}>
-                ⭐ MOST POPULAR
+        {/* Current voucher balances */}
+        {currentVouchers.size > 0 && (
+          <div style={{ background: 'white', borderRadius: '16px', padding: '16px 20px', boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}>
+            <p style={{ margin: '0 0 10px 0', fontSize: '12px', color: theme.textMuted, fontWeight: '600' }}>Current Balance</p>
+            {Array.from(currentVouchers.entries()).map(([productId, balance]) => {
+              const pkg = packages.find(p => p.product_id === productId);
+              return (
+                <div key={productId} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '13px', color: theme.text }}>{pkg?.products?.name ?? '—'}</span>
+                  <span style={{ fontSize: '22px', fontWeight: 'bold', color: theme.primary }}>{balance}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Packages */}
+        {loading ? (
+          <div style={{ background: 'white', borderRadius: '16px', padding: '40px', textAlign: 'center' }}>
+            <p style={{ color: theme.textMuted }}>Loading packages...</p>
+          </div>
+        ) : packages.length === 0 ? (
+          <div style={{ background: 'white', borderRadius: '16px', padding: '40px', textAlign: 'center' }}>
+            <p style={{ color: theme.textMuted }}>No packages available.</p>
+          </div>
+        ) : (
+          packages.map(pkg => (
+            <div key={pkg.id} style={{ background: 'white', borderRadius: '16px', padding: '20px', boxShadow: '0 4px 20px rgba(0,0,0,0.12)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                <div>
+                  <p style={{ margin: 0, fontSize: '20px', fontWeight: 'bold', color: theme.text }}>{pkg.qty} Vouchers</p>
+                  <p style={{ margin: '4px 0 0', fontSize: '12px', color: theme.textMuted }}>{pkg.label} · {pkg.products?.name}</p>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <p style={{ margin: 0, fontSize: '18px', fontWeight: 'bold', color: theme.primary }}>{formatCurrency(pkg.price)}</p>
+                  <p style={{ margin: '2px 0 0', fontSize: '11px', color: theme.textMuted }}>{formatCurrency(Math.round(pkg.price / pkg.qty))}/voucher</p>
+                </div>
               </div>
-            )}
-
-            <div style={{ textAlign: 'center', marginBottom: '20px' }}>
-              <p style={{ fontSize: '48px', margin: '0 0 10px 0' }}>🎫</p>
-              <h3 style={{ fontSize: '20px', margin: '0 0 10px 0' }}>{pkg.name}</h3>
-              <p style={{ fontSize: '36px', fontWeight: 'bold', color: theme.primary, margin: '0 0 5px 0' }}>
-                {pkg.vouchers}
-              </p>
-              <p style={{ fontSize: '14px', color: '#999', margin: 0 }}>vouchers</p>
+              <button
+                onClick={() => handleBuy(pkg)}
+                disabled={paying === pkg.id}
+                style={{ width: '100%', padding: '12px', background: paying === pkg.id ? '#ccc' : theme.gradientPrimary, color: 'white', border: 'none', borderRadius: '8px', fontSize: '15px', fontWeight: 'bold', cursor: paying === pkg.id ? 'not-allowed' : 'pointer' }}
+              >
+                {paying === pkg.id ? 'Loading...' : 'Beli Sekarang'}
+              </button>
             </div>
+          ))
+        )}
 
-            <div style={{
-              background: '#f5f5f5',
-              borderRadius: '12px',
-              padding: '15px',
-              marginBottom: '15px',
-              textAlign: 'center'
-            }}>
-              <p style={{ fontSize: '24px', fontWeight: 'bold', margin: '0 0 5px 0', color: '#333' }}>
-                {formatCurrency(pkg.price)}
-              </p>
-              {pkg.savings && (
-                <p style={{ fontSize: '12px', color: theme.success, margin: 0, fontWeight: 'bold' }}>
-                  💰 Save {formatCurrency(pkg.savings)}
-                </p>
-              )}
-            </div>
-
-            <button
-              onClick={() => handleBuyNow(pkg)}
-              style={{
-                width: '100%',
-                padding: '14px',
-                background: theme.gradientPrimary,
-                color: 'white',
-                border: 'none',
-                borderRadius: '8px',
-                fontSize: '16px',
-                fontWeight: 'bold',
-                cursor: 'pointer'
-              }}
-            >
-              Buy Now
-            </button>
-          </div>
-        ))}
+        <div style={{ background: 'rgba(255,255,255,0.15)', borderRadius: '12px', padding: '14px 16px', fontSize: '12px', color: 'rgba(255,255,255,0.9)' }}>
+          ℹ️ Voucher otomatis ditambahkan setelah pembayaran berhasil.
+        </div>
       </div>
 
-      {/* Payment Modal */}
-      {showPaymentModal && selectedPackage && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0,0,0,0.7)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '20px',
-          zIndex: 1000
-        }}>
-          <div style={{
-            background: 'white',
-            borderRadius: '20px',
-            padding: '40px',
-            maxWidth: '500px',
-            width: '100%',
-            textAlign: 'center'
-          }}>
-            <h2 style={{ fontSize: '24px', marginBottom: '20px' }}>
-              🎫 {selectedPackage.name}
-            </h2>
-
-            <div style={{
-              background: '#f5f5f5',
-              borderRadius: '12px',
-              padding: '20px',
-              marginBottom: '20px'
-            }}>
-              <p style={{ fontSize: '14px', color: '#999', margin: '0 0 5px 0' }}>Total Amount</p>
-              <p style={{ fontSize: '36px', fontWeight: 'bold', color: '#667eea', margin: 0 }}>
-                {formatCurrency(selectedPackage.price)}
-              </p>
-            </div>
-
-            <div style={{
-              background: '#fff3cd',
-              border: `1px solid ${theme.warning}`,
-              borderRadius: '12px',
-              padding: '15px',
-              marginBottom: '20px',
-              fontSize: '14px',
-              color: '#856404'
-            }}>
-              🚧 <strong>Development Mode:</strong><br />
-              QRIS payment integration coming soon!<br />
-              In production, this will show a QR code for payment.
-            </div>
-
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button
-                onClick={() => {
-                  setShowPaymentModal(false);
-                  setSelectedPackage(null);
-                }}
-                style={{
-                  flex: 1,
-                  padding: '14px',
-                  background: '#ccc',
-                  color: '#333',
-                  border: 'none',
-                  borderRadius: '8px',
-                  fontSize: '16px',
-                  fontWeight: 'bold',
-                  cursor: 'pointer'
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  alert('Payment integration coming soon! In production, QRIS will be displayed here.');
-                  setShowPaymentModal(false);
-                }}
-                style={{
-                  flex: 1,
-                  padding: '14px',
-                  background: 'linear-gradient(135deg, #28a745 0%, #20c997 100%)',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '8px',
-                  fontSize: '16px',
-                  fontWeight: 'bold',
-                  cursor: 'pointer'
-                }}
-              >
-                Pay with QRIS
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <BottomNav customer={customer} />
     </div>
   );
 }

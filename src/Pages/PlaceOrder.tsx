@@ -57,31 +57,33 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [showSuccess, setShowSuccess] = useState(false);
-  // Fresh customer data fetched from DB (discount may have changed since login)
+
+  // Fresh customer data
   const [freshDiscount, setFreshDiscount] = useState<number>(customer.discount || 0);
-  const [freshVoucherBalance, setFreshVoucherBalance] = useState<number>(customer.voucher_balance || 0);
+
+  // Per-product voucher balances: productId → balance
+  const [productVouchers, setProductVouchers] = useState<Map<string, number>>(new Map());
 
   const isPrePay = customer.customer_type === 'pre_pay';
 
-  // For later_pay customers: refill = REFILL_BASE_PRICE - discount; others use product.price
   const getUnitPrice = (product: Product): number => {
     if (isPrePay) return product.price;
     if (product.is_refill) return Math.max(0, REFILL_BASE_PRICE - freshDiscount);
     return product.price;
   };
 
-  // Calculate totals
   const cartItems: CartItem[] = products
     .filter(p => (cart.get(p.id) || 0) > 0)
     .map(p => ({ product: p, quantity: cart.get(p.id)! }));
 
-  const totalAmount = cartItems.reduce((sum, item) => {
-    return sum + getUnitPrice(item.product) * item.quantity;
-  }, 0);
+  const totalAmount = cartItems.reduce((sum, item) =>
+    sum + getUnitPrice(item.product) * item.quantity, 0);
 
-  // For pre_pay: vouchers needed = total quantity of items
-  const vouchersNeeded = cartItems.reduce((sum, item) => sum + item.quantity, 0);
-  const hasEnoughVouchers = freshVoucherBalance >= vouchersNeeded;
+  // For pre_pay: check each product independently against its voucher balance
+  const insufficientProducts = isPrePay
+    ? cartItems.filter(item => item.quantity > (productVouchers.get(item.product.id) ?? 0))
+    : [];
+  const hasEnoughVouchers = insufficientProducts.length === 0;
 
   useEffect(() => {
     loadProducts();
@@ -90,24 +92,32 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
 
   const fetchFreshCustomerData = async () => {
     try {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('customers')
-        .select('discount, voucher_balance')
+        .select('discount')
         .eq('id', customer.id)
         .single();
-      if (error || !data) return;
-      setFreshDiscount(data.discount || 0);
-      setFreshVoucherBalance(data.voucher_balance || 0);
-      // Also update sessionStorage so other pages stay in sync
-      const stored = sessionStorage.getItem('customer');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        parsed.discount = data.discount || 0;
-        parsed.voucher_balance = data.voucher_balance || 0;
-        sessionStorage.setItem('customer', JSON.stringify(parsed));
-      }
+      if (data) setFreshDiscount(data.discount || 0);
     } catch {
-      // silently fail — fall back to sessionStorage values
+      // silently fall back
+    }
+  };
+
+  const fetchProductVouchers = async () => {
+    if (!isPrePay) return;
+    try {
+      const { data } = await supabase
+        .from('customer_product_vouchers')
+        .select('product_id, balance')
+        .eq('customer_id', customer.id);
+
+      const map = new Map<string, number>();
+      for (const row of data || []) {
+        map.set(row.product_id, row.balance);
+      }
+      setProductVouchers(map);
+    } catch {
+      // silently fall back — no vouchers = empty map
     }
   };
 
@@ -122,7 +132,7 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
     const lower = name.toLowerCase();
     if (is_refill || lower.includes('refill')) return 0;
     if ((lower.includes('gallon') || lower.includes('galon')) && !lower.includes('rack')) return 1;
-    return 2; // accessories: pump, rack, etc.
+    return 2;
   };
 
   const loadProducts = async () => {
@@ -133,13 +143,11 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
         .eq('status', 'active');
       if (error) throw error;
 
-      // Filter out sales-only products (empty gallon collection, sample)
       const filtered = (data || []).filter(p => {
         const lower = p.name.toLowerCase();
         return !lower.includes('empty') && !lower.includes('sample');
       });
 
-      // Sort by frequency: refill → new gallon → accessories
       filtered.sort((a, b) =>
         getProductSortOrder(a.name, a.is_refill) - getProductSortOrder(b.name, b.is_refill)
       );
@@ -149,6 +157,8 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
       setError('Failed to load products: ' + err.message);
     } finally {
       setLoading(false);
+      // Fetch vouchers after products loaded
+      fetchProductVouchers();
     }
   };
 
@@ -171,9 +181,7 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
       const newCart = new Map<string, number>();
       for (const item of order.order_items || []) {
         const matched = products.find(p => p.name === item.product);
-        if (matched) {
-          newCart.set(matched.id, item.quantity);
-        }
+        if (matched) newCart.set(matched.id, item.quantity);
       }
       setCart(newCart);
     } catch (err: any) {
@@ -195,6 +203,14 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
     });
   };
 
+  // For pre_pay: the + button is disabled when qty already equals the voucher balance for that product
+  const canIncrease = (product: Product): boolean => {
+    if (!isPrePay) return true;
+    const balance = productVouchers.get(product.id) ?? 0;
+    const qty = cart.get(product.id) || 0;
+    return qty < balance;
+  };
+
   const handleSubmit = async () => {
     if (cartItems.length === 0) {
       setError('请至少选择一件商品。');
@@ -205,7 +221,7 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
       return;
     }
     if (isPrePay && !hasEnoughVouchers) {
-      setError('Voucher 余额不足，请先购买。');
+      setError('部分产品 voucher 余额不足，请先购买。');
       return;
     }
 
@@ -224,6 +240,14 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
         discount: item.product.is_refill ? (freshDiscount || 0) : 0,
       }));
 
+      // Build per-product deductions for pre_pay
+      const product_deductions = isPrePay
+        ? cartItems.map(item => ({
+            product_id: item.product.id,
+            quantity: item.quantity,
+          }))
+        : [];
+
       const { data, error } = await supabase.functions.invoke('submit-order', {
         body: {
           token,
@@ -234,22 +258,30 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
             payment_status: isPrePay ? 'paid' : 'unpaid',
           },
           items: orderItems,
-          vouchers_to_deduct: isPrePay ? vouchersNeeded : 0,
+          product_deductions,
           edit_order_id: editOrderId || undefined,
         },
       });
 
       if (error) throw new Error(error.message);
-      if (!data?.success) throw new Error(data?.error || 'Unknown error');
-
-      // Update session storage voucher balance if deducted
-      if (isPrePay && !editOrderId) {
-        const stored = sessionStorage.getItem('customer');
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          parsed.voucher_balance = freshVoucherBalance - vouchersNeeded;
-          sessionStorage.setItem('customer', JSON.stringify(parsed));
+      if (!data?.success) {
+        if (data?.error === 'UNPAID_ORDERS') {
+          setError('UNPAID_ORDERS');
+          return;
         }
+        throw new Error(data?.error || 'Unknown error');
+      }
+
+      // Refresh local voucher map optimistically
+      if (isPrePay && !editOrderId) {
+        setProductVouchers(prev => {
+          const next = new Map(prev);
+          for (const item of cartItems) {
+            const old = next.get(item.product.id) ?? 0;
+            next.set(item.product.id, Math.max(0, old - item.quantity));
+          }
+          return next;
+        });
       }
 
       setShowSuccess(true);
@@ -320,11 +352,22 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
 
       <div style={{ maxWidth: '800px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
-        {/* Voucher balance (pre_pay only) */}
-        {isPrePay && (
-          <div style={{ background: 'white', borderRadius: '16px', padding: '16px 20px', boxShadow: '0 4px 20px rgba(0,0,0,0.15)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '14px', color: theme.textMuted }}>🎫 Voucher Balance</span>
-            <span style={{ fontSize: '20px', fontWeight: 'bold', color: theme.primary }}>{freshVoucherBalance}</span>
+        {/* Voucher summary banner (pre_pay only) */}
+        {isPrePay && productVouchers.size > 0 && (
+          <div style={{ background: 'white', borderRadius: '16px', padding: '16px 20px', boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}>
+            <p style={{ fontSize: '13px', fontWeight: '600', color: theme.textMuted, margin: '0 0 10px 0' }}>🎫 Voucher Balance</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {products
+                .filter(p => productVouchers.has(p.id))
+                .map(p => (
+                  <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                    <span style={{ color: theme.text }}>{p.name}</span>
+                    <span style={{ fontWeight: 'bold', color: (productVouchers.get(p.id) ?? 0) > 0 ? theme.primary : theme.error }}>
+                      {productVouchers.get(p.id) ?? 0}
+                    </span>
+                  </div>
+                ))}
+            </div>
           </div>
         )}
 
@@ -352,14 +395,45 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
               {products.map(product => {
                 const qty = cart.get(product.id) || 0;
                 const unitPrice = getUnitPrice(product);
+                const voucherBalance = productVouchers.get(product.id);
+                const plusDisabled = isPrePay ? !canIncrease(product) : false;
+
                 return (
                   <div key={product.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', background: qty > 0 ? '#f0fbfb' : theme.cardBgAlt, borderRadius: '10px', border: `2px solid ${qty > 0 ? theme.primary : 'transparent'}` }}>
                     <div style={{ flex: 1 }}>
                       <p style={{ margin: 0, fontWeight: '600', fontSize: '14px', color: theme.text }}>{product.name}</p>
-                      <p style={{ margin: '2px 0 0', fontSize: '13px', color: theme.textMuted }}>
-                        {formatCurrency(unitPrice)} / {product.unit}
-                        {!isPrePay && product.is_refill && freshDiscount > 0 && <span style={{ marginLeft: '6px', color: theme.success, fontSize: '11px' }}>(disc. {formatCurrency(freshDiscount)})</span>}
-                      </p>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '13px', color: theme.textMuted }}>
+                          {formatCurrency(unitPrice)} / {product.unit}
+                          {!isPrePay && product.is_refill && freshDiscount > 0 && (
+                            <span style={{ marginLeft: '6px', color: theme.success, fontSize: '11px' }}>
+                              (disc. {formatCurrency(freshDiscount)})
+                            </span>
+                          )}
+                        </span>
+                        {/* Voucher badge + Buy button for pre_pay — always show, even if 0 */}
+                        {isPrePay && (
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{
+                              fontSize: '11px',
+                              fontWeight: '600',
+                              color: (voucherBalance ?? 0) > 0 ? theme.primary : theme.error,
+                              background: (voucherBalance ?? 0) > 0 ? '#f0fbfb' : '#fdecea',
+                              padding: '2px 8px',
+                              borderRadius: '12px',
+                              border: `1px solid ${(voucherBalance ?? 0) > 0 ? theme.primary : theme.error}`,
+                            }}>
+                              🎫 {voucherBalance ?? 0}
+                            </span>
+                            <button
+                              onClick={() => navigate('/buy-vouchers')}
+                              style={{ fontSize: '11px', fontWeight: '600', color: 'white', background: theme.gradientSuccess, border: 'none', borderRadius: '10px', padding: '2px 8px', cursor: 'pointer' }}
+                            >
+                              Buy
+                            </button>
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                       <button
@@ -372,7 +446,8 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
                       <span style={{ width: '28px', textAlign: 'center', fontWeight: 'bold', fontSize: '16px' }}>{qty}</span>
                       <button
                         onClick={() => updateCart(product.id, 1)}
-                        style={{ width: '32px', height: '32px', borderRadius: '50%', border: 'none', background: theme.primary, color: 'white', fontSize: '18px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        disabled={plusDisabled}
+                        style={{ width: '32px', height: '32px', borderRadius: '50%', border: 'none', background: plusDisabled ? '#ddd' : theme.primary, color: 'white', fontSize: '18px', fontWeight: 'bold', cursor: plusDisabled ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                       >
                         +
                       </button>
@@ -412,31 +487,49 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
               <span>Total</span>
               <span style={{ color: theme.primary }}>{formatCurrency(totalAmount)}</span>
             </div>
-            {isPrePay && (
-              <div style={{ marginTop: '10px', fontSize: '13px', color: theme.textMuted }}>
-                Vouchers needed: <strong>{vouchersNeeded}</strong> &nbsp;|&nbsp; Balance: <strong>{freshVoucherBalance}</strong>
-              </div>
-            )}
           </div>
         )}
 
-        {/* Voucher insufficient warning */}
-        {isPrePay && cartItems.length > 0 && !hasEnoughVouchers && (
-          <div style={{ background: '#fff3cd', border: `2px solid ${theme.warning}`, borderRadius: '16px', padding: '20px', textAlign: 'center' }}>
-            <p style={{ margin: '0 0 12px 0', fontWeight: '600', color: '#856404' }}>
-              ⚠️ Voucher 不足！需要 {vouchersNeeded} 张，当前只有 {freshVoucherBalance} 张。
+        {/* Voucher insufficient warning (pre_pay) */}
+        {isPrePay && insufficientProducts.length > 0 && (
+          <div style={{ background: '#fff3cd', border: `2px solid ${theme.warning}`, borderRadius: '16px', padding: '20px' }}>
+            <p style={{ margin: '0 0 8px 0', fontWeight: '600', color: '#856404' }}>
+              ⚠️ Voucher tidak cukup untuk:
             </p>
+            {insufficientProducts.map(item => (
+              <p key={item.product.id} style={{ margin: '2px 0', fontSize: '13px', color: '#856404' }}>
+                • {item.product.name}: butuh {item.quantity}, tersedia {productVouchers.get(item.product.id) ?? 0}
+              </p>
+            ))}
             <button
               onClick={() => navigate('/buy-vouchers')}
-              style={{ padding: '10px 24px', background: theme.gradientSuccess, color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}
+              style={{ marginTop: '12px', padding: '10px 24px', background: theme.gradientSuccess, color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}
             >
-              🎫 去购买 Voucher
+              🎫 Beli Voucher
+            </button>
+          </div>
+        )}
+
+        {/* Unpaid orders block */}
+        {error === 'UNPAID_ORDERS' && (
+          <div style={{ background: '#fdecea', border: `2px solid ${theme.error}`, borderRadius: '12px', padding: '16px' }}>
+            <p style={{ margin: '0 0 8px 0', fontWeight: '700', color: theme.error, fontSize: '14px' }}>
+              🚫 Tagihan Belum Dibayar
+            </p>
+            <p style={{ margin: '0 0 12px 0', fontSize: '13px', color: theme.error }}>
+              Anda memiliki tagihan yang belum dilunasi. Mohon selesaikan pembayaran terlebih dahulu sebelum membuat pesanan baru.
+            </p>
+            <button
+              onClick={() => navigate('/orders')}
+              style={{ padding: '10px 20px', background: theme.gradientPrimary, color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}
+            >
+              💳 Lihat &amp; Bayar Tagihan
             </button>
           </div>
         )}
 
         {/* Error */}
-        {error && (
+        {error && error !== 'UNPAID_ORDERS' && (
           <div style={{ background: '#fdecea', border: `2px solid ${theme.error}`, borderRadius: '12px', padding: '14px 16px', color: theme.error, fontSize: '14px' }}>
             ⚠️ {error}
           </div>

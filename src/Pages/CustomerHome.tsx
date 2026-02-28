@@ -33,15 +33,35 @@ interface CustomerHomeProps {
   customer: Customer;
 }
 
+interface ProductVoucherRow {
+  product_id: string;
+  balance: number;
+  products: { name: string } | null;
+}
+
 export default function CustomerHome({ customer }: CustomerHomeProps) {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [pendingOrders, setPendingOrders] = useState<Order[]>([]);
+  const [productVouchers, setProductVouchers] = useState<ProductVoucherRow[]>([]);
   const canOrder = customer.branch && customer.branch !== 'Pending';
 
   useEffect(() => {
     loadPendingOrders();
+    if (customer.customer_type === 'pre_pay') loadProductVouchers();
   }, [customer.id]);
+
+  const loadProductVouchers = async () => {
+    try {
+      const { data } = await supabase
+        .from('customer_product_vouchers')
+        .select('product_id, balance, products(name)')
+        .eq('customer_id', customer.id);
+      setProductVouchers((data as ProductVoucherRow[]) || []);
+    } catch {
+      // silently fail
+    }
+  };
 
   const loadPendingOrders = async () => {
     try {
@@ -255,25 +275,25 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
             </div>
           </div>
 
-          {/* Voucher Balance - pre_pay (matches water depot schema) */}
+          {/* Voucher Balance - pre_pay: per-product breakdown */}
           {customer.customer_type === 'pre_pay' && (
             <div style={{ marginBottom: '20px' }}>
-              <div style={{
-                background: theme.gradientPrimary,
-                padding: '20px',
-                borderRadius: '12px',
-                textAlign: 'center',
-                color: 'white'
-              }}>
-                <p style={{ fontSize: '12px', margin: '0 0 8px 0', opacity: 0.9 }}>
-                  Voucher Balance
+              <div style={{ background: theme.gradientPrimary, padding: '16px 20px', borderRadius: '12px', color: 'white' }}>
+                <p style={{ fontSize: '12px', margin: '0 0 12px 0', opacity: 0.9, fontWeight: '600' }}>
+                  🎫 Voucher Balance
                 </p>
-                <p style={{ fontSize: '36px', fontWeight: 'bold', margin: 0 }}>
-                  {customer.voucher_balance}
-                </p>
-                <p style={{ fontSize: '12px', margin: '8px 0 0 0', opacity: 0.9 }}>
-                  vouchers available
-                </p>
+                {productVouchers.length === 0 ? (
+                  <p style={{ fontSize: '14px', margin: 0, opacity: 0.85 }}>No vouchers yet</p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {productVouchers.map(row => (
+                      <div key={row.product_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '13px', opacity: 0.9 }}>{row.products?.name ?? '—'}</span>
+                        <span style={{ fontSize: '20px', fontWeight: 'bold' }}>{row.balance}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -446,7 +466,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
             </p>
             {customer.customer_type === 'pre_pay' && (
               <p style={{ margin: '0 0 10px 0' }}>
-                <strong>Vouchers:</strong> {customer.voucher_balance} available
+                <strong>Vouchers:</strong> {productVouchers.reduce((s, r) => s + r.balance, 0)} total
               </p>
             )}
             <p style={{ margin: '0 0 10px 0' }}>
