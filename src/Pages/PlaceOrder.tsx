@@ -37,11 +37,15 @@ interface PlaceOrderProps {
 // Base price for refill gallon — update here if price changes
 const REFILL_BASE_PRICE = 15000;
 
+function getJakartaDateString(date: Date = new Date()): string {
+  return date.toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' }); // returns YYYY-MM-DD
+}
+
 function getDefaultDeliveryDate(): string {
   const now = new Date();
-  const hour = now.getHours();
+  const hour = parseInt(now.toLocaleString('en-US', { timeZone: 'Asia/Jakarta', hour: 'numeric', hour12: false }), 10);
   const date = hour >= 15 ? new Date(now.getTime() + 86400000) : now;
-  return date.toISOString().split('T')[0];
+  return getJakartaDateString(date);
 }
 
 export default function PlaceOrder({ customer }: PlaceOrderProps) {
@@ -295,7 +299,7 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
   const formatCurrency = (amount: number) =>
     new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(amount);
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = getJakartaDateString();
 
   if (loading) {
     return (
