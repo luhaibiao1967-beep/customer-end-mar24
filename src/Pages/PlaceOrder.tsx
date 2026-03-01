@@ -68,6 +68,7 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
 
   // Unpaid orders block (daily later_pay)
   const [blockedByUnpaid, setBlockedByUnpaid] = useState(false);
+  const [showUnpaidModal, setShowUnpaidModal] = useState(false);
 
   // Per-product voucher balances: productId → balance
   const [productVouchers, setProductVouchers] = useState<Map<string, number>>(new Map());
@@ -588,18 +589,18 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
 
         {/* Submit */}
         <button
-          onClick={handleSubmit}
-          disabled={submitting || cartItems.length === 0 || (isPrePay && !hasEnoughVouchers) || blockedByUnpaid}
+          onClick={() => blockedByUnpaid ? setShowUnpaidModal(true) : handleSubmit()}
+          disabled={submitting || cartItems.length === 0 || (isPrePay && !hasEnoughVouchers)}
           style={{
             width: '100%',
             padding: '16px',
-            background: (submitting || cartItems.length === 0 || (isPrePay && !hasEnoughVouchers) || blockedByUnpaid) ? '#ccc' : theme.gradientPrimary,
+            background: (submitting || cartItems.length === 0 || (isPrePay && !hasEnoughVouchers)) ? '#ccc' : theme.gradientPrimary,
             color: 'white',
             border: 'none',
             borderRadius: '12px',
             fontSize: '16px',
             fontWeight: 'bold',
-            cursor: (submitting || cartItems.length === 0 || (isPrePay && !hasEnoughVouchers) || blockedByUnpaid) ? 'not-allowed' : 'pointer',
+            cursor: (submitting || cartItems.length === 0 || (isPrePay && !hasEnoughVouchers)) ? 'not-allowed' : 'pointer',
           }}
         >
           {submitting ? 'Submitting...' : editOrderId ? '✅ Update Order' : '✅ Place Order'}
@@ -607,6 +608,34 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
       </div>
 
       <BottomNav customer={customer} />
+
+      {/* Unpaid Orders Modal */}
+      {showUnpaidModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000, padding: '20px' }}>
+          <div style={{ background: 'white', borderRadius: '20px', padding: '28px 24px', maxWidth: '360px', width: '100%', textAlign: 'center', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+            <p style={{ fontSize: '48px', margin: '0 0 12px 0' }}>⚠️</p>
+            <h3 style={{ fontSize: '18px', fontWeight: '700', color: theme.error, margin: '0 0 12px 0' }}>Outstanding Balance</h3>
+            <p style={{ fontSize: '14px', color: '#555', margin: '0 0 24px 0', lineHeight: '1.5' }}>
+              You have unpaid delivered orders.<br />
+              Please settle your balance first before placing a new order.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <button
+                onClick={() => { setShowUnpaidModal(false); navigate('/orders'); }}
+                style={{ width: '100%', padding: '13px', background: theme.gradientPrimary, color: 'white', border: 'none', borderRadius: '10px', fontSize: '15px', fontWeight: 'bold', cursor: 'pointer' }}
+              >
+                💳 View &amp; Pay Bills
+              </button>
+              <button
+                onClick={() => setShowUnpaidModal(false)}
+                style={{ width: '100%', padding: '11px', background: 'none', color: theme.textMuted, border: `2px solid #ddd`, borderRadius: '10px', fontSize: '14px', cursor: 'pointer' }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
