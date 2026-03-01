@@ -11,6 +11,7 @@ interface Customer {
   address: string;
   whatsapp: string;
   customer_type: string;
+  payment_term?: string;
   voucher_balance: number;
   branch: string;
   discount: number;
@@ -65,6 +66,9 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
   // Fresh customer data
   const [freshDiscount, setFreshDiscount] = useState<number>(customer.discount || 0);
 
+  // Unpaid orders block (daily later_pay)
+  const [blockedByUnpaid, setBlockedByUnpaid] = useState(false);
+
   // Per-product voucher balances: productId → balance
   const [productVouchers, setProductVouchers] = useState<Map<string, number>>(new Map());
 
@@ -92,7 +96,34 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
   useEffect(() => {
     loadProducts();
     fetchFreshCustomerData();
+    checkUnpaidBlock();
   }, []);
+
+  const checkUnpaidBlock = async () => {
+    if (customer.customer_type === 'pre_pay' || editOrderId) return;
+    try {
+      // Fetch payment_term from DB (may not be in sessionStorage for older sessions)
+      const { data: cust } = await supabase
+        .from('customers')
+        .select('payment_term')
+        .eq('id', customer.id)
+        .single();
+      if (cust?.payment_term !== 'daily') return;
+
+      const token = sessionStorage.getItem('auth_token');
+      if (!token) return;
+
+      const { data } = await supabase.functions.invoke('get-orders', { body: { token } });
+      if (data?.success) {
+        const hasUnpaid = (data.orders || []).some(
+          (o: any) => o.payment_status === 'unpaid' && o.status === 'delivered'
+        );
+        if (hasUnpaid) setBlockedByUnpaid(true);
+      }
+    } catch {
+      // silently fail — don't block ordering on network error
+    }
+  };
 
   const fetchFreshCustomerData = async () => {
     try {
@@ -356,6 +387,22 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
 
       <div style={{ maxWidth: '800px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
+        {/* Unpaid orders block — daily later_pay */}
+        {blockedByUnpaid && (
+          <div style={{ background: '#fdecea', border: `2px solid ${theme.error}`, borderRadius: '16px', padding: '20px' }}>
+            <p style={{ margin: '0 0 8px 0', fontWeight: '700', color: theme.error, fontSize: '16px' }}>🚫 Outstanding Balance</p>
+            <p style={{ margin: '0 0 16px 0', fontSize: '14px', color: theme.error }}>
+              You have unpaid delivered orders. Please settle your balance before placing a new order.
+            </p>
+            <button
+              onClick={() => navigate('/orders')}
+              style={{ padding: '12px 24px', background: theme.gradientPrimary, color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}
+            >
+              💳 View &amp; Pay Bills
+            </button>
+          </div>
+        )}
+
         {/* Voucher summary banner (pre_pay only) */}
         {isPrePay && productVouchers.size > 0 && (
           <div style={{ background: 'white', borderRadius: '16px', padding: '16px 20px', boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}>
@@ -542,17 +589,17 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
         {/* Submit */}
         <button
           onClick={handleSubmit}
-          disabled={submitting || cartItems.length === 0 || (isPrePay && !hasEnoughVouchers)}
+          disabled={submitting || cartItems.length === 0 || (isPrePay && !hasEnoughVouchers) || blockedByUnpaid}
           style={{
             width: '100%',
             padding: '16px',
-            background: (submitting || cartItems.length === 0 || (isPrePay && !hasEnoughVouchers)) ? '#ccc' : theme.gradientPrimary,
+            background: (submitting || cartItems.length === 0 || (isPrePay && !hasEnoughVouchers) || blockedByUnpaid) ? '#ccc' : theme.gradientPrimary,
             color: 'white',
             border: 'none',
             borderRadius: '12px',
             fontSize: '16px',
             fontWeight: 'bold',
-            cursor: (submitting || cartItems.length === 0 || (isPrePay && !hasEnoughVouchers)) ? 'not-allowed' : 'pointer',
+            cursor: (submitting || cartItems.length === 0 || (isPrePay && !hasEnoughVouchers) || blockedByUnpaid) ? 'not-allowed' : 'pointer',
           }}
         >
           {submitting ? 'Submitting...' : editOrderId ? '✅ Update Order' : '✅ Place Order'}
