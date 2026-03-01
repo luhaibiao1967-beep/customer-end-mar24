@@ -167,7 +167,7 @@ serve(async (req) => {
           whatsapp: formattedPhone,
           phone: formattedPhone,
           customer_type: 'pre_pay',
-          voucher_balance: 5,
+          voucher_balance: 0,
           discount: 0,
           branch: 'Pending',
           auth_token: crypto.randomUUID(),
@@ -179,6 +179,26 @@ serve(async (req) => {
 
       if (customerError) throw customerError
       customer = newCustomer
+
+      // Grant welcome vouchers from app_settings
+      const { data: settings } = await supabase
+        .from('app_settings')
+        .select('key, value')
+        .in('key', ['welcome_voucher_qty', 'welcome_voucher_product_id'])
+
+      const settingsMap: Record<string, string> = {}
+      for (const row of settings || []) settingsMap[row.key] = row.value
+
+      const welcomeQty = parseInt(settingsMap['welcome_voucher_qty'] || '0', 10)
+      const welcomeProductId = settingsMap['welcome_voucher_product_id']
+
+      if (welcomeQty > 0 && welcomeProductId) {
+        await supabase.from('customer_product_vouchers').upsert({
+          customer_id: customer.id,
+          product_id: welcomeProductId,
+          balance: welcomeQty,
+        })
+      }
 
       if (DEV_MODE) {
         console.log('🔧 DEV MODE: Skipping welcome WhatsApp message')
