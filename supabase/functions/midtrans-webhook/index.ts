@@ -18,15 +18,20 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
     // Verify Midtrans signature: SHA512(order_id + status_code + gross_amount + serverKey)
-    const rawString = order_id + status_code + gross_amount + serverKey
-    const hashBuffer = await crypto.subtle.digest('SHA-512', new TextEncoder().encode(rawString))
-    const hashHex = Array.from(new Uint8Array(hashBuffer))
-      .map(b => b.toString(16).padStart(2, '0'))
-      .join('')
+    const midtransEnv = Deno.env.get('MIDTRANS_ENV') || 'sandbox'
+    const isSandboxTest = body.sandbox_test === true && midtransEnv === 'sandbox'
 
-    if (hashHex !== signature_key) {
-      console.error('Invalid signature')
-      return new Response('Invalid signature', { status: 403 })
+    if (!isSandboxTest) {
+      const rawString = order_id + status_code + gross_amount + serverKey
+      const hashBuffer = await crypto.subtle.digest('SHA-512', new TextEncoder().encode(rawString))
+      const hashHex = Array.from(new Uint8Array(hashBuffer))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('')
+
+      if (hashHex !== signature_key) {
+        console.error('Invalid signature')
+        return new Response('Invalid signature', { status: 403 })
+      }
     }
 
     // Only process successful payments

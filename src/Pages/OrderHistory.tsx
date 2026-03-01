@@ -3,9 +3,12 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import BottomNav from '../Components/BottomNav';
+import LanguageSwitcher from '../Components/LanguageSwitcher';
+import QrisPaymentModal from '../Components/QrisPaymentModal';
+import { useLanguage } from '../contexts/LanguageContext';
 import { theme } from '../theme';
 
-const SUPABASE_URL = 'https://jzdnvdebwmuebjbergsp.supabase.co';
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://jzdnvdebwmuebjbergsp.supabase.co';
 
 const BANK_INFO = {
   bank: 'BCA',
@@ -38,22 +41,16 @@ interface OrderHistoryProps {
   customer: Customer;
 }
 
-const loadSnap = (clientKey: string): Promise<void> =>
-  new Promise((resolve) => {
-    if ((window as any).snap) return resolve();
-    const env = import.meta.env.VITE_MIDTRANS_ENV || 'sandbox';
-    const src = env === 'production'
-      ? 'https://app.midtrans.com/snap/snap.js'
-      : 'https://app.sandbox.midtrans.com/snap/snap.js';
-    const script = document.createElement('script');
-    script.src = src;
-    script.setAttribute('data-client-key', clientKey);
-    script.onload = () => resolve();
-    document.head.appendChild(script);
-  });
+interface QrisState {
+  qrCodeUrl: string;
+  qrString?: string | null;
+  midtransOrderId: string;
+  amount: number;
+}
 
 export default function OrderHistory({ customer }: OrderHistoryProps) {
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -61,7 +58,8 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
   const [initialBorrowedGallons, setInitialBorrowedGallons] = useState(0);
   const [productVouchers, setProductVouchers] = useState<{ product_id: string; balance: number; products: { name: string } | null }[]>([]);
 
-  // Midtrans payment — track which order IDs are in payment flow
+  // QRIS payment modal state
+  const [qris, setQris] = useState<QrisState | null>(null);
   const [payingIds, setPayingIds] = useState<Set<string>>(new Set());
 
   // Upload receipt modal
@@ -137,27 +135,20 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
     }
   };
 
-  const handlePayWithMidtrans = async (orderIds: string[]) => {
+  const handlePayWithQris = async (orderIds: string[]) => {
     setPayingIds(prev => new Set([...prev, ...orderIds]));
     try {
       const token = sessionStorage.getItem('auth_token');
       if (!token) throw new Error('Session expired');
 
-      const { data, error } = await supabase.functions.invoke('create-order-payment', {
-        body: { token, order_ids: orderIds },
+      const { data, error } = await supabase.functions.invoke('create-qris-payment', {
+        body: { token, type: 'order', order_ids: orderIds },
       });
 
       if (error) throw new Error(error.message);
-      if (!data?.success) throw new Error(data?.error || 'Failed to create payment');
+      if (!data?.success) throw new Error(data?.error || 'Failed to create QRIS payment');
 
-      await loadSnap(data.client_key);
-
-      (window as any).snap.pay(data.snap_token, {
-        onSuccess: () => fetchOrders(),
-        onPending: () => alert('Payment pending. Will be confirmed shortly.'),
-        onError: (result: any) => alert('Payment failed: ' + (result?.status_message || 'Unknown error')),
-        onClose: () => {},
-      });
+      setQris({ qrCodeUrl: data.qr_code_url, qrString: data.qr_string, midtransOrderId: data.order_id, amount: data.amount });
     } catch (err: any) {
       alert('Error: ' + err.message);
     } finally {
@@ -283,12 +274,15 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
   return (
     <div style={{ minHeight: '100vh', background: theme.gradientPrimary, padding: '20px', paddingBottom: '80px' }}>
 
+      {/* Language Switcher */}
+      <LanguageSwitcher />
+
       {/* Header */}
       <div style={{ maxWidth: '800px', margin: '0 auto 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <button onClick={() => navigate('/customer-home')} style={{ padding: '10px 20px', background: 'rgba(255,255,255,0.2)', color: 'white', border: '2px solid white', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}>
-          ← Back
+          ← {t('common.back')}
         </button>
-        <h1 style={{ color: 'white', fontSize: '22px', margin: 0 }}>📦 My Orders</h1>
+        <h1 style={{ color: 'white', fontSize: '22px', margin: 0 }}>📦 {t('orders.title')}</h1>
         <div style={{ width: '80px' }} />
       </div>
 
@@ -314,7 +308,7 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
             {/* Pay All button — weekly/biweekly/monthly only */}
             {isBatchPay && unpaidDeliveredOrders.length > 0 && (
               <button
-                onClick={() => handlePayWithMidtrans(unpaidDeliveredOrders.map(o => o.id))}
+                onClick={() => handlePayWithQris(unpaidDeliveredOrders.map(o => o.id))}
                 disabled={isPayingAll}
                 style={{ width: '100%', padding: '12px', background: isPayingAll ? '#ccc' : theme.gradientSuccess, color: 'white', border: 'none', borderRadius: '10px', fontSize: '15px', fontWeight: 'bold', cursor: isPayingAll ? 'not-allowed' : 'pointer' }}
               >
@@ -403,7 +397,7 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
                   {/* Pay Now via Midtrans — daily later_pay only (batch uses Pay All above) */}
                   {isLaterPay && !isBatchPay && order.payment_status === 'unpaid' && order.status === 'delivered' && (
                     <button
-                      onClick={() => handlePayWithMidtrans([order.id])}
+                      onClick={() => handlePayWithQris([order.id])}
                       disabled={payingIds.has(order.id)}
                       style={{ padding: '10px', background: payingIds.has(order.id) ? '#ccc' : theme.gradientSuccess, color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: payingIds.has(order.id) ? 'not-allowed' : 'pointer' }}
                     >
@@ -441,6 +435,16 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
                       📷 View Delivery Photo
                     </button>
                   )}
+
+                  {/* View Delivery Details */}
+                  <button
+                    onClick={() => navigate(`/orders/${order.id}/delivery`)}
+                    style={{ padding: '10px', background: theme.gradientPrimary, color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer', transition: 'transform 0.2s' }}
+                    onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }}
+                  >
+                    📦 {t('orders.viewDetails')}
+                  </button>
                 </div>
               </div>
             ))}
@@ -537,6 +541,17 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
             <img src={paymentEvidenceUrl} alt="Payment receipt" style={{ width: '100%', display: 'block', maxHeight: '70vh', objectFit: 'contain' }} />
           </div>
         </div>
+      )}
+
+      {qris && (
+        <QrisPaymentModal
+          qrCodeUrl={qris.qrCodeUrl}
+          qrString={qris.qrString}
+          midtransOrderId={qris.midtransOrderId}
+          amount={qris.amount}
+          onSuccess={() => { setQris(null); fetchOrders(); }}
+          onClose={() => setQris(null)}
+        />
       )}
 
       <BottomNav customer={customer} />
