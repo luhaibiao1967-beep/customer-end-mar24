@@ -213,15 +213,15 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
 
   const handleSubmit = async () => {
     if (cartItems.length === 0) {
-      setError('请至少选择一件商品。');
+      setError('Please select at least one product.');
       return;
     }
     if (!deliveryDate) {
-      setError('请选择配送日期。');
+      setError('Please select a delivery date.');
       return;
     }
     if (isPrePay && !hasEnoughVouchers) {
-      setError('部分产品 voucher 余额不足，请先购买。');
+      setError('Insufficient vouchers for some products. Please buy more.');
       return;
     }
 
@@ -286,7 +286,7 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
 
       setShowSuccess(true);
     } catch (err: any) {
-      setError('提交失败：' + err.message);
+      setError('Failed to submit: ' + err.message);
     } finally {
       setSubmitting(false);
     }
@@ -551,7 +551,7 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
             cursor: (submitting || cartItems.length === 0 || (isPrePay && !hasEnoughVouchers)) ? 'not-allowed' : 'pointer',
           }}
         >
-          {submitting ? '提交中...' : editOrderId ? '✅ 更新订单' : '✅ 提交订单'}
+          {submitting ? 'Submitting...' : editOrderId ? '✅ Update Order' : '✅ Place Order'}
         </button>
       </div>
 
