@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import BottomNav from '../Components/BottomNav';
 import { theme } from '../theme';
+import { formatCurrency } from '../utils/format';
 
 interface Customer {
   id: string;
@@ -327,9 +328,6 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
       setSubmitting(false);
     }
   };
-
-  const formatCurrency = (amount: number) =>
-    new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(amount);
 
   const today = getJakartaDateString();
 

@@ -1,8 +1,10 @@
 // My Account - customer profile & settings
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import BottomNav from '../Components/BottomNav';
 import { theme } from '../theme';
+import toast from 'react-hot-toast';
 
 interface Customer {
   id: string;
@@ -21,6 +23,10 @@ interface MyAccountProps {
 
 export default function MyAccount({ customer }: MyAccountProps) {
   const navigate = useNavigate();
+  const [editingAddress, setEditingAddress] = useState(false);
+  const [addressInput, setAddressInput] = useState(customer.address);
+  const [savingAddress, setSavingAddress] = useState(false);
+  const [productVouchers, setProductVouchers] = useState<{ product_id: string; balance: number; products: { name: string } | null }[]>([]);
 
   const handleSignOut = () => {
     sessionStorage.removeItem('customer');
@@ -30,17 +36,37 @@ export default function MyAccount({ customer }: MyAccountProps) {
     navigate('/', { replace: true });
   };
 
-  const handleEditAddress = () => {
-    const newAddress = prompt('Enter new address:', customer.address);
-    if (newAddress) {
+  useEffect(() => {
+    if (customer.customer_type === 'pre_pay') {
       supabase
+        .from('customer_product_vouchers')
+        .select('product_id, balance, products(name)')
+        .eq('customer_id', customer.id)
+        .then(({ data }) => setProductVouchers((data as any) || []));
+    }
+  }, [customer.id]);
+
+  const handleSaveAddress = async () => {
+    if (!addressInput.trim()) return;
+    setSavingAddress(true);
+    try {
+      const { error } = await supabase
         .from('customers')
-        .update({ address: newAddress })
-        .eq('id', customer.id)
-        .then(() => {
-          alert('Address updated!');
-          window.location.reload();
-        });
+        .update({ address: addressInput.trim() })
+        .eq('id', customer.id);
+      if (error) throw error;
+      toast.success('Address updated!');
+      setEditingAddress(false);
+      const stored = sessionStorage.getItem('customer');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        sessionStorage.setItem('customer', JSON.stringify({ ...parsed, address: addressInput.trim() }));
+      }
+      window.dispatchEvent(new Event('session-auth-updated'));
+    } catch (err: any) {
+      toast.error('Failed to update address: ' + err.message);
+    } finally {
+      setSavingAddress(false);
     }
   };
 
@@ -110,24 +136,43 @@ export default function MyAccount({ customer }: MyAccountProps) {
               <p style={{ fontSize: '11px', color: theme.textLight, margin: '0 0 6px 0' }}>
                 📍 Delivery Address
               </p>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <p style={{ fontSize: '14px', color: theme.text, margin: 0, flex: 1 }}>
-                  {customer.address}
-                </p>
-                <button
-                  onClick={handleEditAddress}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: theme.primary,
-                    fontSize: '12px',
-                    cursor: 'pointer',
-                    padding: '4px 8px',
-                  }}
-                >
-                  ✏️ Edit
-                </button>
-              </div>
+              {editingAddress ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
+                  <input
+                    value={addressInput}
+                    onChange={e => setAddressInput(e.target.value)}
+                    style={{ width: '100%', padding: '8px 10px', fontSize: '14px', border: `2px solid ${theme.primary}`, borderRadius: '8px', outline: 'none', boxSizing: 'border-box' }}
+                    autoFocus
+                  />
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      onClick={handleSaveAddress}
+                      disabled={savingAddress}
+                      style={{ flex: 1, padding: '8px', background: theme.gradientPrimary, color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 'bold', cursor: savingAddress ? 'not-allowed' : 'pointer' }}
+                    >
+                      {savingAddress ? 'Saving...' : '✅ Save'}
+                    </button>
+                    <button
+                      onClick={() => { setAddressInput(customer.address); setEditingAddress(false); }}
+                      style={{ flex: 1, padding: '8px', background: 'none', color: theme.textMuted, border: '2px solid #ddd', borderRadius: '8px', fontSize: '13px', cursor: 'pointer' }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <p style={{ fontSize: '14px', color: theme.text, margin: 0, flex: 1 }}>
+                    {addressInput}
+                  </p>
+                  <button
+                    onClick={() => { setAddressInput(customer.address); setEditingAddress(true); }}
+                    style={{ background: 'none', border: 'none', color: theme.primary, fontSize: '12px', cursor: 'pointer', padding: '4px 8px' }}
+                  >
+                    ✏️ Edit
+                  </button>
+                </div>
+              )}
             </div>
 
             <div
@@ -161,24 +206,22 @@ export default function MyAccount({ customer }: MyAccountProps) {
             </div>
 
             {customer.customer_type === 'pre_pay' && (
-              <div
-                style={{
-                  background: theme.gradientPrimary,
-                  padding: '16px',
-                  borderRadius: '12px',
-                  color: 'white',
-                  textAlign: 'center',
-                }}
-              >
-                <p style={{ fontSize: '12px', margin: '0 0 4px 0', opacity: 0.9 }}>
-                  Voucher Balance
+              <div style={{ background: theme.gradientPrimary, padding: '16px', borderRadius: '12px', color: 'white' }}>
+                <p style={{ fontSize: '12px', margin: '0 0 10px 0', opacity: 0.9, fontWeight: '600' }}>
+                  🎫 Voucher Balance
                 </p>
-                <p style={{ fontSize: '28px', fontWeight: 'bold', margin: 0 }}>
-                  {customer.voucher_balance}
-                </p>
-                <p style={{ fontSize: '12px', margin: '4px 0 0 0', opacity: 0.9 }}>
-                  vouchers available
-                </p>
+                {productVouchers.length === 0 ? (
+                  <p style={{ fontSize: '14px', margin: 0, opacity: 0.85 }}>No vouchers yet</p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {productVouchers.map(row => (
+                      <div key={row.product_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '13px', opacity: 0.9 }}>{row.products?.name ?? '—'}</span>
+                        <span style={{ fontSize: '22px', fontWeight: 'bold' }}>{row.balance}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -214,7 +257,7 @@ export default function MyAccount({ customer }: MyAccountProps) {
                 cursor: 'pointer',
               }}
             >
-              🚪 Sign Out
+              Sign Out
             </button>
           </div>
         </div>

@@ -156,13 +156,13 @@
 .info-card {
   background: white;
   border-radius: 16px;
-  padding: 24px;
+  padding: 16px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
 }
 
 .info-card h3 {
-  margin: 0 0 16px 0;
-  font-size: 18px;
+  margin: 0 0 10px 0;
+  font-size: 16px;
   color: #1f2937;
   font-weight: 600;
 }
@@ -170,7 +170,7 @@
 .info-row {
   display: flex;
   justify-content: space-between;
-  padding: 12px 0;
+  padding: 7px 0;
   border-bottom: 1px solid #f3f4f6;
 }
 
@@ -193,14 +193,14 @@
 
 /* 订单详情 */
 .order-items {
-  margin-bottom: 16px;
+  margin-bottom: 10px;
 }
 
 .item-row {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  padding: 16px 0;
+  align-items: center;
+  padding: 8px 0;
   border-bottom: 1px solid #f3f4f6;
 }
 
@@ -208,58 +208,36 @@
   border-bottom: none;
 }
 
-.item-info {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  flex: 1;
-}
-
 .item-name {
   font-weight: 500;
   color: #1f2937;
-  font-size: 15px;
+  font-size: 14px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  flex: 1;
 }
 
 .refill-badge {
   background: #fef3c7;
   color: #92400e;
-  padding: 2px 8px;
-  border-radius: 12px;
-  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-size: 10px;
   font-weight: 600;
 }
 
 .item-quantity {
   color: #6b7280;
-  font-size: 14px;
-}
-
-.item-pricing {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-}
-
-.item-price {
-  color: #6b7280;
   font-size: 13px;
-}
-
-.item-discount {
-  color: #059669;
-  font-size: 12px;
-  font-weight: 500;
+  font-weight: 400;
 }
 
 .item-total {
   font-weight: 600;
   color: #1f2937;
-  font-size: 15px;
+  font-size: 14px;
+  white-space: nowrap;
 }
 
 .gallons-info {
@@ -275,8 +253,8 @@
 }
 
 .order-summary {
-  margin-top: 16px;
-  padding-top: 16px;
+  margin-top: 10px;
+  padding-top: 10px;
   border-top: 2px solid #e5e7eb;
 }
 
@@ -488,17 +466,10 @@
   }
 
   .info-card, .status-card, .confirm-card, .success-card {
-    padding: 20px;
+    padding: 14px;
   }
 
   .item-row {
-    flex-direction: column;
     gap: 8px;
-  }
-
-  .item-pricing {
-    flex-direction: row;
-    gap: 12px;
-    align-items: center;
   }
 }

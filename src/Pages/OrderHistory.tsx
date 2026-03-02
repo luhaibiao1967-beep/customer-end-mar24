@@ -3,17 +3,16 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import BottomNav from '../Components/BottomNav';
-import LanguageSwitcher from '../Components/LanguageSwitcher';
 import QrisPaymentModal from '../Components/QrisPaymentModal';
 import { useLanguage } from '../contexts/LanguageContext';
 import { theme } from '../theme';
-
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://jzdnvdebwmuebjbergsp.supabase.co';
+import { formatCurrency } from '../utils/format';
+import toast from 'react-hot-toast';
 
 const BANK_INFO = {
-  bank: 'BCA',
-  account: '8652020258',
-  name: 'FAMINDO VIVIDAQUA AIR MINUM PT',
+  bank: import.meta.env.VITE_BANK_NAME || 'BCA',
+  account: import.meta.env.VITE_BANK_ACCOUNT || '',
+  name: import.meta.env.VITE_BANK_ACCOUNT_NAME || '',
 };
 
 interface Customer {
@@ -69,9 +68,6 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
   const [uploading, setUploading] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Delivery evidence modal
-  const [deliveryEvidenceUrl, setDeliveryEvidenceUrl] = useState<string | null>(null);
 
   // View payment evidence modal
   const [paymentEvidenceUrl, setPaymentEvidenceUrl] = useState<string | null>(null);
@@ -129,7 +125,7 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
       if (!data?.success) throw new Error(data?.error || 'Failed to cancel');
       setOrders(prev => prev.filter(o => o.id !== orderId));
     } catch (err: any) {
-      alert('Cancel failed: ' + err.message);
+      toast.error('Cancel failed: ' + err.message);
     } finally {
       setCancellingId(null);
     }
@@ -150,7 +146,7 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
 
       setQris({ qrCodeUrl: data.qr_code_url, qrString: data.qr_string, midtransOrderId: data.order_id, amount: data.amount });
     } catch (err: any) {
-      alert('Error: ' + err.message);
+      toast.error('Error: ' + err.message);
     } finally {
       setPayingIds(prev => {
         const next = new Set(prev);
@@ -200,7 +196,7 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
         o.id === uploadingOrder.id ? { ...o, payment_evidence: data.path } : o
       ));
     } catch (err: any) {
-      alert('Upload failed: ' + err.message);
+      toast.error('Upload failed: ' + err.message);
     } finally {
       setUploading(false);
     }
@@ -221,7 +217,7 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
 
       setPaymentEvidenceUrl(data.url);
     } catch (err: any) {
-      alert('Failed to load evidence: ' + err.message);
+      toast.error('Failed to load evidence: ' + err.message);
     } finally {
       setLoadingEvidenceId(null);
     }
@@ -233,9 +229,6 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
     setPreviewUrl(null);
     setUploadSuccess(false);
   };
-
-  const getDeliveryEvidenceUrl = (path: string) =>
-    `${SUPABASE_URL}/storage/v1/object/public/delivery-evidence/${path}`;
 
   const isLaterPay = customer.customer_type !== 'pre_pay';
   const isBatchPay = isLaterPay && ['weekly', 'biweekly', 'monthly'].includes(customer.payment_term || '');
@@ -265,24 +258,21 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
     }
   };
 
-  const formatCurrency = (amount: number) =>
-    new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(amount);
-
   const formatDate = (dateString: string) =>
     new Date(dateString).toLocaleDateString('id-ID', { timeZone: 'Asia/Jakarta', year: 'numeric', month: 'long', day: 'numeric' });
 
   return (
     <div style={{ minHeight: '100vh', background: theme.gradientPrimary, padding: '20px', paddingBottom: '80px' }}>
 
-      {/* Language Switcher */}
-      <LanguageSwitcher />
-
       {/* Header */}
       <div style={{ maxWidth: '800px', margin: '0 auto 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <button onClick={() => navigate('/customer-home')} style={{ padding: '10px 20px', background: 'rgba(255,255,255,0.2)', color: 'white', border: '2px solid white', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}>
           ← {t('common.back')}
         </button>
-        <h1 style={{ color: 'white', fontSize: '22px', margin: 0 }}>📦 {t('orders.title')}</h1>
+        <h1 style={{ color: 'white', fontSize: '22px', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <img src="/128-128gallon.png" alt="" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
+          {t('orders.title')}
+        </h1>
         <div style={{ width: '80px' }} />
       </div>
 
@@ -426,16 +416,6 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
                     </button>
                   )}
 
-                  {/* View delivery evidence */}
-                  {order.delivery_evidence && (
-                    <button
-                      onClick={() => setDeliveryEvidenceUrl(getDeliveryEvidenceUrl(order.delivery_evidence!))}
-                      style={{ padding: '10px', background: theme.gradientPrimary, color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}
-                    >
-                      📷 View Delivery Photo
-                    </button>
-                  )}
-
                   {/* View Delivery Details */}
                   <button
                     onClick={() => navigate(`/orders/${order.id}/delivery`)}
@@ -513,19 +493,6 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
                 )}
               </div>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Delivery evidence modal ── */}
-      {deliveryEvidenceUrl && (
-        <div onClick={() => setDeliveryEvidenceUrl(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, padding: '20px' }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: '16px', overflow: 'hidden', maxWidth: '500px', width: '100%' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', borderBottom: '1px solid #eee' }}>
-              <span style={{ fontWeight: '600' }}>📷 Delivery Photo</span>
-              <button onClick={() => setDeliveryEvidenceUrl(null)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer' }}>✕</button>
-            </div>
-            <img src={deliveryEvidenceUrl} alt="Delivery evidence" style={{ width: '100%', display: 'block', maxHeight: '70vh', objectFit: 'contain' }} />
           </div>
         </div>
       )}

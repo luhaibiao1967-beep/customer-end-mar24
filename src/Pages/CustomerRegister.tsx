@@ -5,6 +5,10 @@ import { supabase } from '../supabaseClient';
 import { FunctionsHttpError } from '@supabase/supabase-js';
 import { getOrCreateDeviceId } from '../lib/deviceId';
 import { theme } from '../theme';
+import { useJsApiLoader, Autocomplete } from '@react-google-maps/api';
+
+const MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string;
+const REGISTER_LIBRARIES: ('places')[] = ['places'];
 
 type Language = 'id' | 'en';
 
@@ -85,6 +89,8 @@ export default function CustomerRegister() {
     address: '',
     whatsapp: '',
   });
+  const [addressAutocomplete, setAddressAutocomplete] = useState<google.maps.places.Autocomplete | null>(null);
+  const { isLoaded: mapsLoaded } = useJsApiLoader({ googleMapsApiKey: MAPS_KEY, libraries: REGISTER_LIBRARIES });
   const [otpCode, setOtpCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -490,7 +496,7 @@ export default function CustomerRegister() {
                 />
               </div>
 
-              {/* Address */}
+              {/* Address — Google Places Autocomplete */}
               <div style={{ marginBottom: '20px' }}>
                 <label style={{
                   display: 'block',
@@ -501,24 +507,55 @@ export default function CustomerRegister() {
                 }}>
                   📍 {t.addressLabel} *
                 </label>
-                <textarea
-                  value={formData.address}
-                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                  placeholder={t.addressPlaceholder}
-                  style={{
-                    width: '100%',
-                    padding: '12px 15px',
-                    border: '2px solid #e0e0e0',
-                    borderRadius: '8px',
-                    fontSize: '16px',
-                    boxSizing: 'border-box',
-                    resize: 'vertical',
-                    minHeight: '80px',
-                    fontFamily: 'inherit'
-                  }}
-                  rows={3}
-                  required
-                />
+                {mapsLoaded ? (
+                  <Autocomplete
+                    onLoad={(ac) => setAddressAutocomplete(ac)}
+                    onPlaceChanged={() => {
+                      if (addressAutocomplete) {
+                        const place = addressAutocomplete.getPlace();
+                        setFormData({ ...formData, address: place.formatted_address || place.name || '' });
+                      }
+                    }}
+                    options={{ componentRestrictions: { country: 'id' } }}
+                  >
+                    <input
+                      type="text"
+                      value={formData.address}
+                      onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                      placeholder={t.addressPlaceholder}
+                      style={{
+                        width: '100%',
+                        padding: '12px 15px',
+                        border: '2px solid #e0e0e0',
+                        borderRadius: '8px',
+                        fontSize: '16px',
+                        boxSizing: 'border-box',
+                      }}
+                      required
+                    />
+                  </Autocomplete>
+                ) : (
+                  <input
+                    type="text"
+                    value={formData.address}
+                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                    placeholder={t.addressPlaceholder}
+                    style={{
+                      width: '100%',
+                      padding: '12px 15px',
+                      border: '2px solid #e0e0e0',
+                      borderRadius: '8px',
+                      fontSize: '16px',
+                      boxSizing: 'border-box',
+                    }}
+                    required
+                  />
+                )}
+                {formData.address && (
+                  <p style={{ fontSize: '12px', color: '#666', margin: '4px 0 0 2px' }}>
+                    ✓ {formData.address}
+                  </p>
+                )}
               </div>
 
               {/* WhatsApp */}

@@ -5,37 +5,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase, SUPABASE_DEBUG } from '../supabaseClient'
 import { getOrCreateDeviceId, getStoredDeviceId } from '../lib/deviceId'
 import { theme } from '../theme'
-
-type Language = 'id' | 'en'
-
-const translations = {
-  id: {
-    title: 'Pesan Air',
-    subtitle: 'Masukkan nomor WhatsApp Anda',
-    whatsappLabel: 'Nomor WhatsApp',
-    whatsappPlaceholder: '812-3456-7890',
-    buttonSubmit: 'Lanjut',
-    buttonLoading: 'Memeriksa...',
-    newCustomer: 'Nomor belum terdaftar. Silakan daftar.',
-    registerNow: 'Daftar Sekarang',
-    noAccount: 'Belum punya akun?',
-    registerHere: 'Daftar di sini',
-    verifyOtp: 'Verifikasi via OTP',
-  },
-  en: {
-    title: 'Order Water',
-    subtitle: 'Enter your WhatsApp number',
-    whatsappLabel: 'WhatsApp Number',
-    whatsappPlaceholder: '812-3456-7890',
-    buttonSubmit: 'Continue',
-    buttonLoading: 'Checking...',
-    newCustomer: 'Number not registered. Please register.',
-    registerNow: 'Register Now',
-    noAccount: "Don't have an account?",
-    registerHere: 'Register here',
-    verifyOtp: 'Verify via OTP',
-  },
-}
+import { useLanguage } from '../contexts/LanguageContext'
 
 export default function CustomerLogin() {
   const navigate = useNavigate()
@@ -45,9 +15,7 @@ export default function CustomerLogin() {
   const [error, setError] = useState('')
   const [status, setStatus] = useState<'idle' | 'new_customer'>('idle')
   const [deviceId, setDeviceId] = useState<string | null>(() => getStoredDeviceId())
-  const [language, setLanguage] = useState<Language>(() => (searchParams.get('lang') === 'en' ? 'en' : 'id'))
-
-  const t = translations[language]
+  const { language, setLanguage, t } = useLanguage()
 
   useEffect(() => {
     const wa = searchParams.get('whatsapp') || searchParams.get('wa') || searchParams.get('phone')
@@ -147,7 +115,7 @@ export default function CustomerLogin() {
               fontSize: '13px',
             }}
           >
-            ID
+            🇮🇩 ID
           </button>
           <button
             onClick={() => setLanguage('en')}
@@ -162,7 +130,7 @@ export default function CustomerLogin() {
               fontSize: '13px',
             }}
           >
-            EN
+            🇬🇧 EN
           </button>
         </div>
 
@@ -182,8 +150,8 @@ export default function CustomerLogin() {
           }}>
             <img src="/logo.png" alt="Logo" style={{ width: '80px', height: '80px', objectFit: 'contain' }} />
           </div>
-          <h1 style={{ fontSize: '28px', fontWeight: 'bold', margin: '0 0 10px 0' }}>{t.title}</h1>
-          <p style={{ margin: 0, opacity: 0.9 }}>{t.subtitle}</p>
+          <h1 style={{ fontSize: '28px', fontWeight: 'bold', margin: '0 0 10px 0' }}>{t('login.title')}</h1>
+          <p style={{ margin: 0, opacity: 0.9 }}>{t('login.subtitle')}</p>
         </div>
 
         <div style={{ padding: '40px 30px' }}>
@@ -199,7 +167,7 @@ export default function CustomerLogin() {
                 fontSize: '15px',
                 textAlign: 'center',
               }}>
-                ℹ️ {t.newCustomer}
+                ℹ️ {t('login.notRegistered')}
               </div>
               <button
                 type="button"
@@ -216,7 +184,7 @@ export default function CustomerLogin() {
                   cursor: 'pointer',
                 }}
               >
-                {t.registerNow}
+                {t('login.register')}
               </button>
               <button
                 type="button"
@@ -233,7 +201,7 @@ export default function CustomerLogin() {
                   cursor: 'pointer',
                 }}
               >
-                Coba nomor lain
+                {t('login.tryOtherNumber')}
               </button>
             </div>
           ) : (
@@ -245,7 +213,7 @@ export default function CustomerLogin() {
                 marginBottom: '8px',
                 color: '#333',
               }}>
-                💬 {t.whatsappLabel}
+                💬 {t('login.whatsappLabel')}
               </label>
               <div style={{ position: 'relative', marginBottom: '20px' }}>
                 <span style={{
@@ -262,7 +230,7 @@ export default function CustomerLogin() {
                   type="tel"
                   value={phoneNumber}
                   onChange={(e) => setPhoneNumber(e.target.value)}
-                  placeholder={t.whatsappPlaceholder}
+                  placeholder={t('login.whatsappPlaceholder')}
                   style={{
                     width: '100%',
                     padding: '12px 15px 12px 55px',
@@ -305,16 +273,16 @@ export default function CustomerLogin() {
                   marginBottom: '16px',
                 }}
               >
-                {loading ? `⏳ ${t.buttonLoading}` : t.buttonSubmit}
+                {loading ? `⏳ ${t('login.checking')}` : t('login.continue')}
               </button>
               <p style={{ textAlign: 'center', fontSize: '14px', color: '#666', margin: 0 }}>
-                {t.noAccount}{' '}
+                {t('login.noAccount')}{' '}
                 <a
                   href="/register"
                   onClick={(e) => { e.preventDefault(); navigate('/register'); }}
                   style={{ color: theme.primary, fontWeight: 'bold', textDecoration: 'underline' }}
                 >
-                  {t.registerHere}
+                  {t('login.registerHere')}
                 </a>
               </p>
             </form>

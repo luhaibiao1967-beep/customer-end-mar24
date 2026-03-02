@@ -5,6 +5,7 @@
   "keywords": [],
   "main": "src/index.tsx",
   "dependencies": {
+    "@react-google-maps/api": "^2.20.8",
     "@supabase/supabase-js": "^2.91.0",
     "@tailwindcss/vite": "^4.1.18",
     "@thumbmarkjs/thumbmarkjs": "^1.7.4",
@@ -16,6 +17,7 @@
     "lucide-react": "^0.562.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-hot-toast": "^2.6.0",
     "react-router-dom": "^7.13.0"
   },
   "devDependencies": {

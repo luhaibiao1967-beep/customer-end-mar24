@@ -3,9 +3,11 @@
 
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase, SUPABASE_DEBUG } from '../supabaseClient';
+import toast from 'react-hot-toast';
+import { supabase } from '../supabaseClient';
 import BottomNav from '../Components/BottomNav';
 import { theme } from '../theme';
+import { formatCurrency } from '../utils/format';
 
 interface Customer {
   id: string;
@@ -97,12 +99,11 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
 
       if (orderError) throw orderError;
 
-      alert('Order deleted successfully!');
+      toast.success('Order deleted successfully!');
       loadPendingOrders();
-      window.location.reload();
     } catch (err: any) {
       console.error('Error deleting order:', err);
-      alert('Failed to delete order: ' + err.message);
+      toast.error('Failed to delete order: ' + err.message);
     }
   };
 
@@ -113,14 +114,6 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
     sessionStorage.removeItem('authenticated');
     window.dispatchEvent(new Event('session-auth-updated'));
     navigate('/', { replace: true });
-  };
-
-  const formatCurrency = (amount: number): string => {
-    return new Intl.NumberFormat('id-ID', {
-      style: 'currency',
-      currency: 'IDR',
-      minimumFractionDigits: 0,
-    }).format(amount);
   };
 
   const formatDate = (dateString: string): string => {
@@ -184,7 +177,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
             cursor: loading ? 'not-allowed' : 'pointer'
           }}
         >
-          {loading ? '...' : '🚪 Sign Out'}
+          {loading ? '...' : 'Sign Out'}
         </button>
       </div>
 
@@ -201,79 +194,13 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
           marginBottom: '20px',
           boxShadow: '0 10px 40px rgba(0,0,0,0.2)'
         }}>
-          <h2 style={{ fontSize: '20px', margin: '0 0 20px 0', fontWeight: '600' }}>
-            {customer.name}
-          </h2>
-
-          {/* Customer Info - stacked vertically */}
-          <div style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '12px',
-            marginBottom: '20px'
-          }}>
-            {/* Address with Edit */}
-            <div style={{
-              background: '#f5f5f5',
-              padding: '15px',
-              borderRadius: '12px'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <p style={{ fontSize: '11px', color: '#999', margin: 0 }}>📍 Delivery Address</p>
-                <button
-                  onClick={() => {
-                    const newAddress = prompt('Enter new address:', customer.address);
-                    if (newAddress) {
-                      supabase
-                        .from('customers')
-                        .update({ address: newAddress })
-                        .eq('id', customer.id)
-                        .then(() => {
-                          alert('Address updated!');
-                          window.location.reload();
-                        });
-                    }
-                  }}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: theme.primary,
-                    fontSize: '11px',
-                    cursor: 'pointer',
-                    padding: 0
-                  }}
-                >
-                  ✏️
-                </button>
-              </div>
-              <p style={{ fontSize: '13px', color: '#333', margin: 0, fontWeight: '500' }}>
-                {customer.address}
-              </p>
-            </div>
-
-            {/* Branch */}
-            <div style={{
-              background: '#f5f5f5',
-              padding: '15px',
-              borderRadius: '12px'
-            }}>
-              <p style={{ fontSize: '11px', color: '#999', margin: '0 0 8px 0' }}>🏢 Service Branch</p>
-              <p style={{ fontSize: '13px', color: '#333', margin: 0, fontWeight: '500' }}>
-                {customer.branch === 'Pending' ? 'Pending Setup' : (customer.branch || 'Not assigned')}
-              </p>
-            </div>
-
-            {/* WhatsApp */}
-            <div style={{
-              background: '#f5f5f5',
-              padding: '15px',
-              borderRadius: '12px'
-            }}>
-              <p style={{ fontSize: '11px', color: '#999', margin: '0 0 8px 0' }}>💬 WhatsApp</p>
-              <p style={{ fontSize: '13px', color: '#333', margin: 0, fontWeight: '500' }}>
-                {customer.whatsapp}
-              </p>
-            </div>
+          <div style={{ marginBottom: '20px' }}>
+            <h2 style={{ fontSize: '20px', margin: '0 0 4px 0', fontWeight: '600' }}>
+              {customer.name}
+            </h2>
+            <p style={{ fontSize: '13px', color: theme.textMuted, margin: 0 }}>
+              {customer.customer_type === 'pre_pay' ? 'Prepaid (Voucher)' : 'Postpaid (Invoice)'}
+            </p>
           </div>
 
           {/* Voucher Balance - pre_pay: per-product breakdown */}
@@ -476,21 +403,6 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
           </div>
         </div>
 
-        {/* 调试：当前连接的 Supabase 项目 */}
-        <div style={{
-          marginTop: '20px',
-          padding: '12px 16px',
-          background: 'rgba(0,0,0,0.15)',
-          borderRadius: '8px',
-          fontSize: '12px',
-          color: 'rgba(255,255,255,0.9)',
-          fontFamily: 'monospace'
-        }}>
-          🔧 Supabase: <strong>{SUPABASE_DEBUG.projectRef}</strong>
-          {SUPABASE_DEBUG.projectRef !== 'jzdnvdebwmuebjbergsp' && (
-            <span style={{ color: '#ffeb3b', marginLeft: '8px' }}>⚠️ 非 water depot 项目</span>
-          )}
-        </div>
       </div>
       <BottomNav customer={customer} />
     </div>

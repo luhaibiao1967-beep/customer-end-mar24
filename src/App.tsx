@@ -2,12 +2,13 @@
 // Fixed: sessionStorage, storage event listener
 
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import CustomerLogin from './Pages/CustomerLogin';
 import CustomerRegister from './Pages/CustomerRegister';
 import CustomerReauth from './Pages/CustomerReauth';
 import CustomerHome from './Pages/CustomerHome';
+import BranchSelection from './Pages/BranchSelection';
 import BuyVouchers from './Pages/BuyVouchers';
 import OrderHistory from './Pages/OrderHistory';
 import PlaceOrder from './Pages/PlaceOrder';
@@ -16,7 +17,20 @@ import OrderDelivery from './Pages/OrderDelivery';
 import MagicLinkHandler from './Components/MagicLinkHandler';
 import MagicLinkDiagnostics from './Pages/MagicLinkDiagnostics';
 import BottomNav from './Components/BottomNav';
+import { LanguageProvider } from './contexts/LanguageContext';
 import { theme } from './theme';
+import { Toaster } from 'react-hot-toast';
+import toast from 'react-hot-toast';
+
+// Shown when customer tries to place order without a branch assigned
+function NoBranchRedirect() {
+  const navigate = useNavigate();
+  useEffect(() => {
+    toast.error('Please select your service branch first.');
+    navigate('/customer-home', { replace: true });
+  }, []);
+  return null;
+}
 
 function App() {
   const [loading, setLoading] = useState(true);
@@ -92,10 +106,20 @@ function App() {
   }
 
   return (
-    <Router>
-      <Routes>
-        {/* Magic Link Route - Validates token and redirects */}
-        <Route path="/home" element={<MagicLinkHandler />} />
+    <LanguageProvider>
+      <Toaster
+        position="top-center"
+        toastOptions={{
+          duration: 3000,
+          style: { borderRadius: '10px', fontWeight: '600', fontSize: '14px' },
+          success: { style: { background: '#e8f5e9', color: '#2e7d32' } },
+          error: { style: { background: '#fdecea', color: '#c62828' } },
+        }}
+      />
+      <Router>
+        <Routes>
+          {/* Magic Link Route - Validates token and redirects */}
+          <Route path="/home" element={<MagicLinkHandler />} />
 
         {/* Magic Link diagnostics - no auth required */}
         <Route path="/diagnostics" element={<MagicLinkDiagnostics />} />
@@ -127,7 +151,11 @@ function App() {
           path="/customer-home"
           element={
             customer ? (
-              <CustomerHome customer={customer} />
+              customer.branch === 'Pending' || !customer.branch ? (
+                <BranchSelection customer={customer} />
+              ) : (
+                <CustomerHome customer={customer} />
+              )
             ) : (
               <Navigate to="/" replace />
             )
@@ -146,10 +174,12 @@ function App() {
         <Route
           path="/place-order"
           element={
-            customer ? (
-              <PlaceOrder customer={customer} />
-            ) : (
+            !customer ? (
               <Navigate to="/" replace />
+            ) : (!customer.branch || customer.branch === 'Pending') ? (
+              <NoBranchRedirect />
+            ) : (
+              <PlaceOrder customer={customer} />
             )
           }
         />
@@ -187,7 +217,8 @@ function App() {
         {/* Catch all */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </Router>
+      </Router>
+    </LanguageProvider>
   );
 }
 

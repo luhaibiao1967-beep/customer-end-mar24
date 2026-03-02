@@ -1,5 +1,6 @@
 // Bottom navigation: Home | Order (Buy Vouchers) | Orders (Order Delivery) | My Account
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useLanguage } from '../contexts/LanguageContext';
 import { theme } from '../theme';
 
 interface BottomNavProps {
@@ -9,14 +10,15 @@ interface BottomNavProps {
 export default function BottomNav({ customer }: BottomNavProps) {
   const navigate = useNavigate();
   const location = useLocation();
+  const { t } = useLanguage();
 
   const isActive = (path: string) => location.pathname === path;
 
   const navItems = [
-    { path: '/customer-home', label: 'Home', icon: '🏠' },
-    { path: '/orders', label: 'My Orders', icon: '📦' },
-    { path: '/place-order', label: 'New Order', icon: '🛒' },
-    { path: '/account', label: 'My Account', icon: '👤' },
+    { path: '/customer-home', label: t('nav.home'), icon: '🏠' },
+    { path: '/orders', label: t('nav.myOrders'), icon: null },
+    { path: '/place-order', label: t('nav.newOrder'), icon: '🛒' },
+    { path: '/account', label: t('nav.myAccount'), icon: 'img:myaccount' },
   ];
 
   return (
@@ -55,12 +57,27 @@ export default function BottomNav({ customer }: BottomNavProps) {
               maxWidth: '80px',
             }}
           >
-            <span style={{ fontSize: '20px', opacity: active ? 1 : 0.7 }}>{item.icon}</span>
+            {item.icon === null ? (
+              <img
+                src="/128-128gallon.png"
+                alt="My Orders"
+                style={{ width: '32px', height: '32px', opacity: active ? 1 : 0.7, objectFit: 'contain' }}
+              />
+            ) : item.icon === 'img:myaccount' ? (
+              <img
+                src="/myaccount.png"
+                alt="My Account"
+                style={{ width: '32px', height: '32px', opacity: active ? 1 : 0.7, objectFit: 'contain' }}
+              />
+            ) : (
+              <span style={{ fontSize: '20px', opacity: active ? 1 : 0.7 }}>{item.icon}</span>
+            )}
             <span
               style={{
                 fontSize: '11px',
                 fontWeight: active ? 600 : 400,
                 color: active ? theme.primary : theme.textMuted,
+                whiteSpace: 'nowrap',
               }}
             >
               {item.label}

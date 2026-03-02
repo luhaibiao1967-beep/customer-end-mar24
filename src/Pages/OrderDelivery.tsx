@@ -2,12 +2,14 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
+import { useLanguage } from '../contexts/LanguageContext';
 import { Order, OrderItem } from '../Types';
 import './OrderDelivery.css';
 
 export const OrderDelivery: React.FC = () => {
   const navigate = useNavigate();
   const { orderId } = useParams<{ orderId: string }>();
+  const { t, language } = useLanguage();
   
   const [order, setOrder] = useState<Order | null>(null);
   const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
@@ -22,27 +24,19 @@ export const OrderDelivery: React.FC = () => {
   const fetchOrderDetails = async () => {
     try {
       setLoading(true);
-      
-      // 获取订单详情
-      const { data: orderData, error: orderError } = await supabase
-        .from('orders')
-        .select('*')
-        .eq('id', orderId)
-        .single();
 
-      if (orderError) throw orderError;
-      
-      // 获取订单项（产品列表）
-      const { data: itemsData, error: itemsError } = await supabase
-        .from('order_items')
-        .select('*')
-        .eq('order_id', orderId)
-        .order('created_at', { ascending: true });
+      const token = sessionStorage.getItem('auth_token');
+      if (!token) throw new Error('Session expired, please login again');
 
-      if (itemsError) throw itemsError;
+      const { data, error } = await supabase.functions.invoke('get-orders', {
+        body: { token, order_id: orderId },
+      });
 
-      setOrder(orderData);
-      setOrderItems(itemsData || []);
+      if (error) throw new Error(error.message);
+      if (!data?.success) throw new Error(data?.error || 'Order not found');
+
+      setOrder(data.order);
+      setOrderItems(data.order?.order_items || []);
 
     } catch (err: any) {
       setError(err.message);
@@ -66,37 +60,37 @@ export const OrderDelivery: React.FC = () => {
 
       if (error) throw error;
 
-      alert('配送确认成功！');
+      alert(t('delivery.confirmSuccess'));
       // 重新加载订单数据
       await fetchOrderDetails();
 
     } catch (err: any) {
-      alert(`确认失败: ${err.message}`);
+      alert(`${t('delivery.confirmFailed')}: ${err.message}`);
     } finally {
       setConfirming(false);
     }
   };
 
   const getStatusBadge = (status: string) => {
-    const badges: Record<string, { text: string; className: string }> = {
-      pending: { text: '待确认', className: 'badge-pending' },
-      scheduled: { text: '已安排', className: 'badge-scheduled' },
-      delivered: { text: '已送达', className: 'badge-delivered' }
+    const badges: Record<string, { textKey: string; className: string }> = {
+      pending: { textKey: 'status.pending', className: 'badge-pending' },
+      scheduled: { textKey: 'status.scheduled', className: 'badge-scheduled' },
+      delivered: { textKey: 'status.delivered', className: 'badge-delivered' }
     };
     
-    const badge = badges[status] || { text: status, className: 'badge-default' };
-    return <span className={`status-badge ${badge.className}`}>{badge.text}</span>;
+    const badge = badges[status] || { textKey: status, className: 'badge-default' };
+    return <span className={`status-badge ${badge.className}`}>{t(badge.textKey)}</span>;
   };
 
   const getPaymentBadge = (status: string) => {
     return status === 'paid' 
-      ? <span className="payment-badge paid">已付款</span>
-      : <span className="payment-badge unpaid">未付款</span>;
+      ? <span className="payment-badge paid">{t('status.paid')}</span>
+      : <span className="payment-badge unpaid">{t('status.unpaid')}</span>;
   };
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
-    return new Intl.DateTimeFormat('id-ID', {
+    return new Intl.DateTimeFormat(language === 'en' ? 'en-US' : 'id-ID', {
       year: 'numeric',
       month: 'long',
       day: 'numeric',
@@ -113,7 +107,7 @@ export const OrderDelivery: React.FC = () => {
   };
 
   const calculateItemTotal = (item: OrderItem) => {
-    return (item.unit_price * item.quantity) - item.discount;
+    return item.unit_price * item.quantity;
   };
 
   if (loading) {
@@ -121,7 +115,7 @@ export const OrderDelivery: React.FC = () => {
       <div className="order-delivery-page">
         <div className="loading-spinner">
           <div className="spinner"></div>
-          <p>加载订单信息...</p>
+          <p>{t('delivery.loadingOrder')}</p>
         </div>
       </div>
     );
@@ -131,10 +125,10 @@ export const OrderDelivery: React.FC = () => {
     return (
       <div className="order-delivery-page">
         <div className="error-container">
-          <h2>❌ 加载失败</h2>
-          <p>{error || '订单不存在'}</p>
+          <h2>❌ {t('delivery.loadFailed')}</h2>
+          <p>{error || t('delivery.orderNotFound')}</p>
           <button onClick={() => navigate('/orders')} className="btn-secondary">
-            返回订单列表
+            {t('delivery.returnToList')}
           </button>
         </div>
       </div>
@@ -145,16 +139,16 @@ export const OrderDelivery: React.FC = () => {
     <div className="order-delivery-page">
       <header className="page-header">
         <button onClick={() => navigate(-1)} className="btn-back">
-          ← 返回
+          ← {t('common.back')}
         </button>
-        <h1>配送详情</h1>
+        <h1>{t('delivery.title')}</h1>
       </header>
 
       <div className="delivery-container">
         {/* 订单状态卡片 */}
         <section className="status-card">
           <div className="status-header">
-            <h2>订单状态</h2>
+            <h2>{t('delivery.orderStatus')}</h2>
             <div className="badges">
               {getStatusBadge(order.status)}
               {getPaymentBadge(order.payment_status)}
@@ -165,49 +159,49 @@ export const OrderDelivery: React.FC = () => {
           <div className="delivery-progress">
             <div className={`progress-step ${['scheduled', 'delivered'].includes(order.status) ? 'active' : ''}`}>
               <div className="step-icon">📋</div>
-              <div className="step-label">已确认</div>
+              <div className="step-label">{t('progress.confirmed')}</div>
             </div>
             <div className={`progress-line ${order.status === 'delivered' ? 'active' : ''}`}></div>
             <div className={`progress-step ${order.status === 'scheduled' ? 'active' : order.status === 'delivered' ? 'active completed' : ''}`}>
               <div className="step-icon">🚚</div>
-              <div className="step-label">配送中</div>
+              <div className="step-label">{t('progress.delivering')}</div>
             </div>
             <div className={`progress-line ${order.status === 'delivered' ? 'active' : ''}`}></div>
             <div className={`progress-step ${order.status === 'delivered' ? 'active completed' : ''}`}>
               <div className="step-icon">✅</div>
-              <div className="step-label">已送达</div>
+              <div className="step-label">{t('progress.delivered')}</div>
             </div>
           </div>
         </section>
 
         {/* 配送信息卡片 */}
         <section className="info-card">
-          <h3>📍 配送信息</h3>
+          <h3>📍 {t('delivery.deliveryInfo')}</h3>
           <div className="info-row">
-            <span className="info-label">客户姓名</span>
+            <span className="info-label">{t('delivery.customerName')}</span>
             <span className="info-value">{order.customer_name}</span>
           </div>
           <div className="info-row">
-            <span className="info-label">配送地址</span>
+            <span className="info-label">{t('delivery.deliveryAddress')}</span>
             <span className="info-value">{order.customer_address}</span>
           </div>
           <div className="info-row">
-            <span className="info-label">联系电话</span>
+            <span className="info-label">{t('delivery.contactPhone')}</span>
             <span className="info-value">{order.customer_whatsapp}</span>
           </div>
           <div className="info-row">
-            <span className="info-label">配送日期</span>
+            <span className="info-label">Order Date</span>
             <span className="info-value">{formatDate(order.delivery_date)}</span>
           </div>
           {order.delivered_date && (
             <div className="info-row">
-              <span className="info-label">实际送达</span>
+              <span className="info-label">Delivery Date</span>
               <span className="info-value">{formatDate(order.delivered_date)}</span>
             </div>
           )}
           {order.delivery_notes && (
             <div className="info-row">
-              <span className="info-label">配送备注</span>
+              <span className="info-label">{t('delivery.deliveryNotes')}</span>
               <span className="info-value">{order.delivery_notes}</span>
             </div>
           )}
@@ -215,24 +209,16 @@ export const OrderDelivery: React.FC = () => {
 
         {/* 订单详情卡片 */}
         <section className="info-card">
-          <h3>📦 订单详情</h3>
+          <h3>📦 {t('delivery.orderDetails')}</h3>
           <div className="order-items">
-            {orderItems.map((item, index) => (
+            {orderItems.map((item) => (
               <div key={item.id} className="item-row">
-                <div className="item-info">
-                  <span className="item-name">
-                    {item.product}
-                    {item.is_refill && <span className="refill-badge">续灌</span>}
-                  </span>
-                  <span className="item-quantity">× {item.quantity}</span>
-                </div>
-                <div className="item-pricing">
-                  <span className="item-price">{formatCurrency(item.unit_price)}</span>
-                  {item.discount > 0 && (
-                    <span className="item-discount">-{formatCurrency(item.discount)}</span>
-                  )}
-                  <span className="item-total">{formatCurrency(calculateItemTotal(item))}</span>
-                </div>
+                <span className="item-name">
+                  {item.product}
+                  {item.is_refill && <span className="refill-badge">{t('delivery.refill')}</span>}
+                  <span className="item-quantity"> × {item.quantity}</span>
+                </span>
+                <span className="item-total">{formatCurrency(calculateItemTotal(item))}</span>
               </div>
             ))}
           </div>
@@ -242,14 +228,14 @@ export const OrderDelivery: React.FC = () => {
             <div className="gallons-info">
               {order.empty_gallons_returned > 0 && (
                 <div className="info-row">
-                  <span className="info-label">🔄 空桶回收</span>
-                  <span className="info-value">{order.empty_gallons_returned} 个</span>
+                  <span className="info-label">🔄 {t('delivery.emptyGallons')}</span>
+                  <span className="info-value">{order.empty_gallons_returned} {language === 'en' ? 'pcs' : 'buah'}</span>
                 </div>
               )}
               {order.borrowed_gallons > 0 && (
                 <div className="info-row">
-                  <span className="info-label">📦 借出桶数</span>
-                  <span className="info-value">{order.borrowed_gallons} 个</span>
+                  <span className="info-label">📦 {t('delivery.borrowedGallons')}</span>
+                  <span className="info-value">{order.borrowed_gallons} {language === 'en' ? 'pcs' : 'buah'}</span>
                 </div>
               )}
             </div>
@@ -259,12 +245,12 @@ export const OrderDelivery: React.FC = () => {
           <div className="order-summary">
             {order.customer_discount > 0 && (
               <div className="summary-row">
-                <span>客户折扣</span>
+                <span>{t('delivery.customerDiscount')}</span>
                 <span className="discount-amount">-{formatCurrency(order.customer_discount)}</span>
               </div>
             )}
             <div className="summary-row total">
-              <span>订单总额</span>
+              <span>{t('delivery.orderTotal')}</span>
               <span className="total-amount">{formatCurrency(order.total_amount)}</span>
             </div>
           </div>
@@ -273,46 +259,34 @@ export const OrderDelivery: React.FC = () => {
         {/* 配送确认（仅在 scheduled 状态显示） */}
         {order.status === 'scheduled' && (
           <section className="confirm-card">
-            <h3>📦 确认收货</h3>
+            <h3>📦 {t('delivery.confirmReceipt')}</h3>
             <p className="confirm-instruction">
-              请确认您已收到配送的商品
+              {t('delivery.pleaseConfirm')}
             </p>
             
             <button
               onClick={() => {
-                if (window.confirm('确认已收到配送？此操作不可撤销。')) {
+                if (window.confirm(t('delivery.confirmMessage'))) {
                   handleConfirmDelivery();
                 }
               }}
               disabled={confirming}
               className="btn-confirm-simple"
             >
-              {confirming ? '确认中...' : '✅ 确认收货'}
+              {confirming ? t('delivery.confirming') : `✅ ${t('delivery.confirmButton')}`}
             </button>
 
             <div className="help-text">
-              <p>💡 提示：请当面验收商品后再确认</p>
-              <p>❓ 如有疑问，请联系客服</p>
+              <p>💡 {t('delivery.tips')}</p>
+              <p>❓ {t('delivery.contact')}</p>
             </div>
-          </section>
-        )}
-
-        {/* 已送达状态 */}
-        {order.status === 'delivered' && (
-          <section className="success-card">
-            <div className="success-icon">✅</div>
-            <h3>配送完成</h3>
-            <p>感谢您的订单！</p>
-            <button onClick={() => navigate('/orders')} className="btn-primary">
-              查看更多订单
-            </button>
           </section>
         )}
 
         {/* 配送凭证（如果有） */}
         {order.delivery_evidence && (
           <section className="info-card">
-            <h3>📸 配送凭证</h3>
+            <h3>📸 {t('delivery.deliveryEvidence')}</h3>
             <div className="evidence-image">
               <img src={order.delivery_evidence} alt="配送凭证" />
             </div>

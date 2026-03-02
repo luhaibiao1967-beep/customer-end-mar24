@@ -5,6 +5,8 @@ import { supabase } from '../supabaseClient';
 import BottomNav from '../Components/BottomNav';
 import QrisPaymentModal from '../Components/QrisPaymentModal';
 import { theme } from '../theme';
+import { formatCurrency } from '../utils/format';
+import toast from 'react-hot-toast';
 
 interface Customer {
   id: string;
@@ -84,14 +86,11 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
 
       setQris({ qrCodeUrl: data.qr_code_url, qrString: data.qr_string, midtransOrderId: data.order_id, amount: data.amount });
     } catch (err: any) {
-      alert('Error: ' + err.message);
+      toast.error('Payment error: ' + err.message);
     } finally {
       setPaying(null);
     }
   };
-
-  const formatCurrency = (amount: number) =>
-    new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(amount);
 
   if (customer.customer_type !== 'pre_pay') {
     return (
