@@ -204,6 +204,16 @@ function App() {
           }
         />
         <Route
+          path="/select-branch"
+          element={
+            customer ? (
+              <BranchSelection customer={customer} mode="edit" />
+            ) : (
+              <Navigate to="/" replace />
+            )
+          }
+        />
+        <Route
           path="/account"
           element={
             customer ? (

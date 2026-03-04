@@ -200,9 +200,17 @@ export default function MyAccount({ customer }: MyAccountProps) {
               <p style={{ fontSize: '11px', color: theme.textLight, margin: '0 0 6px 0' }}>
                 🏢 Service Branch
               </p>
-              <p style={{ fontSize: '14px', color: theme.text, margin: 0 }}>
-                {customer.branch === 'Pending' ? 'Pending Setup' : customer.branch || 'Not assigned'}
-              </p>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <p style={{ fontSize: '14px', color: theme.text, margin: 0, flex: 1 }}>
+                  {customer.branch === 'Pending' ? 'Pending Setup' : customer.branch || 'Not assigned'}
+                </p>
+                <button
+                  onClick={() => navigate('/select-branch')}
+                  style={{ background: 'none', border: 'none', color: theme.primary, fontSize: '12px', cursor: 'pointer', padding: '4px 8px' }}
+                >
+                  ✏️ Edit
+                </button>
+              </div>
             </div>
 
             {customer.customer_type === 'pre_pay' && (

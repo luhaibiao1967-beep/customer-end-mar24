@@ -3,6 +3,7 @@
 // Uses Google Places Autocomplete — requires Maps JavaScript API + Places API.
 
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   useJsApiLoader,
   GoogleMap,
@@ -35,6 +36,7 @@ interface BranchWithDistance extends Branch {
 
 interface Props {
   customer: { id: string; name: string; address: string };
+  mode?: 'setup' | 'edit';
 }
 
 // ─── Haversine distance (km) ───────────────────────────────────────────────
@@ -59,8 +61,9 @@ const BRANCH_ICON = (selected: boolean) => ({
     : 'https://maps.google.com/mapfiles/ms/icons/red-dot.png',
 });
 
-export default function BranchSelection({ customer }: Props) {
+export default function BranchSelection({ customer, mode = 'setup' }: Props) {
   const { isLoaded } = useJsApiLoader({ googleMapsApiKey: MAPS_KEY, libraries: LIBRARIES });
+  const navigate = useNavigate();
 
   const [branches, setBranches] = useState<BranchWithDistance[]>([]);
   const [customerCoords, setCustomerCoords] = useState<{ lat: number; lng: number } | null>(null);
@@ -123,16 +126,24 @@ export default function BranchSelection({ customer }: Props) {
   const handleConfirm = async () => {
     if (!selectedBranch) return;
     setSaving(true);
-    const { error } = await supabase
-      .from('customers')
-      .update({ branch: selectedBranch.name })
-      .eq('id', customer.id);
 
-    if (error) {
+    const token = sessionStorage.getItem('auth_token');
+    if (!token) {
+      toast.error('Session expired. Please log in again.');
+      setSaving(false);
+      return;
+    }
+
+    const { data, error } = await supabase.functions.invoke('update-customer-branch', {
+      body: { token, branch_name: selectedBranch.name },
+    });
+
+    if (error || !data?.success) {
       toast.error('Failed to save. Please try again.');
       setSaving(false);
       return;
     }
+
     const stored = sessionStorage.getItem('customer');
     if (stored) {
       sessionStorage.setItem(
@@ -142,6 +153,9 @@ export default function BranchSelection({ customer }: Props) {
     }
     window.dispatchEvent(new Event('session-auth-updated'));
     toast.success(`Branch set to ${selectedBranch.name}!`);
+    if (mode === 'edit') {
+      navigate(-1);
+    }
   };
 
   // ─── Loading state ──────────────────────────────────────────────────────
@@ -169,6 +183,27 @@ export default function BranchSelection({ customer }: Props) {
 
       {/* Header */}
       <div style={{ padding: '20px 16px 12px' }}>
+        {mode === 'edit' && (
+          <button
+            onClick={() => navigate(-1)}
+            style={{
+              background: 'rgba(255,255,255,0.2)',
+              border: 'none',
+              color: 'white',
+              fontSize: '14px',
+              fontWeight: '600',
+              padding: '8px 14px',
+              borderRadius: '20px',
+              cursor: 'pointer',
+              marginBottom: '12px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+          >
+            &larr; Back
+          </button>
+        )}
         <h1 style={{ color: 'white', fontSize: '22px', fontWeight: '700', margin: '0 0 4px' }}>
           💧 Choose Your Water Branch
         </h1>
