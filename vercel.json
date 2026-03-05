@@ -1,5 +1,10 @@
 {
   "rewrites": [
+    { "source": "/customer/assets/(.*)", "destination": "/assets/$1" },
+    { "source": "/customer/(.*\\.png)", "destination": "/$1" },
+    { "source": "/customer/(.*\\.jpg)", "destination": "/$1" },
+    { "source": "/customer/(.*\\.ico)", "destination": "/$1" },
+    { "source": "/customer/(.*\\.svg)", "destination": "/$1" },
     { "source": "/customer/(.*)", "destination": "/index.html" }
   ]
 }
