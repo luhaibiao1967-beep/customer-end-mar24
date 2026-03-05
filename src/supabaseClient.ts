@@ -14,26 +14,9 @@ const supabaseAnonKey = mode === "local" ? (localAnon || cloudAnon) : cloudAnon;
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    // Use a unique storage key to avoid conflicts when running alongside
-    // another Supabase app on the same origin (e.g. ProjectA at app.vividaqua.id)
+    // Unique storageKey prevents conflict with ProjectA (app.vividaqua.id)
+    // which shares the same origin and localStorage.
     storageKey: 'customer-portal-auth',
     persistSession: false,
   },
 });
-
-function decodeJwtRef(jwt: string): string {
-  try {
-    const payload = jwt.split('.')[1]
-    const decoded = JSON.parse(atob(payload))
-    return decoded.ref || 'no-ref'
-  } catch {
-    return 'decode-err'
-  }
-}
-
-/** 调试用：当前实际连接的 Supabase 项目 */
-export const SUPABASE_DEBUG = {
-  url: supabaseUrl,
-  projectRef: supabaseUrl.match(/https:\/\/([^.]+)\.supabase\.co/)?.[1] ?? 'unknown',
-  keyRef: decodeJwtRef(supabaseAnonKey),
-};

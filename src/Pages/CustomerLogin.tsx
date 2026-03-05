@@ -2,7 +2,7 @@
 // 设备绑定：已绑定则静默登录，未绑定则 OTP 或注册
 import React, { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { supabase, SUPABASE_DEBUG } from '../supabaseClient'
+import { supabase } from '../supabaseClient'
 import { getOrCreateDeviceId, getStoredDeviceId } from '../lib/deviceId'
 import { theme } from '../theme'
 import { useLanguage } from '../contexts/LanguageContext'
@@ -47,19 +47,7 @@ export default function CustomerLogin() {
         body: { phone: formattedPhone, device_id: resolvedDeviceId },
       })
 
-      if (functionError) {
-        // Extract actual error body from edge function response
-        let detail = `[${functionError.name || 'Error'}] ${functionError.message}`
-        try {
-          if (functionError.context) {
-            const text = await functionError.context.clone().text()
-            detail += ` | status:${functionError.context.status} | body:${text.slice(0, 200)}`
-          }
-        } catch (e2: any) {
-          detail += ` | ctx-err:${e2.message}`
-        }
-        throw new Error(detail)
-      }
+      if (functionError) throw functionError
 
       if (data.bound && data.customer && data.auth_token) {
         sessionStorage.setItem('customer', JSON.stringify(data.customer))
@@ -302,17 +290,6 @@ export default function CustomerLogin() {
         </div>
 
         {/* 调试：当前连接的 Supabase 项目 */}
-        <div style={{
-          padding: '8px 16px',
-          background: 'rgba(0,0,0,0.1)',
-          fontSize: '10px',
-          color: 'rgba(255,255,255,0.8)',
-          fontFamily: 'monospace',
-          textAlign: 'center',
-        }}>
-          <div>url-ref: {SUPABASE_DEBUG.projectRef}</div>
-          <div>key-ref: {SUPABASE_DEBUG.keyRef}</div>
-        </div>
       </div>
     </div>
   )
