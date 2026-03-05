@@ -14,9 +14,19 @@ const supabaseAnonKey = mode === "local" ? (localAnon || cloudAnon) : cloudAnon;
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+function decodeJwtRef(jwt: string): string {
+  try {
+    const payload = jwt.split('.')[1]
+    const decoded = JSON.parse(atob(payload))
+    return decoded.ref || 'no-ref'
+  } catch {
+    return 'decode-err'
+  }
+}
+
 /** 调试用：当前实际连接的 Supabase 项目 */
 export const SUPABASE_DEBUG = {
   url: supabaseUrl,
   projectRef: supabaseUrl.match(/https:\/\/([^.]+)\.supabase\.co/)?.[1] ?? 'unknown',
-  anonKeyPrefix: supabaseAnonKey.slice(0, 40),
+  keyRef: decodeJwtRef(supabaseAnonKey),
 };

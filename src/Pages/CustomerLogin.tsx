@@ -308,8 +308,8 @@ export default function CustomerLogin() {
           fontFamily: 'monospace',
           textAlign: 'center',
         }}>
-          <div>proj: {SUPABASE_DEBUG.projectRef}</div>
-          <div>key: {SUPABASE_DEBUG.anonKeyPrefix}...</div>
+          <div>url-ref: {SUPABASE_DEBUG.projectRef}</div>
+          <div>key-ref: {SUPABASE_DEBUG.keyRef}</div>
         </div>
       </div>
     </div>
