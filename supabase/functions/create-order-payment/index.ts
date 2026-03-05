@@ -18,7 +18,7 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const serverKey = Deno.env.get('MIDTRANS_SERVER_KEY')!
     const clientKey = Deno.env.get('MIDTRANS_CLIENT_KEY')!
-    const midtransEnv = Deno.env.get('MIDTRANS_ENV') || 'sandbox'
+    const midtransEnv = (Deno.env.get('MIDTRANS_ENV') || 'sandbox').toLowerCase()
     const snapUrl = midtransEnv === 'production'
       ? 'https://app.midtrans.com/snap/v1/transactions'
       : 'https://app.sandbox.midtrans.com/snap/v1/transactions'

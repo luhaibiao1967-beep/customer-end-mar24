@@ -10,14 +10,14 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
-    const { token, type, package_id, order_ids } = await req.json()
+    const { token, type, package_id, order_ids, product_id, qty } = await req.json()
     if (!token) throw new Error('Token required')
-    if (!type) throw new Error('type required: voucher | order')
+    if (!type) throw new Error('type required: voucher | voucher_custom | order')
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const serverKey = Deno.env.get('MIDTRANS_SERVER_KEY')!
-    const midtransEnv = Deno.env.get('MIDTRANS_ENV') || 'sandbox'
+    const midtransEnv = (Deno.env.get('MIDTRANS_ENV') || 'sandbox').toLowerCase()
     const coreApiUrl = midtransEnv === 'production'
       ? 'https://api.midtrans.com/v2/charge'
       : 'https://api.sandbox.midtrans.com/v2/charge'
@@ -62,6 +62,37 @@ serve(async (req) => {
         product_id: pkg.product_id,
         qty: pkg.qty,
         amount_paid: pkg.price,
+        midtrans_order_id: orderId,
+        status: 'pending',
+      })
+      if (insertError) throw new Error('Failed to save purchase request: ' + insertError.message)
+
+    } else if (type === 'voucher_custom') {
+      if (!product_id) throw new Error('product_id required')
+      if (!qty || qty < 1) throw new Error('qty must be >= 1')
+
+      const { data: product } = await supabase
+        .from('products')
+        .select('id, name, price, unit')
+        .eq('id', product_id)
+        .eq('status', 'active')
+        .single()
+      if (!product) throw new Error('Product not found')
+
+      orderId = `vcp_${customer.id.slice(0, 8)}_${Date.now()}`
+      grossAmount = product.price * qty
+      itemDetails = [{
+        id: product.id,
+        price: product.price,
+        quantity: qty,
+        name: product.name,
+      }]
+
+      const { error: insertError } = await supabase.from('voucher_purchase_requests').insert({
+        customer_id: customer.id,
+        product_id: product.id,
+        qty: qty,
+        amount_paid: grossAmount,
         midtrans_order_id: orderId,
         status: 'pending',
       })

@@ -18,7 +18,7 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
     // Verify Midtrans signature: SHA512(order_id + status_code + gross_amount + serverKey)
-    const midtransEnv = Deno.env.get('MIDTRANS_ENV') || 'sandbox'
+    const midtransEnv = (Deno.env.get('MIDTRANS_ENV') || 'sandbox').toLowerCase()
     const isSandboxTest = body.sandbox_test === true && midtransEnv === 'sandbox'
 
     if (!isSandboxTest) {
