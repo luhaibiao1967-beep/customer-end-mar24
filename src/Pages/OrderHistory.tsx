@@ -378,11 +378,11 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
                         {cancellingId === order.id ? '...' : '🗑️ Cancel'}
                       </button>
                     </div>
-                  ) : (
+                  ) : order.status === 'scheduled' ? (
                     <div style={{ padding: '8px 12px', background: '#f5f5f5', borderRadius: '8px', fontSize: '12px', color: theme.textMuted, textAlign: 'center' }}>
                       ℹ️ Order confirmed — cannot be edited or cancelled
                     </div>
-                  )}
+                  ) : null}
 
                   {/* Pay Now via Midtrans — daily later_pay only (batch uses Pay All above) */}
                   {isLaterPay && !isBatchPay && order.payment_status === 'unpaid' && order.status === 'delivered' && (
