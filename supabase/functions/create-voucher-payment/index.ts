@@ -66,6 +66,7 @@ serve(async (req) => {
           first_name: customer.name,
           phone: customer.whatsapp,
         },
+        notification_url: `${supabaseUrl}/functions/v1/midtrans-webhook`,
       }),
     })
 

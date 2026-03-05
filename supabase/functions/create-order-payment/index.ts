@@ -72,6 +72,7 @@ serve(async (req) => {
           phone: customer.whatsapp,
         },
         ...(enabled_payments?.length ? { enabled_payments } : {}),
+        notification_url: `${supabaseUrl}/functions/v1/midtrans-webhook`,
       }),
     })
 
