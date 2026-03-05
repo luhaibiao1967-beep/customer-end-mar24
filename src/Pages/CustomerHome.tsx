@@ -46,12 +46,46 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
   const [loading, setLoading] = useState(false);
   const [pendingOrders, setPendingOrders] = useState<Order[]>([]);
   const [productVouchers, setProductVouchers] = useState<ProductVoucherRow[]>([]);
+  const [unpaidAmount, setUnpaidAmount] = useState(0);
+  const [lastDeliveryDate, setLastDeliveryDate] = useState<string | null>(null);
+  const [paymentTerm, setPaymentTerm] = useState<string>('');
   const canOrder = customer.branch && customer.branch !== 'Pending';
 
   useEffect(() => {
     loadPendingOrders();
+    loadExtraInfo();
     if (customer.customer_type === 'pre_pay') loadProductVouchers();
   }, [customer.id]);
+
+  const loadExtraInfo = async () => {
+    // Unpaid amount — later_pay only
+    if (customer.customer_type !== 'pre_pay') {
+      const { data } = await supabase
+        .from('orders')
+        .select('total_amount')
+        .eq('customer_id', customer.id)
+        .eq('status', 'delivered')
+        .eq('payment_status', 'unpaid');
+      setUnpaidAmount((data || []).reduce((sum: number, o: any) => sum + o.total_amount, 0));
+    }
+    // Last delivery date
+    const { data: lastOrder } = await supabase
+      .from('orders')
+      .select('delivery_date')
+      .eq('customer_id', customer.id)
+      .eq('status', 'delivered')
+      .order('delivery_date', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (lastOrder) setLastDeliveryDate(lastOrder.delivery_date);
+    // Payment term
+    const { data: cust } = await supabase
+      .from('customers')
+      .select('payment_term')
+      .eq('id', customer.id)
+      .single();
+    if (cust) setPaymentTerm(cust.payment_term || 'daily');
+  };
 
   const loadProductVouchers = async () => {
     try {
@@ -376,30 +410,68 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
           )}
         </div>
 
-        {/* Quick Stats - pre_pay (matches water depot schema) */}
+        {/* Quick Info */}
         <div style={{
           background: 'white',
           borderRadius: '20px',
-          padding: '30px',
+          padding: '24px',
           boxShadow: '0 10px 40px rgba(0,0,0,0.2)'
         }}>
-          <h3 style={{ fontSize: '20px', marginBottom: '20px' }}>📊 Quick Info</h3>
-          
-          <div style={{ fontSize: '14px', color: '#666', lineHeight: '1.8' }}>
-            <p style={{ margin: '0 0 10px 0' }}>
-              <strong>Account Status:</strong> {canOrder ? '✅ Active' : '⏳ Pending Setup'}
-            </p>
-            <p style={{ margin: '0 0 10px 0' }}>
-              <strong>Payment Type:</strong> {customer.customer_type === 'pre_pay' ? 'Prepaid (Voucher)' : 'Postpaid (Invoice)'}
-            </p>
-            {customer.customer_type === 'pre_pay' && (
-              <p style={{ margin: '0 0 10px 0' }}>
-                <strong>Vouchers:</strong> {productVouchers.reduce((s, r) => s + r.balance, 0)} total
-              </p>
+          <h3 style={{ fontSize: '18px', margin: '0 0 16px 0', fontWeight: '600' }}>📊 Quick Info</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+
+            {/* Account Status */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', background: '#f8f9fa', borderRadius: '10px' }}>
+              <span style={{ fontSize: '13px', color: '#666' }}>Account Status</span>
+              <span style={{ fontSize: '13px', fontWeight: '600', color: canOrder ? theme.success : theme.warning }}>
+                {canOrder ? '✅ Active' : '⏳ Pending Setup'}
+              </span>
+            </div>
+
+            {/* Service Branch */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', background: '#f8f9fa', borderRadius: '10px' }}>
+              <span style={{ fontSize: '13px', color: '#666' }}>🏢 Service Branch</span>
+              <span style={{ fontSize: '13px', fontWeight: '600', color: theme.text }}>
+                {customer.branch === 'Pending' || !customer.branch ? '—' : customer.branch}
+              </span>
+            </div>
+
+            {/* Billing Cycle */}
+            {paymentTerm && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', background: '#f8f9fa', borderRadius: '10px' }}>
+                <span style={{ fontSize: '13px', color: '#666' }}>🔄 Billing Cycle</span>
+                <span style={{ fontSize: '13px', fontWeight: '600', color: theme.text }}>
+                  {{ daily: 'Daily (天)', weekly: 'Weekly (周)', biweekly: 'Biweekly (两周)', monthly: 'Monthly (月)' }[paymentTerm] ?? paymentTerm}
+                </span>
+              </div>
             )}
-            <p style={{ margin: '0 0 10px 0' }}>
-              <strong>Pending Orders:</strong> {pendingOrders.length}
-            </p>
+
+            {/* On Delivery (scheduled) */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', background: '#f8f9fa', borderRadius: '10px' }}>
+              <span style={{ fontSize: '13px', color: '#666' }}>🚚 On Delivery</span>
+              <span style={{ fontSize: '13px', fontWeight: '600', color: theme.info }}>
+                {pendingOrders.filter(o => o.status === 'scheduled').length} order(s)
+              </span>
+            </div>
+
+            {/* Unpaid Amount — later_pay only */}
+            {customer.customer_type !== 'pre_pay' && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', background: unpaidAmount > 0 ? '#fff3e0' : '#f8f9fa', borderRadius: '10px', border: unpaidAmount > 0 ? '1px solid #ffb74d' : 'none' }}>
+                <span style={{ fontSize: '13px', color: '#666' }}>💰 Unpaid Amount</span>
+                <span style={{ fontSize: '13px', fontWeight: '700', color: unpaidAmount > 0 ? theme.error : theme.success }}>
+                  {unpaidAmount > 0 ? formatCurrency(unpaidAmount) : '✅ All paid'}
+                </span>
+              </div>
+            )}
+
+            {/* Last Delivery */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', background: '#f8f9fa', borderRadius: '10px' }}>
+              <span style={{ fontSize: '13px', color: '#666' }}>📅 Last Delivery</span>
+              <span style={{ fontSize: '13px', fontWeight: '600', color: theme.text }}>
+                {lastDeliveryDate ? formatDate(lastDeliveryDate) : '—'}
+              </span>
+            </div>
+
           </div>
         </div>
 
