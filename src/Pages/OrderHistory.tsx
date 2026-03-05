@@ -61,8 +61,8 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
   const [qris, setQris] = useState<QrisState | null>(null);
   const [payingIds, setPayingIds] = useState<Set<string>>(new Set());
 
-  // Upload receipt modal
-  const [uploadingOrder, setUploadingOrder] = useState<Order | null>(null);
+  // Bank Transfer modal (covers all unpaid outstanding)
+  const [showBankTransfer, setShowBankTransfer] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -165,7 +165,7 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
   };
 
   const handleUploadEvidence = async () => {
-    if (!selectedFile || !uploadingOrder) return;
+    if (!selectedFile) return;
     setUploading(true);
     try {
       const token = sessionStorage.getItem('auth_token');
@@ -178,11 +178,13 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
         reader.readAsDataURL(selectedFile);
       });
 
+      const targetIds = unpaidDeliveredOrders.map(o => o.id);
+
       const { data, error } = await supabase.functions.invoke('payment-action', {
         body: {
           token,
           action: 'upload',
-          order_id: uploadingOrder.id,
+          order_ids: targetIds,
           file_base64: base64,
           file_type: selectedFile.type,
         },
@@ -193,7 +195,7 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
 
       setUploadSuccess(true);
       setOrders(prev => prev.map(o =>
-        o.id === uploadingOrder.id ? { ...o, payment_evidence: data.path } : o
+        targetIds.includes(o.id) ? { ...o, payment_evidence: data.path } : o
       ));
     } catch (err: any) {
       toast.error('Upload failed: ' + err.message);
@@ -224,14 +226,13 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
   };
 
   const closeUploadModal = () => {
-    setUploadingOrder(null);
+    setShowBankTransfer(false);
     setSelectedFile(null);
     setPreviewUrl(null);
     setUploadSuccess(false);
   };
 
   const isLaterPay = customer.customer_type !== 'pre_pay';
-  const isBatchPay = isLaterPay && ['weekly', 'biweekly', 'monthly'].includes(customer.payment_term || '');
 
   const unpaidDeliveredOrders = orders.filter(o => o.payment_status === 'unpaid' && o.status === 'delivered');
   const totalUnpaid = unpaidDeliveredOrders.reduce((sum, o) => sum + o.total_amount, 0);
@@ -281,12 +282,17 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
         {/* Summary banner — later_pay */}
         {isLaterPay && (totalUnpaid > 0 || totalBorrowedGallons > 0) && (
           <div style={{ background: 'white', borderRadius: '16px', padding: '16px 20px', marginBottom: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: isBatchPay && unpaidDeliveredOrders.length > 0 ? '14px' : '0' }}>
+
+            {/* Balance row */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: unpaidDeliveredOrders.length > 0 ? '14px' : '0' }}>
               <div style={{ borderLeft: `4px solid ${theme.error}`, paddingLeft: '12px' }}>
                 <p style={{ margin: 0, fontSize: '11px', color: theme.textMuted }}>Outstanding Balance</p>
                 <p style={{ margin: '4px 0 0', fontSize: '18px', fontWeight: 'bold', color: totalUnpaid > 0 ? theme.error : theme.success }}>
                   {totalUnpaid > 0 ? formatCurrency(totalUnpaid) : '✅ Clear'}
                 </p>
+                {unpaidDeliveredOrders.length > 1 && (
+                  <p style={{ margin: '2px 0 0', fontSize: '11px', color: theme.textMuted }}>{unpaidDeliveredOrders.length} orders</p>
+                )}
               </div>
               <div style={{ borderLeft: `4px solid ${theme.primary}`, paddingLeft: '12px' }}>
                 <p style={{ margin: 0, fontSize: '11px', color: theme.textMuted }}>Borrowed Gallons</p>
@@ -295,15 +301,24 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
                 </p>
               </div>
             </div>
-            {/* Pay All button — weekly/biweekly/monthly only */}
-            {isBatchPay && unpaidDeliveredOrders.length > 0 && (
-              <button
-                onClick={() => handlePayWithQris(unpaidDeliveredOrders.map(o => o.id))}
-                disabled={isPayingAll}
-                style={{ width: '100%', padding: '12px', background: isPayingAll ? '#ccc' : theme.gradientSuccess, color: 'white', border: 'none', borderRadius: '10px', fontSize: '15px', fontWeight: 'bold', cursor: isPayingAll ? 'not-allowed' : 'pointer' }}
-              >
-                {isPayingAll ? 'Loading...' : `💳 Pay All Outstanding (${unpaidDeliveredOrders.length} orders · ${formatCurrency(totalUnpaid)})`}
-              </button>
+
+            {/* Payment buttons — shown whenever there is outstanding */}
+            {unpaidDeliveredOrders.length > 0 && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <button
+                  onClick={() => handlePayWithQris(unpaidDeliveredOrders.map(o => o.id))}
+                  disabled={isPayingAll}
+                  style={{ padding: '12px', background: isPayingAll ? '#ccc' : theme.gradientSuccess, color: 'white', border: 'none', borderRadius: '10px', fontSize: '14px', fontWeight: 'bold', cursor: isPayingAll ? 'not-allowed' : 'pointer' }}
+                >
+                  {isPayingAll ? '⏳ Loading...' : '💳 Pay via QRIS'}
+                </button>
+                <button
+                  onClick={() => setShowBankTransfer(true)}
+                  style={{ padding: '12px', background: 'white', color: theme.primary, border: `2px solid ${theme.primary}`, borderRadius: '10px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}
+                >
+                  🏦 Bank Transfer
+                </button>
+              </div>
             )}
           </div>
         )}
@@ -384,27 +399,6 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
                     </div>
                   ) : null}
 
-                  {/* Pay Now via Midtrans — daily later_pay only (batch uses Pay All above) */}
-                  {isLaterPay && !isBatchPay && order.payment_status === 'unpaid' && order.status === 'delivered' && (
-                    <button
-                      onClick={() => handlePayWithQris([order.id])}
-                      disabled={payingIds.has(order.id)}
-                      style={{ padding: '10px', background: payingIds.has(order.id) ? '#ccc' : theme.gradientSuccess, color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: payingIds.has(order.id) ? 'not-allowed' : 'pointer' }}
-                    >
-                      {payingIds.has(order.id) ? 'Loading...' : '💳 Pay Now'}
-                    </button>
-                  )}
-
-                  {/* Bank Transfer / Upload Receipt — all later_pay unpaid */}
-                  {isLaterPay && order.payment_status === 'unpaid' && (
-                    <button
-                      onClick={() => setUploadingOrder(order)}
-                      style={{ padding: '10px', background: '#f5f5f5', color: theme.text, border: '2px solid #ddd', borderRadius: '8px', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}
-                    >
-                      🏦 Bank Transfer / Upload Receipt
-                    </button>
-                  )}
-
                   {/* View payment evidence */}
                   {order.payment_evidence && (
                     <button
@@ -432,8 +426,8 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
         )}
       </div>
 
-      {/* ── Upload Receipt Modal (Bank Transfer) ── */}
-      {uploadingOrder && (
+      {/* ── Bank Transfer Modal ── */}
+      {showBankTransfer && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 2000 }}>
           <div style={{ background: 'white', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: '500px', maxHeight: '90vh', overflowY: 'auto' }}>
 
@@ -441,7 +435,9 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderBottom: '1px solid #eee', position: 'sticky', top: 0, background: 'white', zIndex: 1 }}>
               <div>
                 <p style={{ margin: 0, fontWeight: '700', fontSize: '16px' }}>🏦 Bank Transfer</p>
-                <p style={{ margin: 0, fontSize: '13px', color: theme.textMuted }}>{formatCurrency(uploadingOrder.total_amount)}</p>
+                <p style={{ margin: 0, fontSize: '13px', color: theme.textMuted }}>
+                  {unpaidDeliveredOrders.length} order(s) · {formatCurrency(totalUnpaid)}
+                </p>
               </div>
               <button onClick={closeUploadModal} style={{ background: 'none', border: 'none', fontSize: '22px', cursor: 'pointer', color: theme.textMuted }}>✕</button>
             </div>
@@ -456,8 +452,9 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
                 <p style={{ margin: '0 0 8px 0', fontSize: '13px', color: theme.textMuted }}>Account Name</p>
                 <p style={{ margin: 0, fontSize: '14px', fontWeight: '600', color: theme.text }}>{BANK_INFO.name}</p>
               </div>
-              <p style={{ fontSize: '12px', color: theme.textMuted, textAlign: 'center', marginBottom: '20px' }}>
-                Transfer amount: <strong>{formatCurrency(uploadingOrder.total_amount)}</strong>
+              <p style={{ fontSize: '13px', color: theme.error, fontWeight: '700', textAlign: 'center', marginBottom: '20px', background: '#fff3e0', padding: '10px', borderRadius: '8px' }}>
+                Transfer amount: {formatCurrency(totalUnpaid)}
+                {unpaidDeliveredOrders.length > 1 && ` (${unpaidDeliveredOrders.length} orders)`}
               </p>
 
               {/* Upload evidence */}

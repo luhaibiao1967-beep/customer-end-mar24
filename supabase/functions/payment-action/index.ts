@@ -12,7 +12,7 @@ serve(async (req) => {
   }
 
   try {
-    const { token, action, order_id, file_base64, file_type } = await req.json()
+    const { token, action, order_id, order_ids, file_base64, file_type } = await req.json()
 
     if (!token) throw new Error('Token is required')
 
@@ -29,19 +29,24 @@ serve(async (req) => {
 
     if (customerError || !customer) throw new Error('Invalid or expired token')
 
-    // Upload payment evidence
+    // Upload payment evidence (single order_id or batch order_ids array)
     if (action === 'upload') {
-      if (!order_id || !file_base64) throw new Error('order_id and file required')
+      if (!file_base64) throw new Error('file required')
 
-      // Verify order belongs to customer
-      const { data: order, error: orderError } = await supabase
+      const targetIds: string[] = (order_ids as string[] | undefined)?.length
+        ? order_ids
+        : order_id ? [order_id] : []
+
+      if (targetIds.length === 0) throw new Error('order_id or order_ids required')
+
+      // Verify all orders belong to customer
+      const { data: orders, error: ordersErr } = await supabase
         .from('orders')
         .select('id')
-        .eq('id', order_id)
+        .in('id', targetIds)
         .eq('customer_id', customer.id)
-        .single()
 
-      if (orderError || !order) throw new Error('Order not found')
+      if (ordersErr || !orders?.length) throw new Error('Orders not found')
 
       // Decode base64 to binary
       const base64Data = file_base64.includes(',') ? file_base64.split(',')[1] : file_base64
@@ -52,7 +57,8 @@ serve(async (req) => {
       }
 
       const ext = file_type?.includes('png') ? 'png' : 'jpg'
-      const filePath = `${order_id}_${Date.now()}.${ext}`
+      const prefix = targetIds.length > 1 ? `batch_${customer.id}` : targetIds[0]
+      const filePath = `${prefix}_${Date.now()}.${ext}`
 
       const { error: uploadError } = await supabase.storage
         .from('payment-evidence')
@@ -63,12 +69,13 @@ serve(async (req) => {
       const { error: updateError } = await supabase
         .from('orders')
         .update({ payment_evidence: filePath })
-        .eq('id', order_id)
+        .in('id', targetIds)
+        .eq('customer_id', customer.id)
 
-      if (updateError) throw new Error('Failed to update order: ' + updateError.message)
+      if (updateError) throw new Error('Failed to update orders: ' + updateError.message)
 
       return new Response(
-        JSON.stringify({ success: true, path: filePath }),
+        JSON.stringify({ success: true, path: filePath, updated: targetIds.length }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
       )
     }
