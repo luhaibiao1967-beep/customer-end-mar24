@@ -400,7 +400,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
 
             {/* Service Branch */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', background: '#f8f9fa', borderRadius: '10px' }}>
-              <span style={{ fontSize: '13px', color: '#666' }}>🏢 Service Branch</span>
+              <span style={{ fontSize: '13px', color: '#666' }}>Service Branch</span>
               <span style={{ fontSize: '13px', fontWeight: '600', color: theme.text }}>
                 {customer.branch === 'Pending' || !customer.branch ? '—' : customer.branch}
               </span>
@@ -409,7 +409,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
             {/* Billing Cycle */}
             {paymentTerm && (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', background: '#f8f9fa', borderRadius: '10px' }}>
-                <span style={{ fontSize: '13px', color: '#666' }}>🔄 Billing Cycle</span>
+                <span style={{ fontSize: '13px', color: '#666' }}>Billing Cycle</span>
                 <span style={{ fontSize: '13px', fontWeight: '600', color: theme.text }}>
                   {{ daily: 'Daily (天)', weekly: 'Weekly (周)', biweekly: 'Biweekly (两周)', monthly: 'Monthly (月)' }[paymentTerm] ?? paymentTerm}
                 </span>
@@ -418,7 +418,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
 
             {/* On Delivery (scheduled) */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', background: '#f8f9fa', borderRadius: '10px' }}>
-              <span style={{ fontSize: '13px', color: '#666' }}>🚚 On Delivery</span>
+              <span style={{ fontSize: '13px', color: '#666' }}>On Delivery</span>
               <span style={{ fontSize: '13px', fontWeight: '600', color: theme.info }}>
                 {pendingOrders.filter(o => o.status === 'scheduled').length} order(s)
               </span>
@@ -428,7 +428,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
             {customer.customer_type !== 'pre_pay' && (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', background: unpaidAmount > 0 ? '#fff3e0' : '#f8f9fa', borderRadius: '10px', border: unpaidAmount > 0 ? '1px solid #ffb74d' : 'none' }}>
                 <div>
-                  <span style={{ fontSize: '13px', color: '#666' }}>💰 Unpaid Amount</span>
+                  <span style={{ fontSize: '13px', color: '#666' }}>Unpaid Amount</span>
                   <div style={{ fontSize: '13px', fontWeight: '700', color: unpaidAmount > 0 ? theme.error : theme.success }}>
                     {unpaidAmount > 0 ? formatCurrency(unpaidAmount) : '✅ All paid'}
                   </div>
@@ -446,7 +446,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
 
             {/* Last Delivery */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', background: '#f8f9fa', borderRadius: '10px' }}>
-              <span style={{ fontSize: '13px', color: '#666' }}>📅 Last Delivery</span>
+              <span style={{ fontSize: '13px', color: '#666' }}>Last Delivery</span>
               <span style={{ fontSize: '13px', fontWeight: '600', color: theme.text }}>
                 {lastDeliveryDate ? formatDate(lastDeliveryDate) : '—'}
               </span>
