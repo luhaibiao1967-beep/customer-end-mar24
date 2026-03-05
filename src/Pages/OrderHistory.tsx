@@ -281,7 +281,6 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
           ← {t('common.back')}
         </button>
         <h1 style={{ color: 'white', fontSize: '22px', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <img src="/128-128gallon.png" alt="" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
           {t('orders.title')}
         </h1>
         <div style={{ width: '80px' }} />
