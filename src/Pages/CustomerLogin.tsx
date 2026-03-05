@@ -47,7 +47,17 @@ export default function CustomerLogin() {
         body: { phone: formattedPhone, device_id: resolvedDeviceId },
       })
 
-      if (functionError) throw functionError
+      if (functionError) {
+        // Extract actual error body from edge function response
+        let detail = functionError.message
+        try {
+          if (functionError.context) {
+            const body = await functionError.context.json()
+            detail = `${functionError.message} | ${JSON.stringify(body)}`
+          }
+        } catch {}
+        throw new Error(detail)
+      }
 
       if (data.bound && data.customer && data.auth_token) {
         sessionStorage.setItem('customer', JSON.stringify(data.customer))
@@ -293,13 +303,13 @@ export default function CustomerLogin() {
         <div style={{
           padding: '8px 16px',
           background: 'rgba(0,0,0,0.1)',
-          fontSize: '11px',
+          fontSize: '10px',
           color: 'rgba(255,255,255,0.8)',
           fontFamily: 'monospace',
           textAlign: 'center',
         }}>
-          Supabase: {SUPABASE_DEBUG.projectRef}
-          {SUPABASE_DEBUG.projectRef !== 'jzdnvdebwmuebjbergsp' && ' ⚠️'}
+          <div>proj: {SUPABASE_DEBUG.projectRef}</div>
+          <div>key: {SUPABASE_DEBUG.anonKeyPrefix}...</div>
         </div>
       </div>
     </div>

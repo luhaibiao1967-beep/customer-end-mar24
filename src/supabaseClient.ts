@@ -18,4 +18,5 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 export const SUPABASE_DEBUG = {
   url: supabaseUrl,
   projectRef: supabaseUrl.match(/https:\/\/([^.]+)\.supabase\.co/)?.[1] ?? 'unknown',
+  anonKeyPrefix: supabaseAnonKey.slice(0, 40),
 };
