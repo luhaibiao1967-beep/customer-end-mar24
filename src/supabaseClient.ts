@@ -12,7 +12,14 @@ const localAnon = import.meta.env.VITE_SUPABASE_ANON_KEY_LOCAL || import.meta.en
 const cloudAnon = import.meta.env.VITE_SUPABASE_ANON_KEY_CLOUD || import.meta.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp6ZG52ZGVid211ZWJqYmVyZ3NwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgyODAxNTksImV4cCI6MjA4Mzg1NjE1OX0.uE2V99SFMeiE3NzzR8aoXDJeUdVuG6jU8ghkib1acrQ";
 const supabaseAnonKey = mode === "local" ? (localAnon || cloudAnon) : cloudAnon;
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    // Use a unique storage key to avoid conflicts when running alongside
+    // another Supabase app on the same origin (e.g. ProjectA at app.vividaqua.id)
+    storageKey: 'customer-portal-auth',
+    persistSession: false,
+  },
+});
 
 function decodeJwtRef(jwt: string): string {
   try {
