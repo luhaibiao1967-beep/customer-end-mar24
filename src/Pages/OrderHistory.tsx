@@ -150,8 +150,8 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
       await loadSnapScript(data.client_key, data.snap_js_url);
 
       (window as any).snap.pay(data.snap_token, {
-        onSuccess: () => { fetchOrders(); toast.success('Payment successful!'); },
-        onPending: () => { toast('Payment pending — we will confirm shortly'); },
+        onSuccess: () => { fetchOrders(); toast.success('Payment successful! Order will update shortly.'); },
+        onPending: () => { toast('Payment submitted — order will be confirmed once your bank settles the transfer.', { duration: 6000 }); },
         onError: (result: any) => { toast.error('Payment failed: ' + (result?.status_message || 'Unknown error')); },
         onClose: () => { /* user dismissed without paying */ },
       });
