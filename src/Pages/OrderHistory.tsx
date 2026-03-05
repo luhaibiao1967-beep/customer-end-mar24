@@ -319,13 +319,13 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
                   disabled={isPayingAll}
                   style={{ padding: '12px', background: isPayingAll ? '#ccc' : theme.gradientSuccess, color: 'white', border: 'none', borderRadius: '10px', fontSize: '14px', fontWeight: 'bold', cursor: isPayingAll ? 'not-allowed' : 'pointer' }}
                 >
-                  {isPayingAll ? '⏳ Loading...' : '💳 Pay via QRIS'}
+                  {isPayingAll ? 'Loading...' : 'Pay via QRIS'}
                 </button>
                 <button
                   onClick={() => setShowBankTransfer(true)}
                   style={{ padding: '12px', background: 'white', color: theme.primary, border: `2px solid ${theme.primary}`, borderRadius: '10px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}
                 >
-                  🏦 Bank Transfer
+                  Bank Transfer
                 </button>
               </div>
             )}
@@ -426,7 +426,7 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
                     onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; }}
                     onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }}
                   >
-                    📦 {t('orders.viewDetails')}
+                    {t('orders.viewDetails')}
                   </button>
                 </div>
               </div>
@@ -443,7 +443,7 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
             {/* Modal header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderBottom: '1px solid #eee', position: 'sticky', top: 0, background: 'white', zIndex: 1 }}>
               <div>
-                <p style={{ margin: 0, fontWeight: '700', fontSize: '16px' }}>🏦 Bank Transfer</p>
+                <p style={{ margin: 0, fontWeight: '700', fontSize: '16px' }}>Bank Transfer</p>
                 <p style={{ margin: 0, fontSize: '13px', color: theme.textMuted }}>
                   {unpaidDeliveredOrders.length} order(s) · {formatCurrency(totalUnpaid)}
                 </p>
