@@ -153,7 +153,6 @@ serve(async (req) => {
     })
 
     const mtData = await mtResponse.json()
-    console.log(`[qris] midtrans status=${mtResponse.status} resp=${JSON.stringify(mtData)}`)
 
     // Extract QR code URL from actions array
     const qrAction = mtData.actions?.find((a: any) => a.name === 'generate-qr-code')
