@@ -49,13 +49,15 @@ export default function CustomerLogin() {
 
       if (functionError) {
         // Extract actual error body from edge function response
-        let detail = functionError.message
+        let detail = `[${functionError.name || 'Error'}] ${functionError.message}`
         try {
           if (functionError.context) {
-            const body = await functionError.context.json()
-            detail = `${functionError.message} | ${JSON.stringify(body)}`
+            const text = await functionError.context.clone().text()
+            detail += ` | status:${functionError.context.status} | body:${text.slice(0, 200)}`
           }
-        } catch {}
+        } catch (e2: any) {
+          detail += ` | ctx-err:${e2.message}`
+        }
         throw new Error(detail)
       }
 
