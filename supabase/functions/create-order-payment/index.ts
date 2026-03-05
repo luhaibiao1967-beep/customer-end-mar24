@@ -10,7 +10,7 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
-    const { token, order_ids } = await req.json()
+    const { token, order_ids, enabled_payments } = await req.json()
     if (!token) throw new Error('Token required')
     if (!order_ids || order_ids.length === 0) throw new Error('order_ids required')
 
@@ -22,6 +22,9 @@ serve(async (req) => {
     const snapUrl = midtransEnv === 'production'
       ? 'https://app.midtrans.com/snap/v1/transactions'
       : 'https://app.sandbox.midtrans.com/snap/v1/transactions'
+    const snapJsUrl = midtransEnv === 'production'
+      ? 'https://app.midtrans.com/snap/snap.js'
+      : 'https://app.sandbox.midtrans.com/snap/snap.js'
 
     const supabase = createClient(supabaseUrl, supabaseKey)
 
@@ -68,6 +71,7 @@ serve(async (req) => {
           first_name: customer.name,
           phone: customer.whatsapp,
         },
+        ...(enabled_payments?.length ? { enabled_payments } : {}),
       }),
     })
 
@@ -81,7 +85,7 @@ serve(async (req) => {
       .in('id', order_ids)
 
     return new Response(
-      JSON.stringify({ success: true, snap_token: mtData.token, client_key: clientKey, total: grossAmount }),
+      JSON.stringify({ success: true, snap_token: mtData.token, client_key: clientKey, snap_js_url: snapJsUrl, total: grossAmount }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
     )
   } catch (error: any) {

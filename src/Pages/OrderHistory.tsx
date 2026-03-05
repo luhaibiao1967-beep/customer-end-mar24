@@ -3,7 +3,6 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import BottomNav from '../Components/BottomNav';
-import QrisPaymentModal from '../Components/QrisPaymentModal';
 import { useLanguage } from '../contexts/LanguageContext';
 import { theme } from '../theme';
 import { formatCurrency } from '../utils/format';
@@ -40,13 +39,6 @@ interface OrderHistoryProps {
   customer: Customer;
 }
 
-interface QrisState {
-  qrCodeUrl: string;
-  qrString?: string | null;
-  midtransOrderId: string;
-  amount: number;
-}
-
 export default function OrderHistory({ customer }: OrderHistoryProps) {
   const navigate = useNavigate();
   const { t } = useLanguage();
@@ -57,8 +49,6 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
   const [initialBorrowedGallons, setInitialBorrowedGallons] = useState(0);
   const [productVouchers, setProductVouchers] = useState<{ product_id: string; balance: number; products: { name: string } | null }[]>([]);
 
-  // QRIS payment modal state
-  const [qris, setQris] = useState<QrisState | null>(null);
   const [payingIds, setPayingIds] = useState<Set<string>>(new Set());
 
   // Bank Transfer modal (covers all unpaid outstanding)
@@ -131,20 +121,40 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
     }
   };
 
+  const loadSnapScript = (clientKey: string, snapJsUrl: string): Promise<void> =>
+    new Promise((resolve) => {
+      if ((window as any).snap) { resolve(); return; }
+      const existing = document.querySelector('script[data-midtrans-snap]');
+      if (existing) { existing.addEventListener('load', () => resolve()); return; }
+      const script = document.createElement('script');
+      script.src = snapJsUrl;
+      script.setAttribute('data-client-key', clientKey);
+      script.setAttribute('data-midtrans-snap', 'true');
+      script.onload = () => resolve();
+      document.body.appendChild(script);
+    });
+
   const handlePayWithQris = async (orderIds: string[]) => {
     setPayingIds(prev => new Set([...prev, ...orderIds]));
     try {
       const token = sessionStorage.getItem('auth_token');
       if (!token) throw new Error('Session expired');
 
-      const { data, error } = await supabase.functions.invoke('create-qris-payment', {
-        body: { token, type: 'order', order_ids: orderIds },
+      const { data, error } = await supabase.functions.invoke('create-order-payment', {
+        body: { token, order_ids: orderIds, enabled_payments: ['other_qris'] },
       });
 
       if (error) throw new Error(error.message);
-      if (!data?.success) throw new Error(data?.error || 'Failed to create QRIS payment');
+      if (!data?.success) throw new Error(data?.error || 'Failed to create payment');
 
-      setQris({ qrCodeUrl: data.qr_code_url, qrString: data.qr_string, midtransOrderId: data.order_id, amount: data.amount });
+      await loadSnapScript(data.client_key, data.snap_js_url);
+
+      (window as any).snap.pay(data.snap_token, {
+        onSuccess: () => { fetchOrders(); toast.success('Payment successful!'); },
+        onPending: () => { toast('Payment pending — we will confirm shortly'); },
+        onError: (result: any) => { toast.error('Payment failed: ' + (result?.status_message || 'Unknown error')); },
+        onClose: () => { /* user dismissed without paying */ },
+      });
     } catch (err: any) {
       toast.error('Error: ' + err.message);
     } finally {
@@ -505,17 +515,6 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
             <img src={paymentEvidenceUrl} alt="Payment receipt" style={{ width: '100%', display: 'block', maxHeight: '70vh', objectFit: 'contain' }} />
           </div>
         </div>
-      )}
-
-      {qris && (
-        <QrisPaymentModal
-          qrCodeUrl={qris.qrCodeUrl}
-          qrString={qris.qrString}
-          midtransOrderId={qris.midtransOrderId}
-          amount={qris.amount}
-          onSuccess={() => { setQris(null); fetchOrders(); }}
-          onClose={() => setQris(null)}
-        />
       )}
 
       <BottomNav customer={customer} />

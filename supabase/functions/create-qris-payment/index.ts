@@ -128,7 +128,7 @@ serve(async (req) => {
       throw new Error('Invalid type')
     }
 
-    // Call Midtrans Core API — QRIS
+    // Call Midtrans Core API — GoPay (QRIS-compatible QR code)
     const mtResponse = await fetch(coreApiUrl, {
       method: 'POST',
       headers: {
@@ -136,7 +136,7 @@ serve(async (req) => {
         'Authorization': `Basic ${btoa(serverKey + ':')}`,
       },
       body: JSON.stringify({
-        payment_type: 'qris',
+        payment_type: 'gopay',
         transaction_details: {
           order_id: orderId,
           gross_amount: grossAmount,
@@ -146,10 +146,14 @@ serve(async (req) => {
           first_name: customer.name,
           phone: customer.whatsapp,
         },
+        gopay: {
+          enable_callback: false,
+        },
       }),
     })
 
     const mtData = await mtResponse.json()
+    console.log(`[qris] midtrans status=${mtResponse.status} resp=${JSON.stringify(mtData)}`)
 
     // Extract QR code URL from actions array
     const qrAction = mtData.actions?.find((a: any) => a.name === 'generate-qr-code')
