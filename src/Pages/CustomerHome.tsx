@@ -427,10 +427,20 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
             {/* Unpaid Amount — later_pay only */}
             {customer.customer_type !== 'pre_pay' && (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', background: unpaidAmount > 0 ? '#fff3e0' : '#f8f9fa', borderRadius: '10px', border: unpaidAmount > 0 ? '1px solid #ffb74d' : 'none' }}>
-                <span style={{ fontSize: '13px', color: '#666' }}>💰 Unpaid Amount</span>
-                <span style={{ fontSize: '13px', fontWeight: '700', color: unpaidAmount > 0 ? theme.error : theme.success }}>
-                  {unpaidAmount > 0 ? formatCurrency(unpaidAmount) : '✅ All paid'}
-                </span>
+                <div>
+                  <span style={{ fontSize: '13px', color: '#666' }}>💰 Unpaid Amount</span>
+                  <div style={{ fontSize: '13px', fontWeight: '700', color: unpaidAmount > 0 ? theme.error : theme.success }}>
+                    {unpaidAmount > 0 ? formatCurrency(unpaidAmount) : '✅ All paid'}
+                  </div>
+                </div>
+                {unpaidAmount > 0 && (
+                  <button
+                    onClick={() => navigate('/order-history')}
+                    style={{ padding: '8px 14px', background: theme.error, color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                  >
+                    Pay Now →
+                  </button>
+                )}
               </div>
             )}
 
