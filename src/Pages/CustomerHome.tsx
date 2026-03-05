@@ -52,39 +52,25 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
   const canOrder = customer.branch && customer.branch !== 'Pending';
 
   useEffect(() => {
-    loadPendingOrders();
-    loadExtraInfo();
+    loadHomeData();
     if (customer.customer_type === 'pre_pay') loadProductVouchers();
   }, [customer.id]);
 
-  const loadExtraInfo = async () => {
-    // Unpaid amount — later_pay only
-    if (customer.customer_type !== 'pre_pay') {
-      const { data } = await supabase
-        .from('orders')
-        .select('total_amount')
-        .eq('customer_id', customer.id)
-        .eq('status', 'delivered')
-        .eq('payment_status', 'unpaid');
-      setUnpaidAmount((data || []).reduce((sum: number, o: any) => sum + o.total_amount, 0));
+  const loadHomeData = async () => {
+    try {
+      const token = sessionStorage.getItem('auth_token');
+      if (!token) return;
+      const { data, error } = await supabase.functions.invoke('get-home-data', {
+        body: { token },
+      });
+      if (error || !data?.success) return;
+      setPendingOrders(data.pending_orders || []);
+      setLastDeliveryDate(data.last_delivery_date ?? null);
+      setUnpaidAmount(data.unpaid_amount ?? 0);
+      setPaymentTerm(data.payment_term || 'daily');
+    } catch {
+      // silently fail — UI shows defaults
     }
-    // Last delivery date
-    const { data: lastOrder } = await supabase
-      .from('orders')
-      .select('delivery_date')
-      .eq('customer_id', customer.id)
-      .eq('status', 'delivered')
-      .order('delivery_date', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (lastOrder) setLastDeliveryDate(lastOrder.delivery_date);
-    // Payment term
-    const { data: cust } = await supabase
-      .from('customers')
-      .select('payment_term')
-      .eq('id', customer.id)
-      .single();
-    if (cust) setPaymentTerm(cust.payment_term || 'daily');
   };
 
   const loadProductVouchers = async () => {
@@ -96,22 +82,6 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
       setProductVouchers((data as ProductVoucherRow[]) || []);
     } catch {
       // silently fail
-    }
-  };
-
-  const loadPendingOrders = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('orders')
-        .select('*')
-        .eq('customer_id', customer.id)
-        .in('status', ['pending', 'scheduled'])
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setPendingOrders(data || []);
-    } catch (err) {
-      console.error('Error loading orders:', err);
     }
   };
 
@@ -134,7 +104,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
       if (orderError) throw orderError;
 
       toast.success('Order deleted successfully!');
-      loadPendingOrders();
+      loadHomeData();
     } catch (err: any) {
       console.error('Error deleting order:', err);
       toast.error('Failed to delete order: ' + err.message);

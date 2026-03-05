@@ -45,10 +45,10 @@ serve(async (req) => {
       )
     }
 
-    // Fetch all orders with items
+    // Fetch all orders (no order_items for list view - loaded on demand in detail view)
     const { data: orders, error: ordersError } = await supabase
       .from('orders')
-      .select('*, order_items(*)')
+      .select('id, customer_id, customer_name, customer_address, delivery_date, status, payment_status, total_amount, created_at, delivery_evidence, payment_evidence, borrowed_gallons')
       .eq('customer_id', customer.id)
       .order('created_at', { ascending: false })
 
