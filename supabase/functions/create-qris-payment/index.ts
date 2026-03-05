@@ -146,7 +146,7 @@ serve(async (req) => {
           first_name: customer.name,
           phone: customer.whatsapp,
         },
-        qris: { acquirer: 'gopay' },
+        qris: {},
       }),
     })
 
