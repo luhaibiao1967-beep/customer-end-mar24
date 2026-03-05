@@ -162,7 +162,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
         justifyContent: 'space-between',
         alignItems: 'center'
       }}>
-        <img src="/logo.png" alt="Water Delivery" style={{ height: '36px', objectFit: 'contain' }} />
+        <img src={`${import.meta.env.BASE_URL}logo.png`} alt="Water Delivery" style={{ height: '36px', objectFit: 'contain' }} />
         <button
           onClick={handleSignOut}
           disabled={loading}

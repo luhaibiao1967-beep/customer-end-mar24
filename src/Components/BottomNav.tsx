@@ -59,13 +59,13 @@ export default function BottomNav({ customer }: BottomNavProps) {
           >
             {item.icon === null ? (
               <img
-                src="/128-128gallon.png"
+                src={`${import.meta.env.BASE_URL}128-128gallon.png`}
                 alt="My Orders"
                 style={{ width: '32px', height: '32px', opacity: active ? 1 : 0.7, objectFit: 'contain' }}
               />
             ) : item.icon === 'img:myaccount' ? (
               <img
-                src="/myaccount.png"
+                src={`${import.meta.env.BASE_URL}myaccount.png`}
                 alt="My Account"
                 style={{ width: '32px', height: '32px', opacity: active ? 1 : 0.7, objectFit: 'contain' }}
               />

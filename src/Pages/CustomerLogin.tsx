@@ -136,19 +136,19 @@ export default function CustomerLogin() {
 
         <div style={{
           background: theme.gradientPrimary,
-          padding: '40px 20px',
+          padding: '16px 20px',
           textAlign: 'center',
           color: 'white',
         }}>
           <div style={{
-            width: '80px',
-            height: '80px',
+            width: '280px',
+            height: '280px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            margin: '0 auto 15px',
+            margin: '0 auto 8px',
           }}>
-            <img src="/logo.png" alt="Logo" style={{ width: '80px', height: '80px', objectFit: 'contain' }} />
+            <img src={`${import.meta.env.BASE_URL}logo.png`} alt="Logo" style={{ width: '280px', height: '280px', objectFit: 'contain' }} />
           </div>
           <h1 style={{ fontSize: '28px', fontWeight: 'bold', margin: '0 0 10px 0' }}>{t('login.title')}</h1>
           <p style={{ margin: 0, opacity: 0.9 }}>{t('login.subtitle')}</p>
