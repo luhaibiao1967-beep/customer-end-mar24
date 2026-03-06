@@ -1,16 +1,16 @@
 // src/Pages/CustomerHome.tsx - CORRECTED VERSION
 // Fixed: customer_type checks, sessionStorage, logout navigation
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { QRCodeSVG } from 'qrcode.react';
+import { QRCodeCanvas } from 'qrcode.react';
 import { supabase } from '../supabaseClient';
 import BottomNav from '../Components/BottomNav';
 import { theme } from '../theme';
 import { formatCurrency } from '../utils/format';
 
-const APP_URL = 'https://customer.vividaqua.id/';
+const APP_URL = 'https://app.vividaqua.id/customer/';
 
 interface Customer {
   id: string;
@@ -52,6 +52,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
   const [unpaidAmount, setUnpaidAmount] = useState(0);
   const [lastDeliveryDate, setLastDeliveryDate] = useState<string | null>(null);
   const [paymentTerm, setPaymentTerm] = useState<string>('');
+  const qrRef = useRef<HTMLCanvasElement>(null);
   const canOrder = customer.branch && customer.branch !== 'Pending';
 
   useEffect(() => {
@@ -464,7 +465,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
           <p style={{ fontSize: '12px', color: theme.textMuted, margin: '0 0 16px 0' }}>Scan or share to open the app</p>
 
           <div style={{ display: 'inline-block', padding: '12px', background: '#f8f9fa', borderRadius: '12px', marginBottom: '16px' }}>
-            <QRCodeSVG value={APP_URL} size={160} />
+            <QRCodeCanvas ref={qrRef} value={APP_URL} size={160} />
           </div>
 
           <p style={{ fontSize: '11px', color: theme.textMuted, margin: '0 0 14px 0', wordBreak: 'break-all' }}>{APP_URL}</p>
@@ -472,15 +473,26 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
             <button
               onClick={async () => {
-                if (navigator.share) {
-                  try {
-                    await navigator.share({ title: 'VividAqua Customer App', url: APP_URL });
-                  } catch {
-                    // user cancelled
+                try {
+                  const canvas = qrRef.current;
+                  if (canvas && navigator.canShare) {
+                    const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'));
+                    if (blob) {
+                      const file = new File([blob], 'vividaqua-qr.png', { type: 'image/png' });
+                      if (navigator.canShare({ files: [file] })) {
+                        await navigator.share({ title: 'VividAqua', text: APP_URL, files: [file] });
+                        return;
+                      }
+                    }
                   }
-                } else {
-                  await navigator.clipboard.writeText(APP_URL);
-                  toast.success('Link copied!');
+                  if (navigator.share) {
+                    await navigator.share({ title: 'VividAqua Customer App', url: APP_URL });
+                  } else {
+                    await navigator.clipboard.writeText(APP_URL);
+                    toast.success('Link copied!');
+                  }
+                } catch {
+                  // user cancelled
                 }
               }}
               style={{ padding: '10px', background: theme.gradientPrimary, color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer' }}
