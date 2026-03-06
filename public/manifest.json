@@ -2,7 +2,7 @@
   "name": "VividAqua",
   "short_name": "VividAqua",
   "start_url": "/customer/",
-  "display": "standalone",
+  "display": "browser",
   "background_color": "#ffffff",
   "theme_color": "#3b82f6",
   "icons": [

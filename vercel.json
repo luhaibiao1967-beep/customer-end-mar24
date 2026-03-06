@@ -5,6 +5,7 @@
     { "source": "/customer/(.*\\.jpg)", "destination": "/$1" },
     { "source": "/customer/(.*\\.ico)", "destination": "/$1" },
     { "source": "/customer/(.*\\.svg)", "destination": "/$1" },
+    { "source": "/customer/(.*\\.json)", "destination": "/$1" },
     { "source": "/customer/(.*)", "destination": "/index.html" }
   ]
 }
