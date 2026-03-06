@@ -439,7 +439,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
                 </div>
                 {unpaidAmount > 0 && (
                   <button
-                    onClick={() => navigate('/order-history')}
+                    onClick={() => navigate('/orders')}
                     style={{ padding: '8px 14px', background: theme.error, color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer', whiteSpace: 'nowrap' }}
                   >
                     Pay Now →
