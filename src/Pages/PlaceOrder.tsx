@@ -84,15 +84,21 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
   };
 
   const loadSnapScript = (clientKey: string, snapJsUrl: string): Promise<void> =>
-    new Promise((resolve) => {
+    new Promise((resolve, reject) => {
       if ((window as any).snap) { resolve(); return; }
       const existing = document.querySelector('script[data-midtrans-snap]');
-      if (existing) { existing.addEventListener('load', () => resolve()); return; }
+      if (existing) {
+        if ((window as any).snap) { resolve(); return; }
+        existing.addEventListener('load', () => resolve());
+        existing.addEventListener('error', reject);
+        return;
+      }
       const script = document.createElement('script');
       script.src = snapJsUrl;
       script.setAttribute('data-client-key', clientKey);
       script.setAttribute('data-midtrans-snap', 'true');
       script.onload = () => resolve();
+      script.onerror = reject;
       document.body.appendChild(script);
     });
 
@@ -369,17 +375,24 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
 
       let paymentCompleted = false;
       (window as any).snap.pay(data.snap_token, {
-        onSuccess: () => { paymentCompleted = true; setShowSuccess(true); },
+        onSuccess: () => {
+          paymentCompleted = true;
+          setSubmitting(false);
+          setShowSuccess(true);
+        },
         onPending: () => {
           paymentCompleted = true;
+          setSubmitting(false);
           toast('Payment submitted — order will be confirmed once payment settles.', { duration: 6000 });
           navigate('/customer-home');
         },
         onError: (result: any) => {
           paymentCompleted = true;
+          setSubmitting(false);
           setError('Payment failed: ' + (result?.status_message || 'Unknown error'));
         },
         onClose: () => {
+          setSubmitting(false);
           if (!paymentCompleted) {
             toast('Payment not completed. Your order is saved — you can pay from Order History.', { duration: 6000 });
             navigate('/orders');
@@ -387,9 +400,8 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
         },
       });
     } catch (err: any) {
-      setError('Failed to submit: ' + err.message);
-    } finally {
       setSubmitting(false);
+      setError('Failed to submit: ' + err.message);
     }
   };
 
