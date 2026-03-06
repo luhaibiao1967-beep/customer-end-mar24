@@ -39,6 +39,7 @@ serve(async (req) => {
 
     let price: number
     let unitPrice: number
+    let itemQty: number
     let voucherProductId: string
     let voucherQty: number
     let itemName: string
@@ -55,6 +56,7 @@ serve(async (req) => {
       if (!pkg) throw new Error('Package not found')
       price = pkg.price
       unitPrice = pkg.price  // package is sold as a single unit at total price
+      itemQty = 1            // 1 bundle unit so price * itemQty == gross_amount
       voucherProductId = pkg.product_id
       voucherQty = pkg.qty
       itemName = `${pkg.qty} Voucher ${(pkg.products as any)?.name ?? ''}`
@@ -70,6 +72,7 @@ serve(async (req) => {
       if (!product) throw new Error('Product not found')
       unitPrice = product.price
       price = product.price * quantity
+      itemQty = quantity     // each voucher is one item
       voucherProductId = product_id
       voucherQty = quantity
       itemName = `Voucher ${product.name}`
@@ -99,7 +102,7 @@ serve(async (req) => {
         item_details: [{
           id: package_id ?? product_id,
           price: unitPrice,
-          quantity: voucherQty,
+          quantity: itemQty,
           name: itemName,
         }],
         customer_details: { first_name: customer.name, phone: customer.whatsapp },
