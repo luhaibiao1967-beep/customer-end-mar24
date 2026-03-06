@@ -4,10 +4,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import { QRCodeSVG } from 'qrcode.react';
 import { supabase } from '../supabaseClient';
 import BottomNav from '../Components/BottomNav';
 import { theme } from '../theme';
 import { formatCurrency } from '../utils/format';
+
+const APP_URL = 'https://app.vividaqua.id/customer/';
 
 interface Customer {
   id: string;
@@ -452,6 +455,47 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
               </span>
             </div>
 
+          </div>
+        </div>
+
+        {/* Share App Card */}
+        <div style={{ background: 'white', borderRadius: '20px', padding: '24px', marginTop: '20px', boxShadow: '0 10px 40px rgba(0,0,0,0.2)', textAlign: 'center' }}>
+          <h3 style={{ fontSize: '16px', fontWeight: '600', margin: '0 0 4px 0' }}>Share App</h3>
+          <p style={{ fontSize: '12px', color: theme.textMuted, margin: '0 0 16px 0' }}>Scan or share to open the app</p>
+
+          <div style={{ display: 'inline-block', padding: '12px', background: '#f8f9fa', borderRadius: '12px', marginBottom: '16px' }}>
+            <QRCodeSVG value={APP_URL} size={160} />
+          </div>
+
+          <p style={{ fontSize: '11px', color: theme.textMuted, margin: '0 0 14px 0', wordBreak: 'break-all' }}>{APP_URL}</p>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+            <button
+              onClick={async () => {
+                if (navigator.share) {
+                  try {
+                    await navigator.share({ title: 'VividAqua Customer App', url: APP_URL });
+                  } catch {
+                    // user cancelled
+                  }
+                } else {
+                  await navigator.clipboard.writeText(APP_URL);
+                  toast.success('Link copied!');
+                }
+              }}
+              style={{ padding: '10px', background: theme.gradientPrimary, color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer' }}
+            >
+              Share
+            </button>
+            <button
+              onClick={async () => {
+                await navigator.clipboard.writeText(APP_URL);
+                toast.success('Link copied!');
+              }}
+              style={{ padding: '10px', background: 'white', color: theme.primary, border: `2px solid ${theme.primary}`, borderRadius: '8px', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer' }}
+            >
+              Copy Link
+            </button>
           </div>
         </div>
 
