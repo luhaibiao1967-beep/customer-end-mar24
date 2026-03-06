@@ -10,9 +10,9 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
-    const { token, package_id } = await req.json()
+    const { token, package_id, product_id, qty } = await req.json()
     if (!token) throw new Error('Token required')
-    if (!package_id) throw new Error('package_id required')
+    if (!package_id && !product_id) throw new Error('package_id or product_id required')
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -22,6 +22,9 @@ serve(async (req) => {
     const snapUrl = midtransEnv === 'production'
       ? 'https://app.midtrans.com/snap/v1/transactions'
       : 'https://app.sandbox.midtrans.com/snap/v1/transactions'
+    const snapJsUrl = midtransEnv === 'production'
+      ? 'https://app.midtrans.com/snap/snap.js'
+      : 'https://app.sandbox.midtrans.com/snap/snap.js'
 
     const supabase = createClient(supabaseUrl, supabaseKey)
 
@@ -33,18 +36,42 @@ serve(async (req) => {
       .single()
     if (!customer) throw new Error('Invalid token')
 
-    // Load voucher package
-    const { data: pkg } = await supabase
-      .from('voucher_packages')
-      .select('id, product_id, qty, price, label, products(name)')
-      .eq('id', package_id)
-      .eq('is_active', true)
-      .single()
-    if (!pkg) throw new Error('Package not found')
-
+    let price: number
+    let voucherProductId: string
+    let voucherQty: number
+    let itemName: string
     const orderId = `vpc_${customer.id.slice(0, 8)}_${Date.now()}`
 
-    // Create Midtrans Snap transaction
+    if (package_id) {
+      // Package purchase path
+      const { data: pkg } = await supabase
+        .from('voucher_packages')
+        .select('id, product_id, qty, price, label, products(name)')
+        .eq('id', package_id)
+        .eq('is_active', true)
+        .single()
+      if (!pkg) throw new Error('Package not found')
+      price = pkg.price
+      voucherProductId = pkg.product_id
+      voucherQty = pkg.qty
+      itemName = `${pkg.qty} Voucher ${(pkg.products as any)?.name ?? ''}`
+    } else {
+      // Custom product+qty purchase path
+      const quantity = Math.max(1, qty ?? 1)
+      const { data: product } = await supabase
+        .from('products')
+        .select('id, name, price')
+        .eq('id', product_id)
+        .eq('status', 'active')
+        .single()
+      if (!product) throw new Error('Product not found')
+      price = product.price * quantity
+      voucherProductId = product_id
+      voucherQty = quantity
+      itemName = `${quantity}x Voucher ${product.name}`
+    }
+
+    // Create Midtrans Snap transaction (QRIS only)
     const mtResponse = await fetch(snapUrl, {
       method: 'POST',
       headers: {
@@ -52,20 +79,10 @@ serve(async (req) => {
         'Authorization': `Basic ${btoa(serverKey + ':')}`,
       },
       body: JSON.stringify({
-        transaction_details: {
-          order_id: orderId,
-          gross_amount: pkg.price,
-        },
-        item_details: [{
-          id: pkg.id,
-          price: pkg.price,
-          quantity: 1,
-          name: `${pkg.qty} Voucher ${(pkg.products as any)?.name ?? ''}`,
-        }],
-        customer_details: {
-          first_name: customer.name,
-          phone: customer.whatsapp,
-        },
+        transaction_details: { order_id: orderId, gross_amount: price },
+        item_details: [{ id: package_id ?? product_id, price, quantity: 1, name: itemName }],
+        customer_details: { first_name: customer.name, phone: customer.whatsapp },
+        enabled_payments: ['other_qris'],
         notification_url: `${supabaseUrl}/functions/v1/midtrans-webhook`,
       }),
     })
@@ -73,18 +90,18 @@ serve(async (req) => {
     const mtData = await mtResponse.json()
     if (!mtData.token) throw new Error('Midtrans error: ' + JSON.stringify(mtData))
 
-    // Save purchase request
+    // Save purchase request (webhook uses this to credit vouchers)
     await supabase.from('voucher_purchase_requests').insert({
       customer_id: customer.id,
-      product_id: pkg.product_id,
-      qty: pkg.qty,
-      amount_paid: pkg.price,
+      product_id: voucherProductId,
+      qty: voucherQty,
+      amount_paid: price,
       midtrans_order_id: orderId,
       status: 'pending',
     })
 
     return new Response(
-      JSON.stringify({ success: true, snap_token: mtData.token, client_key: clientKey }),
+      JSON.stringify({ success: true, snap_token: mtData.token, client_key: clientKey, snap_js_url: snapJsUrl }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
     )
   } catch (error: any) {
