@@ -5,6 +5,7 @@ import { supabase } from '../supabaseClient';
 import BottomNav from '../Components/BottomNav';
 import { theme } from '../theme';
 import { formatCurrency } from '../utils/format';
+import toast from 'react-hot-toast';
 
 interface Customer {
   id: string;
@@ -81,6 +82,19 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
     if (product.is_refill) return Math.max(0, REFILL_BASE_PRICE - freshDiscount);
     return product.price;
   };
+
+  const loadSnapScript = (clientKey: string, snapJsUrl: string): Promise<void> =>
+    new Promise((resolve) => {
+      if ((window as any).snap) { resolve(); return; }
+      const existing = document.querySelector('script[data-midtrans-snap]');
+      if (existing) { existing.addEventListener('load', () => resolve()); return; }
+      const script = document.createElement('script');
+      script.src = snapJsUrl;
+      script.setAttribute('data-client-key', clientKey);
+      script.setAttribute('data-midtrans-snap', 'true');
+      script.onload = () => resolve();
+      document.body.appendChild(script);
+    });
 
   const cartItems: CartItem[] = products
     .filter(p => (cart.get(p.id) || 0) > 0)
@@ -240,13 +254,6 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
     });
   };
 
-  // For pre_pay: the + button is disabled when qty already equals the voucher balance for that product
-  const canIncrease = (product: Product): boolean => {
-    if (!isPrePay) return true;
-    const balance = productVouchers.get(product.id) ?? 0;
-    const qty = cart.get(product.id) || 0;
-    return qty < balance;
-  };
 
   const handleSubmit = async () => {
     if (cartItems.length === 0) {
@@ -322,6 +329,63 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
       }
 
       setShowSuccess(true);
+    } catch (err: any) {
+      setError('Failed to submit: ' + err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handlePayWithQris = async () => {
+    if (cartItems.length === 0) { setError('Please select at least one product.'); return; }
+    if (!deliveryDate) { setError('Please select a delivery date.'); return; }
+
+    setSubmitting(true);
+    setError('');
+    try {
+      const token = sessionStorage.getItem('auth_token');
+      if (!token) throw new Error('Session expired, please login again');
+
+      const orderItems = cartItems.map(item => ({
+        product: item.product.name,
+        is_refill: item.product.is_refill,
+        quantity: item.quantity,
+        unit_price: getUnitPrice(item.product),
+        discount: 0,
+      }));
+
+      const { data, error } = await supabase.functions.invoke('submit-prepay-order', {
+        body: {
+          token,
+          order: { delivery_date: deliveryDate, note: notes || null, total_amount: totalAmount },
+          items: orderItems,
+        },
+      });
+
+      if (error) throw new Error(error.message);
+      if (!data?.success) throw new Error(data?.error || 'Failed to create payment');
+
+      await loadSnapScript(data.client_key, data.snap_js_url);
+
+      let paymentCompleted = false;
+      (window as any).snap.pay(data.snap_token, {
+        onSuccess: () => { paymentCompleted = true; setShowSuccess(true); },
+        onPending: () => {
+          paymentCompleted = true;
+          toast('Payment submitted — order will be confirmed once payment settles.', { duration: 6000 });
+          navigate('/customer-home');
+        },
+        onError: (result: any) => {
+          paymentCompleted = true;
+          setError('Payment failed: ' + (result?.status_message || 'Unknown error'));
+        },
+        onClose: () => {
+          if (!paymentCompleted) {
+            toast('Payment not completed. Your order is saved — you can pay from Order History.', { duration: 6000 });
+            navigate('/orders');
+          }
+        },
+      });
     } catch (err: any) {
       setError('Failed to submit: ' + err.message);
     } finally {
@@ -446,7 +510,7 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
                 const qty = cart.get(product.id) || 0;
                 const unitPrice = getUnitPrice(product);
                 const voucherBalance = productVouchers.get(product.id);
-                const plusDisabled = isPrePay ? !canIncrease(product) : false;
+                const plusDisabled = false;
 
                 return (
                   <div key={product.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', background: qty > 0 ? '#f0fbfb' : theme.cardBgAlt, borderRadius: '10px', border: `2px solid ${qty > 0 ? theme.primary : 'transparent'}` }}>
@@ -586,23 +650,33 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
         )}
 
         {/* Submit */}
-        <button
-          onClick={() => blockedByUnpaid ? setShowUnpaidModal(true) : handleSubmit()}
-          disabled={submitting || cartItems.length === 0 || (isPrePay && !hasEnoughVouchers)}
-          style={{
-            width: '100%',
-            padding: '16px',
-            background: (submitting || cartItems.length === 0 || (isPrePay && !hasEnoughVouchers)) ? '#ccc' : theme.gradientPrimary,
-            color: 'white',
-            border: 'none',
-            borderRadius: '12px',
-            fontSize: '16px',
-            fontWeight: 'bold',
-            cursor: (submitting || cartItems.length === 0 || (isPrePay && !hasEnoughVouchers)) ? 'not-allowed' : 'pointer',
-          }}
-        >
-          {submitting ? 'Submitting...' : editOrderId ? '✅ Update Order' : '✅ Place Order'}
-        </button>
+        {isPrePay && !hasEnoughVouchers && cartItems.length > 0 ? (
+          <button
+            onClick={handlePayWithQris}
+            disabled={submitting || !deliveryDate}
+            style={{
+              width: '100%', padding: '16px',
+              background: (submitting || !deliveryDate) ? '#ccc' : theme.gradientPrimary,
+              color: 'white', border: 'none', borderRadius: '12px', fontSize: '16px', fontWeight: 'bold',
+              cursor: (submitting || !deliveryDate) ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {submitting ? 'Processing...' : 'Pay via QRIS'}
+          </button>
+        ) : (
+          <button
+            onClick={() => blockedByUnpaid ? setShowUnpaidModal(true) : handleSubmit()}
+            disabled={submitting || cartItems.length === 0}
+            style={{
+              width: '100%', padding: '16px',
+              background: (submitting || cartItems.length === 0) ? '#ccc' : theme.gradientPrimary,
+              color: 'white', border: 'none', borderRadius: '12px', fontSize: '16px', fontWeight: 'bold',
+              cursor: (submitting || cartItems.length === 0) ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {submitting ? 'Submitting...' : editOrderId ? '✅ Update Order' : '✅ Place Order'}
+          </button>
+        )}
       </div>
 
       <BottomNav customer={customer} />
