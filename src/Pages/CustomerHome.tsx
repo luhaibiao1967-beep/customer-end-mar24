@@ -465,7 +465,18 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
           <p style={{ fontSize: '12px', color: theme.textMuted, margin: '0 0 16px 0' }}>Scan or share to open the app</p>
 
           <div style={{ display: 'inline-block', padding: '12px', background: '#f8f9fa', borderRadius: '12px', marginBottom: '16px' }}>
-            <QRCodeCanvas ref={qrRef} value={APP_URL} size={160} />
+            <QRCodeCanvas
+              ref={qrRef}
+              value={APP_URL}
+              size={160}
+              level="H"
+              imageSettings={{
+                src: '/192-192.png',
+                height: 36,
+                width: 36,
+                excavate: true,
+              }}
+            />
           </div>
 
           <p style={{ fontSize: '11px', color: theme.textMuted, margin: '0 0 14px 0', wordBreak: 'break-all' }}>{APP_URL}</p>
