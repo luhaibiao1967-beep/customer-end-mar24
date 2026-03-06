@@ -78,7 +78,10 @@ serve(async (req) => {
       items.map((item: OrderItem) => ({ ...item, order_id: newOrder.id }))
     )
     if (itemsError) {
-      await supabase.from('orders').delete().eq('id', newOrder.id)
+      const { error: rbErr } = await supabase.from('order_items').delete().eq('order_id', newOrder.id)
+      if (rbErr) console.error('Rollback failed (order_items on itemsError):', rbErr.message)
+      const { error: rbOrdErr } = await supabase.from('orders').delete().eq('id', newOrder.id)
+      if (rbOrdErr) console.error('Rollback failed (orders on itemsError):', rbOrdErr.message)
       throw new Error('Failed to create order items: ' + itemsError.message)
     }
 
@@ -92,12 +95,7 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         transaction_details: { order_id: midtransOrderId, gross_amount: order.total_amount },
-        item_details: items.map((item: OrderItem) => ({
-          id: newOrder.id,
-          price: item.unit_price,
-          quantity: item.quantity,
-          name: item.product.substring(0, 50),
-        })),
+        item_details: [{ id: newOrder.id, price: order.total_amount, quantity: 1, name: 'Order Payment' }],
         customer_details: { first_name: customer.name, phone: customer.whatsapp },
         enabled_payments: ['other_qris'],
         notification_url: `${supabaseUrl}/functions/v1/midtrans-webhook`,
@@ -107,19 +105,26 @@ serve(async (req) => {
     const mtData = await mtResponse.json()
     if (!mtData.token) {
       // Rollback: delete order_items first (FK), then order
-      await supabase.from('order_items').delete().eq('order_id', newOrder.id)
-      await supabase.from('orders').delete().eq('id', newOrder.id)
+      const { error: rbItemsErr } = await supabase.from('order_items').delete().eq('order_id', newOrder.id)
+      if (rbItemsErr) console.error('Rollback failed (order_items on Midtrans failure):', rbItemsErr.message)
+      const { error: rbOrderErr } = await supabase.from('orders').delete().eq('id', newOrder.id)
+      if (rbOrderErr) console.error('Rollback failed (orders on Midtrans failure):', rbOrderErr.message)
       throw new Error('Midtrans error: ' + JSON.stringify(mtData))
     }
 
     // Save midtrans_order_id on the order
-    await supabase.from('orders').update({ midtrans_order_id: midtransOrderId }).eq('id', newOrder.id)
+    const { error: updateMtErr } = await supabase
+      .from('orders')
+      .update({ midtrans_order_id: midtransOrderId })
+      .eq('id', newOrder.id)
+    if (updateMtErr) throw new Error('Failed to save midtrans_order_id: ' + updateMtErr.message)
 
     return new Response(
       JSON.stringify({ success: true, snap_token: mtData.token, client_key: clientKey, snap_js_url: snapJsUrl, order_id: newOrder.id }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
     )
   } catch (error: any) {
+    console.error('submit-prepay-order error:', error)
     return new Response(
       JSON.stringify({ success: false, error: error.message }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
