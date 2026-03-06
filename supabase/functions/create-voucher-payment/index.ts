@@ -17,7 +17,8 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const serverKey = Deno.env.get('MIDTRANS_SERVER_KEY')!
-    const clientKey = Deno.env.get('MIDTRANS_CLIENT_KEY')!
+    const clientKey = Deno.env.get('MIDTRANS_CLIENT_KEY')
+    if (!clientKey) throw new Error('MIDTRANS_CLIENT_KEY not configured')
     const midtransEnv = (Deno.env.get('MIDTRANS_ENV') || 'sandbox').toLowerCase()
     const snapUrl = midtransEnv === 'production'
       ? 'https://app.midtrans.com/snap/v1/transactions'
@@ -37,6 +38,7 @@ serve(async (req) => {
     if (!customer) throw new Error('Invalid token')
 
     let price: number
+    let unitPrice: number
     let voucherProductId: string
     let voucherQty: number
     let itemName: string
@@ -52,12 +54,13 @@ serve(async (req) => {
         .single()
       if (!pkg) throw new Error('Package not found')
       price = pkg.price
+      unitPrice = pkg.price  // package is sold as a single unit at total price
       voucherProductId = pkg.product_id
       voucherQty = pkg.qty
       itemName = `${pkg.qty} Voucher ${(pkg.products as any)?.name ?? ''}`
     } else {
       // Custom product+qty purchase path
-      const quantity = Math.max(1, qty ?? 1)
+      const quantity = Math.max(1, Math.floor(Number(qty) || 1))
       const { data: product } = await supabase
         .from('products')
         .select('id, name, price')
@@ -65,11 +68,24 @@ serve(async (req) => {
         .eq('status', 'active')
         .single()
       if (!product) throw new Error('Product not found')
+      unitPrice = product.price
       price = product.price * quantity
       voucherProductId = product_id
       voucherQty = quantity
-      itemName = `${quantity}x Voucher ${product.name}`
+      itemName = `Voucher ${product.name}`
     }
+
+    // Insert purchase request BEFORE calling Midtrans
+    // so the webhook can find this row when payment settles
+    const { error: insertError } = await supabase.from('voucher_purchase_requests').insert({
+      customer_id: customer.id,
+      product_id: voucherProductId,
+      qty: voucherQty,
+      amount_paid: price,
+      midtrans_order_id: orderId,
+      status: 'pending',
+    })
+    if (insertError) throw new Error('Failed to save purchase request: ' + insertError.message)
 
     // Create Midtrans Snap transaction (QRIS only)
     const mtResponse = await fetch(snapUrl, {
@@ -80,7 +96,12 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         transaction_details: { order_id: orderId, gross_amount: price },
-        item_details: [{ id: package_id ?? product_id, price, quantity: 1, name: itemName }],
+        item_details: [{
+          id: package_id ?? product_id,
+          price: unitPrice,
+          quantity: voucherQty,
+          name: itemName,
+        }],
         customer_details: { first_name: customer.name, phone: customer.whatsapp },
         enabled_payments: ['other_qris'],
         notification_url: `${supabaseUrl}/functions/v1/midtrans-webhook`,
@@ -89,16 +110,6 @@ serve(async (req) => {
 
     const mtData = await mtResponse.json()
     if (!mtData.token) throw new Error('Midtrans error: ' + JSON.stringify(mtData))
-
-    // Save purchase request (webhook uses this to credit vouchers)
-    await supabase.from('voucher_purchase_requests').insert({
-      customer_id: customer.id,
-      product_id: voucherProductId,
-      qty: voucherQty,
-      amount_paid: price,
-      midtrans_order_id: orderId,
-      status: 'pending',
-    })
 
     return new Response(
       JSON.stringify({ success: true, snap_token: mtData.token, client_key: clientKey, snap_js_url: snapJsUrl }),
