@@ -10,7 +10,7 @@ import BottomNav from '../Components/BottomNav';
 import { theme } from '../theme';
 import { formatCurrency } from '../utils/format';
 
-const APP_URL = 'https://app.vividaqua.id/customer/';
+const APP_URL = 'https://vividaqua.online/';
 
 interface Customer {
   id: string;
