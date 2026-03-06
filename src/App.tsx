@@ -116,7 +116,7 @@ function App() {
           error: { style: { background: '#fdecea', color: '#c62828' } },
         }}
       />
-      <Router basename="/customer">
+      <Router>
         <Routes>
           {/* Magic Link Route - Validates token and redirects */}
           <Route path="/home" element={<MagicLinkHandler />} />
