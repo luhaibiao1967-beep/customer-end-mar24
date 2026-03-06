@@ -3,7 +3,6 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import BottomNav from '../Components/BottomNav';
-import QrisPaymentModal from '../Components/QrisPaymentModal';
 import { theme } from '../theme';
 import { formatCurrency } from '../utils/format';
 import toast from 'react-hot-toast';
@@ -39,13 +38,6 @@ interface Product {
   is_refill: boolean;
   description: string | null;
   image_url: string | null;
-}
-
-interface QrisState {
-  qrCodeUrl: string;
-  qrString?: string | null;
-  midtransOrderId: string;
-  amount: number;
 }
 
 // ─── Expandable info panel (image + description) ────────────────────────────
@@ -115,7 +107,6 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
   const [productNames, setProductNames] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
   const [paying, setPaying] = useState<string | null>(null);
-  const [qris, setQris] = useState<QrisState | null>(null);
   const [customQtys, setCustomQtys] = useState<Map<string, number>>(new Map());
   const [expandedPanels, setExpandedPanels] = useState<Set<string>>(new Set());
 
@@ -182,17 +173,36 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
     });
   };
 
+  const loadSnapScript = (clientKey: string, snapJsUrl: string): Promise<void> =>
+    new Promise((resolve) => {
+      if ((window as any).snap) { resolve(); return; }
+      const existing = document.querySelector('script[data-midtrans-snap]');
+      if (existing) { existing.addEventListener('load', () => resolve()); return; }
+      const script = document.createElement('script');
+      script.src = snapJsUrl;
+      script.setAttribute('data-client-key', clientKey);
+      script.setAttribute('data-midtrans-snap', 'true');
+      script.onload = () => resolve();
+      document.body.appendChild(script);
+    });
+
   const handleBuyPackage = async (pkg: VoucherPackage) => {
     setPaying(pkg.id);
     try {
       const token = sessionStorage.getItem('auth_token');
       if (!token) throw new Error('Session expired');
-      const { data, error } = await supabase.functions.invoke('create-qris-payment', {
-        body: { token, type: 'voucher', package_id: pkg.id },
+      const { data, error } = await supabase.functions.invoke('create-voucher-payment', {
+        body: { token, package_id: pkg.id },
       });
       if (error) throw new Error(error.message);
-      if (!data?.success) throw new Error(data?.error || 'Failed to create QRIS payment');
-      setQris({ qrCodeUrl: data.qr_code_url, qrString: data.qr_string, midtransOrderId: data.order_id, amount: data.amount });
+      if (!data?.success) throw new Error(data?.error || 'Failed to create payment');
+      await loadSnapScript(data.client_key, data.snap_js_url);
+      (window as any).snap.pay(data.snap_token, {
+        onSuccess: () => { loadData(); toast.success('Payment successful! Vouchers added.'); },
+        onPending: () => { toast('Payment submitted — vouchers will be added once payment settles.', { duration: 6000 }); },
+        onError: (result: any) => { toast.error('Payment failed: ' + (result?.status_message || 'Unknown error')); },
+        onClose: () => { /* user dismissed */ },
+      });
     } catch (err: any) {
       toast.error('Payment error: ' + err.message);
     } finally {
@@ -206,12 +216,18 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
     try {
       const token = sessionStorage.getItem('auth_token');
       if (!token) throw new Error('Session expired');
-      const { data, error } = await supabase.functions.invoke('create-qris-payment', {
-        body: { token, type: 'voucher_custom', product_id: product.id, qty },
+      const { data, error } = await supabase.functions.invoke('create-voucher-payment', {
+        body: { token, product_id: product.id, qty },
       });
       if (error) throw new Error(error.message);
-      if (!data?.success) throw new Error(data?.error || 'Failed to create QRIS payment');
-      setQris({ qrCodeUrl: data.qr_code_url, qrString: data.qr_string, midtransOrderId: data.order_id, amount: data.amount });
+      if (!data?.success) throw new Error(data?.error || 'Failed to create payment');
+      await loadSnapScript(data.client_key, data.snap_js_url);
+      (window as any).snap.pay(data.snap_token, {
+        onSuccess: () => { loadData(); toast.success('Payment successful! Vouchers added.'); },
+        onPending: () => { toast('Payment submitted — vouchers will be added once payment settles.', { duration: 6000 }); },
+        onError: (result: any) => { toast.error('Payment failed: ' + (result?.status_message || 'Unknown error')); },
+        onClose: () => { /* user dismissed */ },
+      });
     } catch (err: any) {
       toast.error('Payment error: ' + err.message);
     } finally {
@@ -411,16 +427,6 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
 
       <BottomNav customer={customer} />
 
-      {qris && (
-        <QrisPaymentModal
-          qrCodeUrl={qris.qrCodeUrl}
-          qrString={qris.qrString}
-          midtransOrderId={qris.midtransOrderId}
-          amount={qris.amount}
-          onSuccess={() => { setQris(null); loadData(); }}
-          onClose={() => setQris(null)}
-        />
-      )}
     </div>
   );
 }
