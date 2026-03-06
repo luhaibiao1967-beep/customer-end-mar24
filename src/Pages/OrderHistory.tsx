@@ -394,14 +394,36 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
                 {/* Buttons */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   {order.status === 'pending' ? (
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                      <button onClick={() => navigate(`/place-order?edit=${order.id}`)} style={{ padding: '10px', background: theme.info, color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}>
-                        ✏️ Edit
-                      </button>
-                      <button onClick={() => handleCancel(order.id)} disabled={cancellingId === order.id} style={{ padding: '10px', background: cancellingId === order.id ? '#ccc' : theme.error, color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: cancellingId === order.id ? 'not-allowed' : 'pointer' }}>
-                        {cancellingId === order.id ? '...' : '🗑️ Cancel'}
-                      </button>
-                    </div>
+                    customer.customer_type === 'pre_pay' && order.payment_status === 'paid' ? (
+                      // Paid pre_pay order: locked, no edit/cancel
+                      <div style={{ padding: '8px 12px', background: '#f0fdf4', borderRadius: '8px', fontSize: '13px', color: '#15803d', textAlign: 'center' }}>
+                        ✅ Paid — order confirmed and locked
+                      </div>
+                    ) : customer.customer_type === 'pre_pay' && order.payment_status === 'unpaid' ? (
+                      // Pre_pay order awaiting payment
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div style={{ padding: '8px 12px', background: '#fff3cd', borderRadius: '8px', fontSize: '13px', color: '#856404', textAlign: 'center' }}>
+                          ⏳ Awaiting payment
+                        </div>
+                        <button
+                          onClick={() => handlePayWithQris([order.id])}
+                          disabled={payingIds.has(order.id)}
+                          style={{ padding: '10px', background: payingIds.has(order.id) ? '#ccc' : theme.gradientPrimary, color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: payingIds.has(order.id) ? 'not-allowed' : 'pointer' }}
+                        >
+                          {payingIds.has(order.id) ? 'Loading...' : 'Complete Payment (QRIS)'}
+                        </button>
+                      </div>
+                    ) : (
+                      // Post-pay or other: existing edit/cancel buttons
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                        <button onClick={() => navigate(`/place-order?edit=${order.id}`)} style={{ padding: '10px', background: theme.info, color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}>
+                          ✏️ Edit
+                        </button>
+                        <button onClick={() => handleCancel(order.id)} disabled={cancellingId === order.id} style={{ padding: '10px', background: cancellingId === order.id ? '#ccc' : theme.error, color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: cancellingId === order.id ? 'not-allowed' : 'pointer' }}>
+                          {cancellingId === order.id ? '...' : '🗑️ Cancel'}
+                        </button>
+                      </div>
+                    )
                   ) : order.status === 'scheduled' ? (
                     <div style={{ padding: '8px 12px', background: '#f5f5f5', borderRadius: '8px', fontSize: '12px', color: theme.textMuted, textAlign: 'center' }}>
                       ℹ️ Order confirmed — cannot be edited or cancelled
