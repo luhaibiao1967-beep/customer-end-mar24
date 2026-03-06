@@ -1,4 +1,4 @@
-// src/Pages/BuyVouchers.tsx - Buy per-product vouchers via Midtrans QRIS
+// src/Pages/BuyVouchers.tsx
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
@@ -26,7 +26,19 @@ interface VoucherPackage {
   price: number;
   label: string;
   sort_order: number;
+  description: string | null;
+  image_url: string | null;
   products: { name: string } | null;
+}
+
+interface Product {
+  id: string;
+  name: string;
+  price: number;
+  unit: string;
+  is_refill: boolean;
+  description: string | null;
+  image_url: string | null;
 }
 
 interface QrisState {
@@ -36,31 +48,113 @@ interface QrisState {
   amount: number;
 }
 
+// ─── Expandable info panel (image + description) ────────────────────────────
+function InfoPanel({ description, imageUrl }: { description: string | null; imageUrl: string | null }) {
+  if (!description && !imageUrl) return null;
+  return (
+    <div style={{
+      borderTop: '1px solid #f0f0f0',
+      marginTop: '14px',
+      paddingTop: '14px',
+    }}>
+      {imageUrl && (
+        <img
+          src={imageUrl}
+          alt=""
+          style={{
+            width: '100%',
+            borderRadius: '10px',
+            marginBottom: description ? '10px' : '0',
+            objectFit: 'cover',
+            maxHeight: '180px',
+            display: 'block',
+          }}
+        />
+      )}
+      {description && (
+        <p style={{ margin: 0, fontSize: '13px', color: '#555', lineHeight: '1.6' }}>
+          {description}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ─── Info toggle button ──────────────────────────────────────────────────────
+function InfoButton({ expanded, onClick }: { expanded: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        width: '28px',
+        height: '28px',
+        borderRadius: '50%',
+        border: `1.5px solid ${theme.primary}`,
+        background: expanded ? theme.primary : 'white',
+        color: expanded ? 'white' : theme.primary,
+        fontSize: '13px',
+        fontWeight: 'bold',
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+        lineHeight: 1,
+      }}
+    >
+      i
+    </button>
+  );
+}
+
 export default function BuyVouchers({ customer }: BuyVouchersProps) {
   const navigate = useNavigate();
   const [packages, setPackages] = useState<VoucherPackage[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [currentVouchers, setCurrentVouchers] = useState<Map<string, number>>(new Map());
+  const [productNames, setProductNames] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
   const [paying, setPaying] = useState<string | null>(null);
   const [qris, setQris] = useState<QrisState | null>(null);
+  const [customQtys, setCustomQtys] = useState<Map<string, number>>(new Map());
+  const [expandedPanels, setExpandedPanels] = useState<Set<string>>(new Set());
 
   useEffect(() => { loadData(); }, []);
 
   const loadData = async () => {
     try {
-      const [pkgRes, vRes] = await Promise.all([
+      const [pkgRes, vRes, prodRes] = await Promise.all([
         supabase
           .from('voucher_packages')
-          .select('id, product_id, qty, price, label, sort_order, products(name)')
+          .select('id, product_id, qty, price, label, sort_order, description, image_url, products(name)')
           .eq('is_active', true)
           .order('sort_order'),
         supabase
           .from('customer_product_vouchers')
           .select('product_id, balance')
           .eq('customer_id', customer.id),
+        supabase
+          .from('products')
+          .select('id, name, price, unit, is_refill, description, image_url')
+          .eq('status', 'active')
+          .eq('show_to_customers', true)
+          .order('sort_order')
+          .order('name'),
       ]);
 
-      setPackages((pkgRes.data as VoucherPackage[]) || []);
+      const pkgs = (pkgRes.data as VoucherPackage[]) || [];
+      const prods = (prodRes.data as Product[]) || [];
+
+      setPackages(pkgs);
+      setProducts(prods);
+
+      const nameMap = new Map<string, string>();
+      for (const p of prods) nameMap.set(p.id, p.name);
+      for (const pkg of pkgs) {
+        if (pkg.products?.name) nameMap.set(pkg.product_id, pkg.products.name);
+      }
+      setProductNames(nameMap);
+
       const map = new Map<string, number>();
       for (const row of vRes.data || []) map.set(row.product_id, row.balance);
       setCurrentVouchers(map);
@@ -71,19 +165,33 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
     }
   };
 
-  const handleBuy = async (pkg: VoucherPackage) => {
+  const getQty = (key: string) => customQtys.get(key) ?? 1;
+  const setQty = (key: string, delta: number) => {
+    setCustomQtys(prev => {
+      const next = new Map(prev);
+      next.set(key, Math.max(1, (prev.get(key) ?? 1) + delta));
+      return next;
+    });
+  };
+
+  const toggleExpand = (id: string) => {
+    setExpandedPanels(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const handleBuyPackage = async (pkg: VoucherPackage) => {
     setPaying(pkg.id);
     try {
       const token = sessionStorage.getItem('auth_token');
       if (!token) throw new Error('Session expired');
-
       const { data, error } = await supabase.functions.invoke('create-qris-payment', {
         body: { token, type: 'voucher', package_id: pkg.id },
       });
-
       if (error) throw new Error(error.message);
       if (!data?.success) throw new Error(data?.error || 'Failed to create QRIS payment');
-
       setQris({ qrCodeUrl: data.qr_code_url, qrString: data.qr_string, midtransOrderId: data.order_id, amount: data.amount });
     } catch (err: any) {
       toast.error('Payment error: ' + err.message);
@@ -91,6 +199,30 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
       setPaying(null);
     }
   };
+
+  const handleBuyCustom = async (product: Product, qtyOverride?: number) => {
+    const qty = qtyOverride ?? getQty(product.id);
+    setPaying(`custom_${product.id}`);
+    try {
+      const token = sessionStorage.getItem('auth_token');
+      if (!token) throw new Error('Session expired');
+      const { data, error } = await supabase.functions.invoke('create-qris-payment', {
+        body: { token, type: 'voucher_custom', product_id: product.id, qty },
+      });
+      if (error) throw new Error(error.message);
+      if (!data?.success) throw new Error(data?.error || 'Failed to create QRIS payment');
+      setQris({ qrCodeUrl: data.qr_code_url, qrString: data.qr_string, midtransOrderId: data.order_id, amount: data.amount });
+    } catch (err: any) {
+      toast.error('Payment error: ' + err.message);
+    } finally {
+      setPaying(null);
+    }
+  };
+
+  const singlePkg = packages.find(p => p.qty === 1) ?? null;
+  const multiPackages = packages.filter(p => p.qty > 1);
+  const productIdsWithPackages = new Set(packages.map(p => p.product_id));
+  const otherProducts = products.filter(p => !productIdsWithPackages.has(p.id));
 
   if (customer.customer_type !== 'pre_pay') {
     return (
@@ -112,7 +244,7 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
       {/* Header */}
       <div style={{ maxWidth: '800px', margin: '0 auto 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <button onClick={() => navigate('/customer-home')} style={{ padding: '10px 20px', background: 'rgba(255,255,255,0.2)', color: 'white', border: '2px solid white', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}>← Back</button>
-        <h1 style={{ color: 'white', fontSize: '22px', margin: 0 }}>🎫 Buy Vouchers</h1>
+        <h1 style={{ color: 'white', fontSize: '22px', margin: 0 }}>🛒 Top Up</h1>
         <div style={{ width: '80px' }} />
       </div>
 
@@ -121,54 +253,159 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
         {/* Current voucher balances */}
         {currentVouchers.size > 0 && (
           <div style={{ background: 'white', borderRadius: '16px', padding: '16px 20px', boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}>
-            <p style={{ margin: '0 0 10px 0', fontSize: '12px', color: theme.textMuted, fontWeight: '600' }}>Current Balance</p>
-            {Array.from(currentVouchers.entries()).map(([productId, balance]) => {
-              const pkg = packages.find(p => p.product_id === productId);
-              return (
-                <div key={productId} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '13px', color: theme.text }}>{pkg?.products?.name ?? '—'}</span>
-                  <span style={{ fontSize: '22px', fontWeight: 'bold', color: theme.primary }}>{balance}</span>
-                </div>
-              );
-            })}
+            <p style={{ margin: '0 0 10px 0', fontSize: '12px', color: theme.textMuted, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Current Balance</p>
+            {Array.from(currentVouchers.entries()).map(([productId, balance]) => (
+              <div key={productId} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0' }}>
+                <span style={{ fontSize: '13px', color: theme.text }}>{productNames.get(productId) ?? '—'}</span>
+                <span style={{ fontSize: '22px', fontWeight: 'bold', color: theme.primary }}>{balance}</span>
+              </div>
+            ))}
           </div>
         )}
 
-        {/* Packages */}
         {loading ? (
           <div style={{ background: 'white', borderRadius: '16px', padding: '40px', textAlign: 'center' }}>
-            <p style={{ color: theme.textMuted }}>Loading packages...</p>
-          </div>
-        ) : packages.length === 0 ? (
-          <div style={{ background: 'white', borderRadius: '16px', padding: '40px', textAlign: 'center' }}>
-            <p style={{ color: theme.textMuted }}>No packages available.</p>
+            <p style={{ color: theme.textMuted }}>Loading...</p>
           </div>
         ) : (
-          packages.map(pkg => (
-            <div key={pkg.id} style={{ background: 'white', borderRadius: '16px', padding: '20px', boxShadow: '0 4px 20px rgba(0,0,0,0.12)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                <div>
-                  <p style={{ margin: 0, fontSize: '20px', fontWeight: 'bold', color: theme.text }}>{pkg.qty} Vouchers</p>
-                  <p style={{ margin: '4px 0 0', fontSize: '12px', color: theme.textMuted }}>{pkg.label} · {pkg.products?.name}</p>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <p style={{ margin: 0, fontSize: '18px', fontWeight: 'bold', color: theme.primary }}>{formatCurrency(pkg.price)}</p>
-                  <p style={{ margin: '2px 0 0', fontSize: '11px', color: theme.textMuted }}>{formatCurrency(Math.round(pkg.price / pkg.qty))}/voucher</p>
-                </div>
+          <>
+            {/* ── Refill Packages ── */}
+            {packages.length > 0 && (
+              <>
+                <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '12px', margin: '0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  💧 Refill Packages
+                </p>
+
+                {/* Single-unit: qty selector */}
+                {singlePkg && (() => {
+                  const qtyKey = singlePkg.product_id + '_single';
+                  const qty = getQty(qtyKey);
+                  const isPaying = paying === `custom_${singlePkg.product_id}`;
+                  const product = products.find(p => p.id === singlePkg.product_id);
+                  const hasInfo = !!(singlePkg.description || singlePkg.image_url);
+                  const expanded = expandedPanels.has(singlePkg.id);
+                  return (
+                    <div style={{ background: 'white', borderRadius: '16px', padding: '20px', boxShadow: '0 4px 20px rgba(0,0,0,0.12)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+                        <div style={{ flex: 1 }}>
+                          <p style={{ margin: 0, fontSize: '16px', fontWeight: 'bold', color: theme.text }}>{singlePkg.products?.name} — Per Voucher</p>
+                          <p style={{ margin: '4px 0 0', fontSize: '12px', color: theme.textMuted }}>{formatCurrency(singlePkg.price)} / voucher</p>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <p style={{ margin: 0, fontSize: '17px', fontWeight: 'bold', color: theme.primary }}>
+                            {formatCurrency(singlePkg.price * qty)}
+                          </p>
+                          {hasInfo && <InfoButton expanded={expanded} onClick={() => toggleExpand(singlePkg.id)} />}
+                        </div>
+                      </div>
+                      {expanded && <InfoPanel description={singlePkg.description} imageUrl={singlePkg.image_url} />}
+                      <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: expanded ? '14px' : '0' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', border: `1.5px solid ${theme.primary}`, borderRadius: '8px', overflow: 'hidden' }}>
+                          <button onClick={() => setQty(qtyKey, -1)} style={{ width: '36px', height: '36px', background: 'white', border: 'none', fontSize: '18px', color: theme.primary, cursor: 'pointer', fontWeight: 'bold' }}>−</button>
+                          <span style={{ minWidth: '32px', textAlign: 'center', fontSize: '15px', fontWeight: '600', color: theme.text }}>{qty}</span>
+                          <button onClick={() => setQty(qtyKey, +1)} style={{ width: '36px', height: '36px', background: 'white', border: 'none', fontSize: '18px', color: theme.primary, cursor: 'pointer', fontWeight: 'bold' }}>+</button>
+                        </div>
+                        <button
+                          onClick={() => product && handleBuyCustom(product, getQty(qtyKey))}
+                          disabled={isPaying || !product}
+                          style={{ flex: 1, padding: '10px', background: isPaying ? '#ccc' : theme.gradientPrimary, color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: isPaying ? 'not-allowed' : 'pointer' }}
+                        >
+                          {isPaying ? 'Loading...' : 'Beli Sekarang'}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Multi-qty: fixed price */}
+                {multiPackages.map(pkg => {
+                  const hasInfo = !!(pkg.description || pkg.image_url);
+                  const expanded = expandedPanels.has(pkg.id);
+                  return (
+                    <div key={pkg.id} style={{ background: 'white', borderRadius: '16px', padding: '20px', boxShadow: '0 4px 20px rgba(0,0,0,0.12)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                        <div style={{ flex: 1 }}>
+                          <p style={{ margin: 0, fontSize: '20px', fontWeight: 'bold', color: theme.text }}>{pkg.qty} Vouchers</p>
+                          <p style={{ margin: '4px 0 0', fontSize: '12px', color: theme.textMuted }}>{pkg.label} · {pkg.products?.name}</p>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <div style={{ textAlign: 'right' }}>
+                            <p style={{ margin: 0, fontSize: '18px', fontWeight: 'bold', color: theme.primary }}>{formatCurrency(pkg.price)}</p>
+                            <p style={{ margin: '2px 0 0', fontSize: '11px', color: theme.textMuted }}>{formatCurrency(Math.round(pkg.price / pkg.qty))}/voucher</p>
+                          </div>
+                          {hasInfo && <InfoButton expanded={expanded} onClick={() => toggleExpand(pkg.id)} />}
+                        </div>
+                      </div>
+                      {expanded && <InfoPanel description={pkg.description} imageUrl={pkg.image_url} />}
+                      <button
+                        onClick={() => handleBuyPackage(pkg)}
+                        disabled={paying === pkg.id}
+                        style={{ width: '100%', padding: '12px', marginTop: expanded ? '14px' : '0', background: paying === pkg.id ? '#ccc' : theme.gradientPrimary, color: 'white', border: 'none', borderRadius: '8px', fontSize: '15px', fontWeight: 'bold', cursor: paying === pkg.id ? 'not-allowed' : 'pointer' }}
+                      >
+                        {paying === pkg.id ? 'Loading...' : 'Beli Sekarang'}
+                      </button>
+                    </div>
+                  );
+                })}
+              </>
+            )}
+
+            {/* ── Other Products ── */}
+            {otherProducts.length > 0 && (
+              <>
+                <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '12px', margin: '4px 0 0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  🛍️ Other Products
+                </p>
+                {otherProducts.map(product => {
+                  const qty = getQty(product.id);
+                  const isPaying = paying === `custom_${product.id}`;
+                  const hasInfo = !!(product.description || product.image_url);
+                  const expanded = expandedPanels.has(product.id);
+                  return (
+                    <div key={product.id} style={{ background: 'white', borderRadius: '16px', padding: '20px', boxShadow: '0 4px 20px rgba(0,0,0,0.12)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+                        <div style={{ flex: 1 }}>
+                          <p style={{ margin: 0, fontSize: '16px', fontWeight: 'bold', color: theme.text }}>{product.name}</p>
+                          <p style={{ margin: '4px 0 0', fontSize: '12px', color: theme.textMuted }}>{formatCurrency(product.price)} / {product.unit}</p>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <p style={{ margin: 0, fontSize: '17px', fontWeight: 'bold', color: theme.primary }}>
+                            {formatCurrency(product.price * qty)}
+                          </p>
+                          {hasInfo && <InfoButton expanded={expanded} onClick={() => toggleExpand(product.id)} />}
+                        </div>
+                      </div>
+                      {expanded && <InfoPanel description={product.description} imageUrl={product.image_url} />}
+                      <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: expanded ? '14px' : '0' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', border: `1.5px solid ${theme.primary}`, borderRadius: '8px', overflow: 'hidden' }}>
+                          <button onClick={() => setQty(product.id, -1)} style={{ width: '36px', height: '36px', background: 'white', border: 'none', fontSize: '18px', color: theme.primary, cursor: 'pointer', fontWeight: 'bold' }}>−</button>
+                          <span style={{ minWidth: '32px', textAlign: 'center', fontSize: '15px', fontWeight: '600', color: theme.text }}>{qty}</span>
+                          <button onClick={() => setQty(product.id, +1)} style={{ width: '36px', height: '36px', background: 'white', border: 'none', fontSize: '18px', color: theme.primary, cursor: 'pointer', fontWeight: 'bold' }}>+</button>
+                        </div>
+                        <button
+                          onClick={() => handleBuyCustom(product)}
+                          disabled={isPaying}
+                          style={{ flex: 1, padding: '10px', background: isPaying ? '#ccc' : theme.gradientPrimary, color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: isPaying ? 'not-allowed' : 'pointer' }}
+                        >
+                          {isPaying ? 'Loading...' : 'Beli Sekarang'}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </>
+            )}
+
+            {packages.length === 0 && otherProducts.length === 0 && (
+              <div style={{ background: 'white', borderRadius: '16px', padding: '40px', textAlign: 'center' }}>
+                <p style={{ color: theme.textMuted }}>No products available.</p>
               </div>
-              <button
-                onClick={() => handleBuy(pkg)}
-                disabled={paying === pkg.id}
-                style={{ width: '100%', padding: '12px', background: paying === pkg.id ? '#ccc' : theme.gradientPrimary, color: 'white', border: 'none', borderRadius: '8px', fontSize: '15px', fontWeight: 'bold', cursor: paying === pkg.id ? 'not-allowed' : 'pointer' }}
-              >
-                {paying === pkg.id ? 'Loading...' : 'Beli Sekarang'}
-              </button>
-            </div>
-          ))
+            )}
+          </>
         )}
 
         <div style={{ background: 'rgba(255,255,255,0.15)', borderRadius: '12px', padding: '14px 16px', fontSize: '12px', color: 'rgba(255,255,255,0.9)' }}>
-          ℹ️ Voucher otomatis ditambahkan setelah pembayaran berhasil.
+          ℹ️ Saldo otomatis ditambahkan setelah pembayaran berhasil.
         </div>
       </div>
 
