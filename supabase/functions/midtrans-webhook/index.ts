@@ -86,6 +86,15 @@ serve(async (req) => {
         .eq('payment_status', 'unpaid')
     }
 
+    // ── Pre-pay order payment (order_id starts with "pop_") ──
+    if (order_id.startsWith('pop_')) {
+      await supabase
+        .from('orders')
+        .update({ payment_status: 'paid' })
+        .eq('midtrans_order_id', order_id)
+        .eq('payment_status', 'unpaid')
+    }
+
     return new Response('OK', { status: 200 })
   } catch (error: any) {
     console.error('Webhook error:', error)
