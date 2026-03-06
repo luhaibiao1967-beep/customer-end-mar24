@@ -471,7 +471,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
               size={160}
               level="H"
               imageSettings={{
-                src: '/192-192.png',
+                src: '/shortcut.png',
                 height: 36,
                 width: 36,
                 excavate: true,
