@@ -86,7 +86,7 @@ serve(async (req) => {
       .in('id', order_ids)
 
     return new Response(
-      JSON.stringify({ success: true, snap_token: mtData.token, client_key: clientKey, snap_js_url: snapJsUrl, total: grossAmount }),
+      JSON.stringify({ success: true, snap_token: mtData.token, client_key: clientKey, snap_js_url: snapJsUrl, total: grossAmount, midtrans_order_id: orderId }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
     )
   } catch (error: any) {

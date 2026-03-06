@@ -149,8 +149,17 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
 
       await loadSnapScript(data.client_key, data.snap_js_url);
 
+      const midtransOrderId = data.midtrans_order_id;
       (window as any).snap.pay(data.snap_token, {
-        onSuccess: () => { fetchOrders(); toast.success('Payment successful! Order will update shortly.'); },
+        onSuccess: async () => {
+          try {
+            await supabase.functions.invoke('confirm-snap-payment', {
+              body: { token, midtrans_order_id: midtransOrderId },
+            });
+          } catch (_) { /* webhook will handle it as fallback */ }
+          fetchOrders();
+          toast.success('Payment successful!');
+        },
         onPending: () => { toast('Payment submitted — order will be confirmed once your bank settles the transfer.', { duration: 6000 }); },
         onError: (result: any) => { toast.error('Payment failed: ' + (result?.status_message || 'Unknown error')); },
         onClose: () => { /* user dismissed without paying */ },

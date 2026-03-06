@@ -120,7 +120,7 @@ serve(async (req) => {
     if (updateMtErr) throw new Error('Failed to save midtrans_order_id: ' + updateMtErr.message)
 
     return new Response(
-      JSON.stringify({ success: true, snap_token: mtData.token, client_key: clientKey, snap_js_url: snapJsUrl, order_id: newOrder.id }),
+      JSON.stringify({ success: true, snap_token: mtData.token, client_key: clientKey, snap_js_url: snapJsUrl, order_id: newOrder.id, midtrans_order_id: midtransOrderId }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
     )
   } catch (error: any) {

@@ -373,10 +373,16 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
 
       await loadSnapScript(data.client_key, data.snap_js_url);
 
+      const midtransOrderId = data.midtrans_order_id;
       let paymentCompleted = false;
       (window as any).snap.pay(data.snap_token, {
-        onSuccess: () => {
+        onSuccess: async () => {
           paymentCompleted = true;
+          try {
+            await supabase.functions.invoke('confirm-snap-payment', {
+              body: { token, midtrans_order_id: midtransOrderId },
+            });
+          } catch (_) { /* webhook will handle it as fallback */ }
           setSubmitting(false);
           setShowSuccess(true);
         },
