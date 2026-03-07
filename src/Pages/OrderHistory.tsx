@@ -428,11 +428,11 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                         <div style={{ display: 'grid', gridTemplateColumns: order.payment_status === 'paid' ? '1fr' : '1fr 1fr', gap: '8px' }}>
                           <button onClick={() => navigate(`/place-order?edit=${order.id}`)} style={{ padding: '10px', background: theme.info, color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}>
-                            ✏️ Edit
+                            Edit
                           </button>
                           {order.payment_status !== 'paid' && (
                             <button onClick={() => handleCancel(order.id)} disabled={cancellingId === order.id} style={{ padding: '10px', background: cancellingId === order.id ? '#ccc' : theme.error, color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: cancellingId === order.id ? 'not-allowed' : 'pointer' }}>
-                              {cancellingId === order.id ? '...' : '🗑️ Cancel'}
+                              {cancellingId === order.id ? '...' : 'Cancel'}
                             </button>
                           )}
                         </div>

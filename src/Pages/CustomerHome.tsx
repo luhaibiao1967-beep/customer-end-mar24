@@ -290,7 +290,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
                           cursor: 'pointer'
                         }}
                       >
-                        ✏️ Edit
+                        Edit
                       </button>
                       <button
                         onClick={() => handleDeleteOrder(order.id)}
@@ -305,7 +305,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
                           cursor: 'pointer'
                         }}
                       >
-                        🗑️ Delete
+                        Delete
                       </button>
                     </div>
                   )}
