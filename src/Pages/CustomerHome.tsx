@@ -460,38 +460,28 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
         </div>
 
         {/* Share App Card */}
-        <div style={{ background: 'white', borderRadius: '24px', marginTop: '20px', boxShadow: '0 8px 32px rgba(0,0,0,0.12)', overflow: 'hidden' }}>
-          {/* Header */}
-          <div style={{ background: theme.gradientPrimary, padding: '20px 24px 16px', textAlign: 'center' }}>
-            <img src="/shortcut.png" alt="VividAqua" style={{ width: '52px', height: '52px', borderRadius: '14px', marginBottom: '10px', boxShadow: '0 4px 12px rgba(0,0,0,0.2)' }} />
-            <div style={{ color: 'white', fontWeight: '700', fontSize: '17px', letterSpacing: '0.3px' }}>VividAqua</div>
-            <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: '12px', marginTop: '2px' }}>Water Delivery App</div>
+        <div style={{ background: 'white', borderRadius: '20px', padding: '24px', marginTop: '20px', boxShadow: '0 10px 40px rgba(0,0,0,0.2)', textAlign: 'center' }}>
+          <h3 style={{ fontSize: '16px', fontWeight: '600', margin: '0 0 4px 0' }}>Share App</h3>
+          <p style={{ fontSize: '12px', color: theme.textMuted, margin: '0 0 16px 0' }}>Scan or share to open the app</p>
+
+          <div style={{ display: 'inline-block', padding: '12px', background: '#f8f9fa', borderRadius: '12px', marginBottom: '16px' }}>
+            <QRCodeCanvas
+              ref={qrRef}
+              value={APP_URL}
+              size={160}
+              level="H"
+              imageSettings={{
+                src: '/shortcut.png',
+                height: 36,
+                width: 36,
+                excavate: true,
+              }}
+            />
           </div>
 
-          {/* QR Code */}
-          <div style={{ textAlign: 'center', padding: '20px 24px 12px' }}>
-            <div style={{ display: 'inline-block', padding: '14px', background: 'white', borderRadius: '16px', boxShadow: '0 2px 12px rgba(0,0,0,0.1)', border: '1px solid #eee' }}>
-              <QRCodeCanvas
-                ref={qrRef}
-                value={APP_URL}
-                size={168}
-                level="H"
-                imageSettings={{
-                  src: '/shortcut.png',
-                  height: 38,
-                  width: 38,
-                  excavate: true,
-                }}
-              />
-            </div>
-            <p style={{ fontSize: '12px', color: theme.textMuted, margin: '12px 0 4px' }}>Scan QR code to open app</p>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', background: '#f5f5f5', borderRadius: '8px', padding: '7px 12px', margin: '0 0 16px' }}>
-              <span style={{ fontSize: '11px', color: theme.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '220px' }}>{APP_URL}</span>
-            </div>
-          </div>
+          <p style={{ fontSize: '11px', color: theme.textMuted, margin: '0 0 14px 0', wordBreak: 'break-all' }}>{APP_URL}</p>
 
-          {/* Buttons */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', padding: '0 20px 20px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
             <button
               onClick={async () => {
                 try {
@@ -516,18 +506,18 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
                   // user cancelled
                 }
               }}
-              style={{ padding: '11px', background: theme.gradientPrimary, color: 'white', border: 'none', borderRadius: '10px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', letterSpacing: '0.2px' }}
+              style={{ padding: '10px', background: theme.gradientPrimary, color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer' }}
             >
-              🔗 Share
+              Share
             </button>
             <button
               onClick={async () => {
                 await navigator.clipboard.writeText(APP_URL);
                 toast.success('Link copied!');
               }}
-              style={{ padding: '11px', background: 'white', color: theme.primary, border: `2px solid ${theme.primary}`, borderRadius: '10px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', letterSpacing: '0.2px' }}
+              style={{ padding: '10px', background: 'white', color: theme.primary, border: `2px solid ${theme.primary}`, borderRadius: '8px', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer' }}
             >
-              📋 Copy Link
+              Copy Link
             </button>
           </div>
         </div>
