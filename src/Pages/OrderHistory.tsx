@@ -197,7 +197,7 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
         reader.readAsDataURL(selectedFile);
       });
 
-      const targetIds = unpaidDeliveredOrders.map(o => o.id);
+      const targetIds = unpaidOrders.map(o => o.id);
 
       const { data, error } = await supabase.functions.invoke('payment-action', {
         body: {
@@ -253,12 +253,13 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
 
   const isLaterPay = customer.customer_type !== 'pre_pay';
 
-  const unpaidDeliveredOrders = orders.filter(o => o.payment_status === 'unpaid' && o.status === 'delivered');
-  const totalUnpaid = unpaidDeliveredOrders.reduce((sum, o) => sum + o.total_amount, 0);
+  const unpaidOrders = orders.filter(o => o.payment_status === 'unpaid');
+  const unpaidDeliveredOrders = unpaidOrders.filter(o => o.status === 'delivered');
+  const totalUnpaid = unpaidOrders.reduce((sum, o) => sum + o.total_amount, 0);
   const totalBorrowedGallons = initialBorrowedGallons +
     orders.reduce((sum, o) => sum + (o.borrowed_gallons || 0), 0);
 
-  const isPayingAll = unpaidDeliveredOrders.some(o => payingIds.has(o.id));
+  const isPayingAll = unpaidOrders.some(o => payingIds.has(o.id));
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -302,14 +303,14 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
           <div style={{ background: 'white', borderRadius: '16px', padding: '16px 20px', marginBottom: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}>
 
             {/* Balance row */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: unpaidDeliveredOrders.length > 0 ? '14px' : '0' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: unpaidOrders.length > 0 ? '14px' : '0' }}>
               <div style={{ borderLeft: `4px solid ${theme.error}`, paddingLeft: '12px' }}>
                 <p style={{ margin: 0, fontSize: '11px', color: theme.textMuted }}>Outstanding Balance</p>
                 <p style={{ margin: '4px 0 0', fontSize: '18px', fontWeight: 'bold', color: totalUnpaid > 0 ? theme.error : theme.success }}>
                   {totalUnpaid > 0 ? formatCurrency(totalUnpaid) : '✅ Clear'}
                 </p>
-                {unpaidDeliveredOrders.length > 1 && (
-                  <p style={{ margin: '2px 0 0', fontSize: '11px', color: theme.textMuted }}>{unpaidDeliveredOrders.length} orders</p>
+                {unpaidOrders.length > 1 && (
+                  <p style={{ margin: '2px 0 0', fontSize: '11px', color: theme.textMuted }}>{unpaidOrders.length} orders</p>
                 )}
               </div>
               <div style={{ borderLeft: `4px solid ${theme.primary}`, paddingLeft: '12px' }}>
@@ -321,10 +322,10 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
             </div>
 
             {/* Payment buttons — shown whenever there is outstanding */}
-            {unpaidDeliveredOrders.length > 0 && (
+            {unpaidOrders.length > 0 && (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                 <button
-                  onClick={() => handlePayWithQris(unpaidDeliveredOrders.map(o => o.id))}
+                  onClick={() => handlePayWithQris(unpaidOrders.map(o => o.id))}
                   disabled={isPayingAll}
                   style={{ padding: '12px', background: isPayingAll ? '#ccc' : theme.gradientSuccess, color: 'white', border: 'none', borderRadius: '10px', fontSize: '14px', fontWeight: 'bold', cursor: isPayingAll ? 'not-allowed' : 'pointer' }}
                 >
@@ -423,19 +424,41 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
                         </button>
                       </div>
                     ) : (
-                      // Post-pay or other: existing edit/cancel buttons
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                        <button onClick={() => navigate(`/place-order?edit=${order.id}`)} style={{ padding: '10px', background: theme.info, color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}>
-                          ✏️ Edit
-                        </button>
-                        <button onClick={() => handleCancel(order.id)} disabled={cancellingId === order.id} style={{ padding: '10px', background: cancellingId === order.id ? '#ccc' : theme.error, color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: cancellingId === order.id ? 'not-allowed' : 'pointer' }}>
-                          {cancellingId === order.id ? '...' : '🗑️ Cancel'}
-                        </button>
+                      // later_pay: edit/cancel + QRIS if unpaid
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                          <button onClick={() => navigate(`/place-order?edit=${order.id}`)} style={{ padding: '10px', background: theme.info, color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}>
+                            ✏️ Edit
+                          </button>
+                          <button onClick={() => handleCancel(order.id)} disabled={cancellingId === order.id} style={{ padding: '10px', background: cancellingId === order.id ? '#ccc' : theme.error, color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: cancellingId === order.id ? 'not-allowed' : 'pointer' }}>
+                            {cancellingId === order.id ? '...' : '🗑️ Cancel'}
+                          </button>
+                        </div>
+                        {order.payment_status === 'unpaid' && (
+                          <button
+                            onClick={() => handlePayWithQris([order.id])}
+                            disabled={payingIds.has(order.id)}
+                            style={{ padding: '10px', background: payingIds.has(order.id) ? '#ccc' : theme.gradientSuccess, color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: payingIds.has(order.id) ? 'not-allowed' : 'pointer' }}
+                          >
+                            {payingIds.has(order.id) ? 'Loading...' : 'Pay via QRIS'}
+                          </button>
+                        )}
                       </div>
                     )
                   ) : order.status === 'scheduled' ? (
-                    <div style={{ padding: '8px 12px', background: '#f5f5f5', borderRadius: '8px', fontSize: '12px', color: theme.textMuted, textAlign: 'center' }}>
-                      ℹ️ Order confirmed — cannot be edited or cancelled
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <div style={{ padding: '8px 12px', background: '#f5f5f5', borderRadius: '8px', fontSize: '12px', color: theme.textMuted, textAlign: 'center' }}>
+                        ℹ️ Order confirmed — cannot be edited or cancelled
+                      </div>
+                      {isLaterPay && order.payment_status === 'unpaid' && (
+                        <button
+                          onClick={() => handlePayWithQris([order.id])}
+                          disabled={payingIds.has(order.id)}
+                          style={{ padding: '10px', background: payingIds.has(order.id) ? '#ccc' : theme.gradientSuccess, color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: payingIds.has(order.id) ? 'not-allowed' : 'pointer' }}
+                        >
+                          {payingIds.has(order.id) ? 'Loading...' : 'Pay via QRIS'}
+                        </button>
+                      )}
                     </div>
                   ) : null}
 
@@ -476,7 +499,7 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
               <div>
                 <p style={{ margin: 0, fontWeight: '700', fontSize: '16px' }}>Bank Transfer</p>
                 <p style={{ margin: 0, fontSize: '13px', color: theme.textMuted }}>
-                  {unpaidDeliveredOrders.length} order(s) · {formatCurrency(totalUnpaid)}
+                  {unpaidOrders.length} order(s) · {formatCurrency(totalUnpaid)}
                 </p>
               </div>
               <button onClick={closeUploadModal} style={{ background: 'none', border: 'none', fontSize: '22px', cursor: 'pointer', color: theme.textMuted }}>✕</button>
@@ -494,7 +517,7 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
               </div>
               <p style={{ fontSize: '13px', color: theme.error, fontWeight: '700', textAlign: 'center', marginBottom: '20px', background: '#fff3e0', padding: '10px', borderRadius: '8px' }}>
                 Transfer amount: {formatCurrency(totalUnpaid)}
-                {unpaidDeliveredOrders.length > 1 && ` (${unpaidDeliveredOrders.length} orders)`}
+                {unpaidOrders.length > 1 && ` (${unpaidOrders.length} orders)`}
               </p>
 
               {/* Upload evidence */}
