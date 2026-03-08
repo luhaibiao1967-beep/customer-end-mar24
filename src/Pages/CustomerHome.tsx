@@ -417,7 +417,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', background: '#f8f9fa', borderRadius: '10px' }}>
                 <span style={{ fontSize: '13px', color: '#666' }}>{t('home.billingCycle')}</span>
                 <span style={{ fontSize: '13px', fontWeight: '600', color: theme.text }}>
-                  {{ daily: 'Daily (天)', weekly: 'Weekly (周)', biweekly: 'Biweekly (两周)', monthly: 'Monthly (月)' }[paymentTerm] ?? paymentTerm}
+                  {{ daily: 'Daily', weekly: 'Weekly', biweekly: 'Biweekly', monthly: 'Monthly' }[paymentTerm] ?? paymentTerm}
                 </span>
               </div>
             )}

@@ -288,7 +288,7 @@ export const OrderDelivery: React.FC = () => {
           <section className="info-card">
             <h3>📸 {t('delivery.deliveryEvidence')}</h3>
             <div className="evidence-image">
-              <img src={order.delivery_evidence} alt="配送凭证" />
+              <img src={order.delivery_evidence} alt={t('delivery.deliveryEvidence')} />
             </div>
           </section>
         )}

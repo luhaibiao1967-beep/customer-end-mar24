@@ -69,7 +69,7 @@ export default function MagicLinkDiagnostics() {
       <div style={styles.page}>
         <div style={styles.card}>
           <div style={styles.spinner} />
-          <p>加载诊断数据...</p>
+          <p>Loading diagnostics...</p>
         </div>
       </div>
     );
@@ -78,8 +78,8 @@ export default function MagicLinkDiagnostics() {
   return (
     <div style={styles.page}>
       <div style={styles.card}>
-        <h1 style={styles.title}>🔍 Magic Link 发送诊断</h1>
-        <p style={styles.subtitle}>排查 Magic Link 无法送达的原因</p>
+        <h1 style={styles.title}>🔍 Magic Link Diagnostics</h1>
+        <p style={styles.subtitle}>Troubleshoot why Magic Links are not being delivered</p>
 
         {error && (
           <div style={styles.errorBox}>
@@ -95,17 +95,17 @@ export default function MagicLinkDiagnostics() {
               background: data.summary?.diagnosis?.includes('⚠️') ? '#fff3cd' : data.summary?.diagnosis?.includes('❌') ? '#f8d7da' : '#d4edda',
               borderColor: data.summary?.diagnosis?.includes('⚠️') ? '#ffc107' : data.summary?.diagnosis?.includes('❌') ? '#f5c6cb' : '#c3e6cb',
             }}>
-              <strong>诊断结论</strong>
+              <strong>Diagnosis</strong>
               <p style={{ margin: '8px 0 0 0', fontSize: '15px' }}>{data.summary?.diagnosis}</p>
             </div>
 
             {/* Env Config */}
-            <h2 style={styles.sectionTitle}>环境配置</h2>
+            <h2 style={styles.sectionTitle}>Environment Config</h2>
             <div style={styles.table}>
               <div style={styles.row}>
                 <span style={styles.label}>ENVIRONMENT</span>
                 <span style={data.env.dev_mode ? styles.bad : styles.good}>{data.env.ENVIRONMENT}</span>
-                {data.env.dev_mode && <span style={styles.bad}> → 不会发送 WhatsApp</span>}
+                {data.env.dev_mode && <span style={styles.bad}> → WhatsApp messages will NOT be sent</span>}
               </div>
               <div style={styles.row}>
                 <span style={styles.label}>WA_TEMPLATE_MAGIC_LINK</span>
@@ -130,15 +130,15 @@ export default function MagicLinkDiagnostics() {
             </div>
 
             {/* Summary */}
-            <h2 style={styles.sectionTitle}>发送统计（最近 20 条）</h2>
+            <h2 style={styles.sectionTitle}>Send Stats (last 20)</h2>
             <div style={styles.stats}>
-              <span>总尝试: <strong>{data.summary?.total_attempts ?? 0}</strong></span>
-              <span style={styles.good}>成功(sent): <strong>{data.summary?.sent ?? 0}</strong></span>
-              <span style={styles.bad}>失败(failed): <strong>{data.summary?.failed ?? 0}</strong></span>
+              <span>Total: <strong>{data.summary?.total_attempts ?? 0}</strong></span>
+              <span style={styles.good}>Sent: <strong>{data.summary?.sent ?? 0}</strong></span>
+              <span style={styles.bad}>Failed: <strong>{data.summary?.failed ?? 0}</strong></span>
             </div>
 
             {/* Recent Messages */}
-            <h2 style={styles.sectionTitle}>最近发送记录</h2>
+            <h2 style={styles.sectionTitle}>Recent Messages</h2>
             {data.recent_messages && data.recent_messages.length > 0 ? (
               <div style={styles.msgList}>
                 {data.recent_messages.map((m) => (
@@ -155,25 +155,25 @@ export default function MagicLinkDiagnostics() {
                 ))}
               </div>
             ) : (
-              <p style={{ color: '#666' }}>暂无 login_link 发送记录。请先在登录页输入已注册的 WhatsApp 号码触发发送。</p>
+              <p style={{ color: '#666' }}>No login_link records found. Try entering a registered WhatsApp number on the login page to trigger a send.</p>
             )}
 
             {/* Tips */}
-            <h2 style={styles.sectionTitle}>排查建议</h2>
+            <h2 style={styles.sectionTitle}>Troubleshooting Tips</h2>
             <ul style={styles.tips}>
-              <li>若 <strong>ENVIRONMENT=development</strong>：Supabase Secrets 中删除或改为 production</li>
-              <li>若 <strong>status: failed</strong>：查看上方错误详情，常见原因：模板名错误、Token 过期、号码格式</li>
-              <li>若 <strong>status: sent</strong> 但用户收不到：检查 Meta 测试号码白名单、WhatsApp 消息请求、是否需切换 Live 模式</li>
-              <li>Secrets 修改后无需重新部署，会自动生效</li>
+              <li>If <strong>ENVIRONMENT=development</strong>: delete or change to production in Supabase Secrets</li>
+              <li>If <strong>status: failed</strong>: check error details above — common causes: wrong template name, expired token, phone number format</li>
+              <li>If <strong>status: sent</strong> but user doesn't receive it: check Meta test number whitelist, WhatsApp message requests, or switch to Live mode</li>
+              <li>Secrets changes take effect immediately without redeployment</li>
             </ul>
           </>
         )}
 
         <div style={styles.footer}>
           <button onClick={handleRefresh} disabled={refreshing} style={styles.btn}>
-            {refreshing ? '刷新中...' : '🔄 刷新'}
+            {refreshing ? 'Refreshing...' : '🔄 Refresh'}
           </button>
-          <a href="/" style={styles.link}>← 返回登录</a>
+          <a href="/" style={styles.link}>← Back to Login</a>
         </div>
       </div>
     </div>
