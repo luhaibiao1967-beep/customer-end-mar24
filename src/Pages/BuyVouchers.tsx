@@ -197,15 +197,22 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
       if (error) throw new Error(error.message);
       if (!data?.success) throw new Error(data?.error || 'Failed to create payment');
       await loadSnapScript(data.client_key, data.snap_js_url);
+      const orderId = data.midtrans_order_id;
       (window as any).snap.pay(data.snap_token, {
-        onSuccess: () => {
+        onSuccess: async () => {
+          // Optimistic UI update
           setCurrentVouchers(prev => {
             const next = new Map(prev);
             next.set(pkg.product_id, (prev.get(pkg.product_id) ?? 0) + pkg.qty);
             return next;
           });
+          // Confirm with Midtrans API and write to DB
+          const authToken = sessionStorage.getItem('auth_token');
+          await supabase.functions.invoke('confirm-voucher-payment', {
+            body: { token: authToken, midtrans_order_id: orderId },
+          });
           toast.success('Payment successful! Vouchers added.');
-          setTimeout(() => loadData(), 3000);
+          loadData();
         },
         onPending: () => { toast('Payment submitted — vouchers will be added once payment settles.', { duration: 6000 }); },
         onError: (result: any) => { toast.error('Payment failed: ' + (result?.status_message || 'Unknown error')); },
@@ -230,15 +237,22 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
       if (error) throw new Error(error.message);
       if (!data?.success) throw new Error(data?.error || 'Failed to create payment');
       await loadSnapScript(data.client_key, data.snap_js_url);
+      const orderId = data.midtrans_order_id;
       (window as any).snap.pay(data.snap_token, {
-        onSuccess: () => {
+        onSuccess: async () => {
+          // Optimistic UI update
           setCurrentVouchers(prev => {
             const next = new Map(prev);
             next.set(product.id, (prev.get(product.id) ?? 0) + qty);
             return next;
           });
+          // Confirm with Midtrans API and write to DB
+          const authToken = sessionStorage.getItem('auth_token');
+          await supabase.functions.invoke('confirm-voucher-payment', {
+            body: { token: authToken, midtrans_order_id: orderId },
+          });
           toast.success('Payment successful! Vouchers added.');
-          setTimeout(() => loadData(), 3000);
+          loadData();
         },
         onPending: () => { toast('Payment submitted — vouchers will be added once payment settles.', { duration: 6000 }); },
         onError: (result: any) => { toast.error('Payment failed: ' + (result?.status_message || 'Unknown error')); },

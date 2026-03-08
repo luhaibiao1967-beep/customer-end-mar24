@@ -115,7 +115,7 @@ serve(async (req) => {
     if (!mtData.token) throw new Error('Midtrans error: ' + JSON.stringify(mtData))
 
     return new Response(
-      JSON.stringify({ success: true, snap_token: mtData.token, client_key: clientKey, snap_js_url: snapJsUrl }),
+      JSON.stringify({ success: true, snap_token: mtData.token, client_key: clientKey, snap_js_url: snapJsUrl, midtrans_order_id: orderId }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
     )
   } catch (error: any) {
