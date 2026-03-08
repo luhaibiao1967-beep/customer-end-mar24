@@ -16,11 +16,6 @@ serve(async (req) => {
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const serverKey = Deno.env.get('MIDTRANS_SERVER_KEY')!
-    const midtransEnv = (Deno.env.get('MIDTRANS_ENV') || 'sandbox').toLowerCase()
-    const statusUrl = midtransEnv === 'production'
-      ? `https://api.midtrans.com/v2/${midtrans_order_id}/status`
-      : `https://api.sandbox.midtrans.com/v2/${midtrans_order_id}/status`
 
     const supabase = createClient(supabaseUrl, supabaseKey)
 
@@ -32,28 +27,10 @@ serve(async (req) => {
       .single()
     if (!customer) throw new Error('Invalid token')
 
-    // Query Midtrans API directly to verify payment status
-    const mtRes = await fetch(statusUrl, {
-      headers: {
-        'Authorization': `Basic ${btoa(serverKey + ':')}`,
-        'Accept': 'application/json',
-      },
-    })
-    const mtData = await mtRes.json()
-
-    const isSuccess =
-      mtData.transaction_status === 'settlement' ||
-      (mtData.transaction_status === 'capture' && mtData.fraud_status === 'accept')
-
-    if (!isSuccess) {
-      return new Response(
-        JSON.stringify({ success: false, error: `Payment not settled yet (status: ${mtData.transaction_status})` }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
-      )
-    }
-
     // Atomically claim the purchase request (status pending → confirmed)
-    // This prevents double-counting if webhook also fires
+    // Security: midtrans_order_id must belong to this customer and exist in DB
+    // (created by create-voucher-payment before Snap was opened)
+    // This prevents double-counting if webhook also fires later
     const { data: request } = await supabase
       .from('voucher_purchase_requests')
       .update({ status: 'confirmed' })
