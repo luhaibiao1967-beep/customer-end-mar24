@@ -109,11 +109,19 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
   const totalAmount = cartItems.reduce((sum, item) =>
     sum + getUnitPrice(item.product) * item.quantity, 0);
 
-  // For pre_pay: check each product independently against its voucher balance
-  const insufficientProducts = isPrePay
-    ? cartItems.filter(item => item.quantity > (productVouchers.get(item.product.id) ?? 0))
+  // For pre_pay: per-product breakdown of voucher coverage vs QRIS shortfall
+  const voucherBreakdown = isPrePay
+    ? cartItems.map(item => {
+        const available = productVouchers.get(item.product.id) ?? 0;
+        const byVoucher = Math.min(item.quantity, available);
+        const byPayment = item.quantity - byVoucher;
+        return { item, byVoucher, byPayment };
+      })
     : [];
-  const hasEnoughVouchers = insufficientProducts.length === 0;
+  const payableAmount = voucherBreakdown.reduce(
+    (sum, { item, byPayment }) => sum + byPayment * getUnitPrice(item.product), 0
+  );
+  const hasEnoughVouchers = isPrePay ? payableAmount === 0 : true;
 
   useEffect(() => {
     loadProducts();
@@ -360,11 +368,17 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
         discount: 0,
       }));
 
+      const product_deductions = voucherBreakdown
+        .filter(({ byVoucher }) => byVoucher > 0)
+        .map(({ item, byVoucher }) => ({ product_id: item.product.id, quantity: byVoucher }));
+
       const { data, error } = await supabase.functions.invoke('submit-prepay-order', {
         body: {
           token,
           order: { delivery_date: deliveryDate, note: notes || null, total_amount: totalAmount },
           items: orderItems,
+          payment_amount: payableAmount,
+          product_deductions,
         },
       });
 
@@ -622,23 +636,29 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
           </div>
         )}
 
-        {/* Voucher insufficient warning (pre_pay) */}
-        {isPrePay && insufficientProducts.length > 0 && (
+        {/* Payment breakdown (pre_pay, partial or no vouchers) */}
+        {isPrePay && cartItems.length > 0 && payableAmount > 0 && (
           <div style={{ background: '#fff3cd', border: `2px solid ${theme.warning}`, borderRadius: '16px', padding: '20px' }}>
-            <p style={{ margin: '0 0 8px 0', fontWeight: '600', color: '#856404' }}>
-              ⚠️ Voucher tidak cukup untuk:
-            </p>
-            {insufficientProducts.map(item => (
-              <p key={item.product.id} style={{ margin: '2px 0', fontSize: '13px', color: '#856404' }}>
-                • {item.product.name}: butuh {item.quantity}, tersedia {productVouchers.get(item.product.id) ?? 0}
-              </p>
+            <p style={{ margin: '0 0 10px 0', fontWeight: '600', color: '#856404' }}>💳 Rincian Pembayaran</p>
+            {voucherBreakdown.map(({ item, byVoucher, byPayment }) => (
+              <div key={item.product.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#856404', marginBottom: '4px' }}>
+                <span>{item.product.name} × {item.quantity}</span>
+                <span>
+                  {byVoucher > 0 && `${byVoucher} voucher`}
+                  {byVoucher > 0 && byPayment > 0 && ' + '}
+                  {byPayment > 0 && formatCurrency(byPayment * getUnitPrice(item.product))}
+                </span>
+              </div>
             ))}
-            <button
-              onClick={() => navigate('/buy-vouchers')}
-              style={{ marginTop: '12px', padding: '10px 24px', background: theme.gradientSuccess, color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}
-            >
-              🎫 Beli Voucher
-            </button>
+            <div style={{ borderTop: '1px dashed #c4a217', marginTop: '10px', paddingTop: '10px', display: 'flex', justifyContent: 'space-between', fontWeight: '700', fontSize: '14px', color: '#856404' }}>
+              <span>Bayar via QRIS</span>
+              <span>{formatCurrency(payableAmount)}</span>
+            </div>
+            {payableAmount < totalAmount && (
+              <p style={{ margin: '6px 0 0', fontSize: '12px', color: '#856404', opacity: 0.8 }}>
+                {formatCurrency(totalAmount - payableAmount)} ditanggung voucher
+              </p>
+            )}
           </div>
         )}
 
@@ -679,7 +699,7 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
               cursor: (submitting || !deliveryDate) ? 'not-allowed' : 'pointer',
             }}
           >
-            {submitting ? 'Processing...' : 'Pay via QRIS'}
+            {submitting ? 'Processing...' : `Pay ${formatCurrency(payableAmount)} via QRIS`}
           </button>
         ) : (
           <button

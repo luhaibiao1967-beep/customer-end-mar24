@@ -18,9 +18,12 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
-    const { token, order, items } = await req.json()
+    const { token, order, items, payment_amount, product_deductions } = await req.json()
     if (!token) throw new Error('Token required')
     if (!order || !items || items.length === 0) throw new Error('Order data required')
+
+    // payment_amount is the QRIS charge (shortfall after vouchers); defaults to full order total
+    const qrisAmount = payment_amount ?? order.total_amount
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
@@ -85,7 +88,26 @@ serve(async (req) => {
       throw new Error('Failed to create order items: ' + itemsError.message)
     }
 
-    // Create Midtrans Snap transaction (QRIS only)
+    // Deduct vouchers for the portion covered by vouchers (if any)
+    if (product_deductions && product_deductions.length > 0) {
+      for (const deduction of product_deductions) {
+        if (!deduction.quantity || deduction.quantity <= 0) continue
+        const { data: row } = await supabase
+          .from('customer_product_vouchers')
+          .select('balance')
+          .eq('customer_id', customer.id)
+          .eq('product_id', deduction.product_id)
+          .single()
+        const current = row?.balance ?? 0
+        await supabase.from('customer_product_vouchers').upsert({
+          customer_id: customer.id,
+          product_id: deduction.product_id,
+          balance: Math.max(0, current - deduction.quantity),
+        })
+      }
+    }
+
+    // Create Midtrans Snap transaction (QRIS only) — charge only the shortfall amount
     const midtransOrderId = `pop_${customer.id.slice(0, 8)}_${Date.now()}`
     const mtResponse = await fetch(snapUrl, {
       method: 'POST',
@@ -94,8 +116,8 @@ serve(async (req) => {
         'Authorization': `Basic ${btoa(serverKey + ':')}`,
       },
       body: JSON.stringify({
-        transaction_details: { order_id: midtransOrderId, gross_amount: order.total_amount },
-        item_details: [{ id: newOrder.id, price: order.total_amount, quantity: 1, name: 'Order Payment' }],
+        transaction_details: { order_id: midtransOrderId, gross_amount: qrisAmount },
+        item_details: [{ id: newOrder.id, price: qrisAmount, quantity: 1, name: 'Order Payment' }],
         customer_details: { first_name: customer.name, phone: customer.whatsapp },
         enabled_payments: ['other_qris'],
         notification_url: `${supabaseUrl}/functions/v1/midtrans-webhook`,
