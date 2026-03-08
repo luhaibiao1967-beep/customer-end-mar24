@@ -198,7 +198,15 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
       if (!data?.success) throw new Error(data?.error || 'Failed to create payment');
       await loadSnapScript(data.client_key, data.snap_js_url);
       (window as any).snap.pay(data.snap_token, {
-        onSuccess: () => { loadData(); toast.success('Payment successful! Vouchers added.'); },
+        onSuccess: () => {
+          setCurrentVouchers(prev => {
+            const next = new Map(prev);
+            next.set(pkg.product_id, (prev.get(pkg.product_id) ?? 0) + pkg.qty);
+            return next;
+          });
+          toast.success('Payment successful! Vouchers added.');
+          setTimeout(() => loadData(), 3000);
+        },
         onPending: () => { toast('Payment submitted — vouchers will be added once payment settles.', { duration: 6000 }); },
         onError: (result: any) => { toast.error('Payment failed: ' + (result?.status_message || 'Unknown error')); },
         onClose: () => { /* user dismissed */ },
@@ -223,7 +231,15 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
       if (!data?.success) throw new Error(data?.error || 'Failed to create payment');
       await loadSnapScript(data.client_key, data.snap_js_url);
       (window as any).snap.pay(data.snap_token, {
-        onSuccess: () => { loadData(); toast.success('Payment successful! Vouchers added.'); },
+        onSuccess: () => {
+          setCurrentVouchers(prev => {
+            const next = new Map(prev);
+            next.set(product.id, (prev.get(product.id) ?? 0) + qty);
+            return next;
+          });
+          toast.success('Payment successful! Vouchers added.');
+          setTimeout(() => loadData(), 3000);
+        },
         onPending: () => { toast('Payment submitted — vouchers will be added once payment settles.', { duration: 6000 }); },
         onError: (result: any) => { toast.error('Payment failed: ' + (result?.status_message || 'Unknown error')); },
         onClose: () => { /* user dismissed */ },
