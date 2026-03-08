@@ -9,6 +9,7 @@ import { supabase } from '../supabaseClient';
 import BottomNav from '../Components/BottomNav';
 import { theme } from '../theme';
 import { formatCurrency } from '../utils/format';
+import { useLanguage } from '../contexts/LanguageContext';
 
 const APP_URL = 'https://vividaqua.online/';
 
@@ -46,6 +47,7 @@ interface ProductVoucherRow {
 
 export default function CustomerHome({ customer }: CustomerHomeProps) {
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const [loading, setLoading] = useState(false);
   const [pendingOrders, setPendingOrders] = useState<Order[]>([]);
   const [productVouchers, setProductVouchers] = useState<ProductVoucherRow[]>([]);
@@ -90,7 +92,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
   };
 
   const handleDeleteOrder = async (orderId: string) => {
-    if (!confirm('Are you sure you want to delete this order?')) return;
+    if (!confirm(t('home.deleteConfirm'))) return;
 
     try {
       const { error: itemsError } = await supabase
@@ -107,11 +109,11 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
 
       if (orderError) throw orderError;
 
-      toast.success('Order deleted successfully!');
+      toast.success(t('home.deleteSuccess'));
       loadHomeData();
     } catch (err: any) {
       console.error('Error deleting order:', err);
-      toast.error('Failed to delete order: ' + err.message);
+      toast.error(t('home.deleteFailed') + err.message);
     }
   };
 
@@ -185,7 +187,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
             cursor: loading ? 'not-allowed' : 'pointer'
           }}
         >
-          {loading ? '...' : 'Sign Out'}
+          {loading ? '...' : t('home.signOut')}
         </button>
       </div>
 
@@ -207,7 +209,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
               {customer.name}
             </h2>
             <p style={{ fontSize: '13px', color: theme.textMuted, margin: 0 }}>
-              {customer.customer_type === 'pre_pay' ? 'Prepaid (Voucher)' : 'Postpaid (Invoice)'}
+              {customer.customer_type === 'pre_pay' ? t('home.prepaid') : t('home.postpaid')}
             </p>
           </div>
 
@@ -216,10 +218,10 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
             <div style={{ marginBottom: '20px' }}>
               <div style={{ background: theme.gradientPrimary, padding: '16px 20px', borderRadius: '12px', color: 'white' }}>
                 <p style={{ fontSize: '12px', margin: '0 0 12px 0', opacity: 0.9, fontWeight: '600' }}>
-                  🎫 Voucher Balance
+                  🎫 {t('home.voucherBalance')}
                 </p>
                 {productVouchers.length === 0 ? (
-                  <p style={{ fontSize: '14px', margin: 0, opacity: 0.85 }}>No vouchers yet</p>
+                  <p style={{ fontSize: '14px', margin: 0, opacity: 0.85 }}>{t('home.noVouchers')}</p>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {productVouchers.map(row => (
@@ -238,7 +240,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
           {pendingOrders.length > 0 && (
             <div style={{ marginBottom: '20px' }}>
               <h3 style={{ fontSize: '18px', marginBottom: '15px', color: theme.primary }}>
-                📋 Your Pending Orders
+                📋 {t('home.pendingOrders')}
               </h3>
               {pendingOrders.map((order) => (
                 <div
@@ -266,7 +268,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
                         {getStatusIcon(order.status)} {order.status.toUpperCase()}
                       </p>
                       <p style={{ fontSize: '14px', color: '#666', margin: '5px 0' }}>
-                        🗓️ Delivery: <strong>{formatDate(order.delivery_date)}</strong>
+                        🗓️ {t('home.delivery')} <strong>{formatDate(order.delivery_date)}</strong>
                       </p>
                         <p style={{ fontSize: '16px', color: theme.success, fontWeight: 'bold', margin: '5px 0' }}>
                         💰 {formatCurrency(order.total_amount)}
@@ -290,7 +292,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
                           cursor: 'pointer'
                         }}
                       >
-                        Edit
+                        {t('home.edit')}
                       </button>
                       <button
                         onClick={() => handleDeleteOrder(order.id)}
@@ -305,7 +307,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
                           cursor: 'pointer'
                         }}
                       >
-                        Delete
+                        {t('home.delete')}
                       </button>
                     </div>
                   )}
@@ -320,7 +322,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
                       color: '#1976d2',
                       textAlign: 'center'
                     }}>
-                      ℹ️ Order is scheduled - cannot be edited
+                      ℹ️ {t('home.scheduledMsg')}
                     </div>
                   )}
                 </div>
@@ -345,7 +347,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
                   cursor: canOrder ? 'pointer' : 'not-allowed'
                 }}
               >
-                🛒 Order Delivery
+                🛒 {t('home.orderDelivery')}
               </button>
               <button
                 onClick={() => navigate('/buy-vouchers')}
@@ -360,7 +362,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
                   cursor: 'pointer'
                 }}
               >
-                🎫 Buy Vouchers
+                🎫 {t('home.buyVouchers')}
               </button>
             </div>
           ) : (
@@ -379,7 +381,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
                 cursor: canOrder ? 'pointer' : 'not-allowed'
               }}
             >
-              🛒 Order Delivery
+              🛒 {t('home.orderDelivery')}
             </button>
           )}
         </div>
@@ -391,20 +393,20 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
           padding: '24px',
           boxShadow: '0 10px 40px rgba(0,0,0,0.2)'
         }}>
-          <h3 style={{ fontSize: '18px', margin: '0 0 16px 0', fontWeight: '600' }}>📊 Quick Info</h3>
+          <h3 style={{ fontSize: '18px', margin: '0 0 16px 0', fontWeight: '600' }}>📊 {t('home.quickInfo')}</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
 
             {/* Account Status */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', background: '#f8f9fa', borderRadius: '10px' }}>
-              <span style={{ fontSize: '13px', color: '#666' }}>Account Status</span>
+              <span style={{ fontSize: '13px', color: '#666' }}>{t('home.accountStatus')}</span>
               <span style={{ fontSize: '13px', fontWeight: '600', color: canOrder ? theme.success : theme.warning }}>
-                {canOrder ? '✅ Active' : '⏳ Pending Setup'}
+                {canOrder ? `✅ ${t('home.active')}` : `⏳ ${t('home.pendingSetup')}`}
               </span>
             </div>
 
             {/* Service Branch */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', background: '#f8f9fa', borderRadius: '10px' }}>
-              <span style={{ fontSize: '13px', color: '#666' }}>Service Branch</span>
+              <span style={{ fontSize: '13px', color: '#666' }}>{t('home.serviceBranch')}</span>
               <span style={{ fontSize: '13px', fontWeight: '600', color: theme.text }}>
                 {customer.branch === 'Pending' || !customer.branch ? '—' : customer.branch}
               </span>
@@ -413,7 +415,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
             {/* Billing Cycle */}
             {paymentTerm && (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', background: '#f8f9fa', borderRadius: '10px' }}>
-                <span style={{ fontSize: '13px', color: '#666' }}>Billing Cycle</span>
+                <span style={{ fontSize: '13px', color: '#666' }}>{t('home.billingCycle')}</span>
                 <span style={{ fontSize: '13px', fontWeight: '600', color: theme.text }}>
                   {{ daily: 'Daily (天)', weekly: 'Weekly (周)', biweekly: 'Biweekly (两周)', monthly: 'Monthly (月)' }[paymentTerm] ?? paymentTerm}
                 </span>
@@ -422,7 +424,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
 
             {/* On Delivery (scheduled) */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', background: '#f8f9fa', borderRadius: '10px' }}>
-              <span style={{ fontSize: '13px', color: '#666' }}>On Delivery</span>
+              <span style={{ fontSize: '13px', color: '#666' }}>{t('home.onDelivery')}</span>
               <span style={{ fontSize: '13px', fontWeight: '600', color: theme.info }}>
                 {pendingOrders.filter(o => o.status === 'scheduled').length} order(s)
               </span>
@@ -432,9 +434,9 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
             {customer.customer_type !== 'pre_pay' && (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', background: unpaidAmount > 0 ? '#fff3e0' : '#f8f9fa', borderRadius: '10px', border: unpaidAmount > 0 ? '1px solid #ffb74d' : 'none' }}>
                 <div>
-                  <span style={{ fontSize: '13px', color: '#666' }}>Unpaid Amount</span>
+                  <span style={{ fontSize: '13px', color: '#666' }}>{t('home.unpaidAmount')}</span>
                   <div style={{ fontSize: '13px', fontWeight: '700', color: unpaidAmount > 0 ? theme.error : theme.success }}>
-                    {unpaidAmount > 0 ? formatCurrency(unpaidAmount) : '✅ All paid'}
+                    {unpaidAmount > 0 ? formatCurrency(unpaidAmount) : `✅ ${t('home.allPaid')}`}
                   </div>
                 </div>
                 {unpaidAmount > 0 && (
@@ -442,7 +444,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
                     onClick={() => navigate('/orders')}
                     style={{ padding: '8px 14px', background: theme.error, color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer', whiteSpace: 'nowrap' }}
                   >
-                    Pay Now →
+                    {`${t('home.payNow')} →`}
                   </button>
                 )}
               </div>
@@ -450,7 +452,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
 
             {/* Last Delivery */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', background: '#f8f9fa', borderRadius: '10px' }}>
-              <span style={{ fontSize: '13px', color: '#666' }}>Last Delivery</span>
+              <span style={{ fontSize: '13px', color: '#666' }}>{t('home.lastDelivery')}</span>
               <span style={{ fontSize: '13px', fontWeight: '600', color: theme.text }}>
                 {lastDeliveryDate ? formatDate(lastDeliveryDate) : '—'}
               </span>
@@ -461,8 +463,8 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
 
         {/* Share App Card */}
         <div style={{ background: 'white', borderRadius: '20px', padding: '24px', marginTop: '20px', boxShadow: '0 10px 40px rgba(0,0,0,0.2)', textAlign: 'center' }}>
-          <h3 style={{ fontSize: '16px', fontWeight: '600', margin: '0 0 4px 0' }}>Share App</h3>
-          <p style={{ fontSize: '12px', color: theme.textMuted, margin: '0 0 16px 0' }}>Scan or share to open the app</p>
+          <h3 style={{ fontSize: '16px', fontWeight: '600', margin: '0 0 4px 0' }}>{t('home.shareApp')}</h3>
+          <p style={{ fontSize: '12px', color: theme.textMuted, margin: '0 0 16px 0' }}>{t('home.scanShare')}</p>
 
           <div style={{ display: 'inline-block', padding: '12px', background: '#f8f9fa', borderRadius: '12px', marginBottom: '16px' }}>
             <QRCodeCanvas
@@ -500,7 +502,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
                     await navigator.share({ title: 'VividAqua Customer App', url: APP_URL });
                   } else {
                     await navigator.clipboard.writeText(APP_URL);
-                    toast.success('Link copied!');
+                    toast.success(t('home.linkCopied'));
                   }
                 } catch {
                   // user cancelled
@@ -508,16 +510,16 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
               }}
               style={{ padding: '10px', background: theme.gradientPrimary, color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer' }}
             >
-              Share
+              {t('home.share')}
             </button>
             <button
               onClick={async () => {
                 await navigator.clipboard.writeText(APP_URL);
-                toast.success('Link copied!');
+                toast.success(t('home.linkCopied'));
               }}
               style={{ padding: '10px', background: 'white', color: theme.primary, border: `2px solid ${theme.primary}`, borderRadius: '8px', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer' }}
             >
-              Copy Link
+              {t('home.copyLink')}
             </button>
           </div>
         </div>

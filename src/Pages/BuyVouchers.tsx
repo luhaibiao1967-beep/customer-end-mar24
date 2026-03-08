@@ -6,6 +6,7 @@ import BottomNav from '../Components/BottomNav';
 import { theme } from '../theme';
 import { formatCurrency } from '../utils/format';
 import toast from 'react-hot-toast';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface Customer {
   id: string;
@@ -100,6 +101,7 @@ function InfoButton({ expanded, onClick }: { expanded: boolean; onClick: () => v
 }
 
 export default function BuyVouchers({ customer }: BuyVouchersProps) {
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const [packages, setPackages] = useState<VoucherPackage[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -211,15 +213,15 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
           await supabase.functions.invoke('confirm-voucher-payment', {
             body: { token: authToken, midtrans_order_id: orderId },
           });
-          toast.success('Payment successful! Vouchers added.');
+          toast.success(t('vouchers.paymentSuccess'));
           loadData();
         },
-        onPending: () => { toast('Payment submitted — vouchers will be added once payment settles.', { duration: 6000 }); },
-        onError: (result: any) => { toast.error('Payment failed: ' + (result?.status_message || 'Unknown error')); },
+        onPending: () => { toast(t('vouchers.paymentPending'), { duration: 6000 }); },
+        onError: (result: any) => { toast.error(t('vouchers.paymentFailed') + (result?.status_message || 'Unknown error')); },
         onClose: () => { /* user dismissed */ },
       });
     } catch (err: any) {
-      toast.error('Payment error: ' + err.message);
+      toast.error(t('vouchers.paymentError') + err.message);
     } finally {
       setPaying(null);
     }
@@ -251,15 +253,15 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
           await supabase.functions.invoke('confirm-voucher-payment', {
             body: { token: authToken, midtrans_order_id: orderId },
           });
-          toast.success('Payment successful! Vouchers added.');
+          toast.success(t('vouchers.paymentSuccess'));
           loadData();
         },
-        onPending: () => { toast('Payment submitted — vouchers will be added once payment settles.', { duration: 6000 }); },
-        onError: (result: any) => { toast.error('Payment failed: ' + (result?.status_message || 'Unknown error')); },
+        onPending: () => { toast(t('vouchers.paymentPending'), { duration: 6000 }); },
+        onError: (result: any) => { toast.error(t('vouchers.paymentFailed') + (result?.status_message || 'Unknown error')); },
         onClose: () => { /* user dismissed */ },
       });
     } catch (err: any) {
-      toast.error('Payment error: ' + err.message);
+      toast.error(t('vouchers.paymentError') + err.message);
     } finally {
       setPaying(null);
     }
@@ -275,9 +277,9 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
       <div style={{ minHeight: '100vh', background: theme.gradientPrimary, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
         <div style={{ background: 'white', borderRadius: '20px', padding: '40px', maxWidth: '500px', textAlign: 'center' }}>
           <p style={{ fontSize: '48px', margin: '0 0 20px 0' }}>ℹ️</p>
-          <h2 style={{ fontSize: '24px', marginBottom: '15px' }}>Vouchers Not Available</h2>
-          <p style={{ color: '#666', marginBottom: '30px' }}>Your account is postpaid mode.<br />Vouchers are only for prepaid customers.</p>
-          <button onClick={() => navigate('/customer-home')} style={{ padding: '12px 30px', background: theme.gradientPrimary, color: 'white', border: 'none', borderRadius: '8px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer' }}>← Back to Home</button>
+          <h2 style={{ fontSize: '24px', marginBottom: '15px' }}>{t('vouchers.notAvailable')}</h2>
+          <p style={{ color: '#666', marginBottom: '30px' }}>{t('vouchers.postpaidMsg').split('\n')[0]}<br />{t('vouchers.postpaidMsg').split('\n')[1]}</p>
+          <button onClick={() => navigate('/customer-home')} style={{ padding: '12px 30px', background: theme.gradientPrimary, color: 'white', border: 'none', borderRadius: '8px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer' }}>{t('vouchers.backToHome')}</button>
         </div>
         <BottomNav customer={customer} />
       </div>
@@ -289,8 +291,8 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
 
       {/* Header */}
       <div style={{ maxWidth: '800px', margin: '0 auto 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <button onClick={() => navigate('/customer-home')} style={{ padding: '10px 20px', background: 'rgba(255,255,255,0.2)', color: 'white', border: '2px solid white', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}>← Back</button>
-        <h1 style={{ color: 'white', fontSize: '22px', margin: 0 }}>🛒 Top Up</h1>
+        <button onClick={() => navigate('/customer-home')} style={{ padding: '10px 20px', background: 'rgba(255,255,255,0.2)', color: 'white', border: '2px solid white', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}>← {t('common.back')}</button>
+        <h1 style={{ color: 'white', fontSize: '22px', margin: 0 }}>🛒 {t('vouchers.title')}</h1>
         <div style={{ width: '80px' }} />
       </div>
 
@@ -299,7 +301,7 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
         {/* Current voucher balances */}
         {currentVouchers.size > 0 && (
           <div style={{ background: 'white', borderRadius: '16px', padding: '16px 20px', boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}>
-            <p style={{ margin: '0 0 10px 0', fontSize: '12px', color: theme.textMuted, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Current Balance</p>
+            <p style={{ margin: '0 0 10px 0', fontSize: '12px', color: theme.textMuted, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{t('vouchers.currentBalance')}</p>
             {Array.from(currentVouchers.entries()).map(([productId, balance]) => (
               <div key={productId} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0' }}>
                 <span style={{ fontSize: '13px', color: theme.text }}>{productNames.get(productId) ?? '—'}</span>
@@ -311,7 +313,7 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
 
         {loading ? (
           <div style={{ background: 'white', borderRadius: '16px', padding: '40px', textAlign: 'center' }}>
-            <p style={{ color: theme.textMuted }}>Loading...</p>
+            <p style={{ color: theme.textMuted }}>{t('vouchers.loading')}</p>
           </div>
         ) : (
           <>
@@ -319,7 +321,7 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
             {packages.length > 0 && (
               <>
                 <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '12px', margin: '0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  💧 Refill Packages
+                  💧 {t('vouchers.refillPackages')}
                 </p>
 
                 {/* Single-unit: qty selector */}
@@ -334,8 +336,8 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
                     <div style={{ background: 'white', borderRadius: '16px', padding: '20px', boxShadow: '0 4px 20px rgba(0,0,0,0.12)' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
                         <div style={{ flex: 1 }}>
-                          <p style={{ margin: 0, fontSize: '16px', fontWeight: 'bold', color: theme.text }}>{singlePkg.products?.name} — Per Voucher</p>
-                          <p style={{ margin: '4px 0 0', fontSize: '12px', color: theme.textMuted }}>{formatCurrency(singlePkg.price)} / voucher</p>
+                          <p style={{ margin: 0, fontSize: '16px', fontWeight: 'bold', color: theme.text }}>{singlePkg.products?.name} — {t('vouchers.perVoucher')}</p>
+                          <p style={{ margin: '4px 0 0', fontSize: '12px', color: theme.textMuted }}>{formatCurrency(singlePkg.price)} {t('vouchers.perVoucherPrice')}</p>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                           <p style={{ margin: 0, fontSize: '17px', fontWeight: 'bold', color: theme.primary }}>
@@ -356,7 +358,7 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
                           disabled={isPaying || !product}
                           style={{ flex: 1, padding: '10px', background: isPaying ? '#ccc' : theme.gradientPrimary, color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: isPaying ? 'not-allowed' : 'pointer' }}
                         >
-                          {isPaying ? 'Loading...' : 'Beli Sekarang'}
+                          {isPaying ? t('vouchers.loadingPayment') : t('vouchers.buyNow')}
                         </button>
                       </div>
                     </div>
@@ -388,7 +390,7 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
                         disabled={paying === pkg.id}
                         style={{ width: '100%', padding: '12px', marginTop: expanded ? '14px' : '0', background: paying === pkg.id ? '#ccc' : theme.gradientPrimary, color: 'white', border: 'none', borderRadius: '8px', fontSize: '15px', fontWeight: 'bold', cursor: paying === pkg.id ? 'not-allowed' : 'pointer' }}
                       >
-                        {paying === pkg.id ? 'Loading...' : 'Beli Sekarang'}
+                        {paying === pkg.id ? t('vouchers.loadingPayment') : t('vouchers.buyNow')}
                       </button>
                     </div>
                   );
@@ -400,7 +402,7 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
             {otherProducts.length > 0 && (
               <>
                 <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '12px', margin: '4px 0 0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  🛍️ Other Products
+                  🛍️ {t('vouchers.otherProducts')}
                 </p>
                 {otherProducts.map(product => {
                   const qty = getQty(product.id);
@@ -433,7 +435,7 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
                           disabled={isPaying}
                           style={{ flex: 1, padding: '10px', background: isPaying ? '#ccc' : theme.gradientPrimary, color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: isPaying ? 'not-allowed' : 'pointer' }}
                         >
-                          {isPaying ? 'Loading...' : 'Beli Sekarang'}
+                          {isPaying ? t('vouchers.loadingPayment') : t('vouchers.buyNow')}
                         </button>
                       </div>
                     </div>
@@ -444,14 +446,14 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
 
             {packages.length === 0 && otherProducts.length === 0 && (
               <div style={{ background: 'white', borderRadius: '16px', padding: '40px', textAlign: 'center' }}>
-                <p style={{ color: theme.textMuted }}>No products available.</p>
+                <p style={{ color: theme.textMuted }}>{t('vouchers.noProducts')}</p>
               </div>
             )}
           </>
         )}
 
         <div style={{ background: 'rgba(255,255,255,0.15)', borderRadius: '12px', padding: '14px 16px', fontSize: '12px', color: 'rgba(255,255,255,0.9)' }}>
-          ℹ️ Saldo otomatis ditambahkan setelah pembayaran berhasil.
+          ℹ️ {t('vouchers.autoAdd')}
         </div>
       </div>
 

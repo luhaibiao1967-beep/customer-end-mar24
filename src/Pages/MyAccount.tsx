@@ -5,6 +5,7 @@ import { supabase } from '../supabaseClient';
 import BottomNav from '../Components/BottomNav';
 import { theme } from '../theme';
 import toast from 'react-hot-toast';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface Customer {
   id: string;
@@ -23,6 +24,7 @@ interface MyAccountProps {
 
 export default function MyAccount({ customer }: MyAccountProps) {
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const [editingAddress, setEditingAddress] = useState(false);
   const [addressInput, setAddressInput] = useState(customer.address);
   const [savingAddress, setSavingAddress] = useState(false);
@@ -55,7 +57,7 @@ export default function MyAccount({ customer }: MyAccountProps) {
         .update({ address: addressInput.trim() })
         .eq('id', customer.id);
       if (error) throw error;
-      toast.success('Address updated!');
+      toast.success(t('account.addressUpdated'));
       setEditingAddress(false);
       const stored = sessionStorage.getItem('customer');
       if (stored) {
@@ -64,7 +66,7 @@ export default function MyAccount({ customer }: MyAccountProps) {
       }
       window.dispatchEvent(new Event('session-auth-updated'));
     } catch (err: any) {
-      toast.error('Failed to update address: ' + err.message);
+      toast.error(t('account.updateFailed') + err.message);
     } finally {
       setSavingAddress(false);
     }
@@ -89,7 +91,7 @@ export default function MyAccount({ customer }: MyAccountProps) {
           }}
         >
           <h1 style={{ color: 'white', fontSize: '24px', margin: 0, fontWeight: 'bold' }}>
-            My Account
+            {t('account.title')}
           </h1>
         </div>
 
@@ -121,7 +123,7 @@ export default function MyAccount({ customer }: MyAccountProps) {
               {customer.name}
             </h2>
             <p style={{ color: theme.textMuted, margin: 0, fontSize: '14px' }}>
-              {customer.customer_type === 'pre_pay' ? 'Prepaid' : 'Postpaid'}
+              {customer.customer_type === 'pre_pay' ? t('account.prepaid') : t('account.postpaid')}
             </p>
           </div>
 
@@ -134,7 +136,7 @@ export default function MyAccount({ customer }: MyAccountProps) {
               }}
             >
               <p style={{ fontSize: '11px', color: theme.textLight, margin: '0 0 6px 0' }}>
-                📍 Delivery Address
+                📍 {t('account.deliveryAddress')}
               </p>
               {editingAddress ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
@@ -150,13 +152,13 @@ export default function MyAccount({ customer }: MyAccountProps) {
                       disabled={savingAddress}
                       style={{ flex: 1, padding: '8px', background: theme.gradientPrimary, color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 'bold', cursor: savingAddress ? 'not-allowed' : 'pointer' }}
                     >
-                      {savingAddress ? 'Saving...' : '✅ Save'}
+                      {savingAddress ? t('account.saving') : `✅ ${t('account.save')}`}
                     </button>
                     <button
                       onClick={() => { setAddressInput(customer.address); setEditingAddress(false); }}
                       style={{ flex: 1, padding: '8px', background: 'none', color: theme.textMuted, border: '2px solid #ddd', borderRadius: '8px', fontSize: '13px', cursor: 'pointer' }}
                     >
-                      Cancel
+                      {t('account.cancel')}
                     </button>
                   </div>
                 </div>
@@ -169,7 +171,7 @@ export default function MyAccount({ customer }: MyAccountProps) {
                     onClick={() => { setAddressInput(customer.address); setEditingAddress(true); }}
                     style={{ background: 'none', border: 'none', color: theme.primary, fontSize: '12px', cursor: 'pointer', padding: '4px 8px' }}
                   >
-                    ✏️ Edit
+                    ✏️ {t('account.edit')}
                   </button>
                 </div>
               )}
@@ -183,7 +185,7 @@ export default function MyAccount({ customer }: MyAccountProps) {
               }}
             >
               <p style={{ fontSize: '11px', color: theme.textLight, margin: '0 0 6px 0' }}>
-                💬 WhatsApp
+                💬 {t('account.whatsapp')}
               </p>
               <p style={{ fontSize: '14px', color: theme.text, margin: 0 }}>
                 {customer.whatsapp}
@@ -198,17 +200,17 @@ export default function MyAccount({ customer }: MyAccountProps) {
               }}
             >
               <p style={{ fontSize: '11px', color: theme.textLight, margin: '0 0 6px 0' }}>
-                🏢 Service Branch
+                🏢 {t('account.serviceBranch')}
               </p>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <p style={{ fontSize: '14px', color: theme.text, margin: 0, flex: 1 }}>
-                  {customer.branch === 'Pending' ? 'Pending Setup' : customer.branch || 'Not assigned'}
+                  {customer.branch === 'Pending' ? t('account.pendingSetup') : customer.branch || t('account.notAssigned')}
                 </p>
                 <button
                   onClick={() => navigate('/select-branch')}
                   style={{ background: 'none', border: 'none', color: theme.primary, fontSize: '12px', cursor: 'pointer', padding: '4px 8px' }}
                 >
-                  ✏️ Edit
+                  ✏️ {t('account.edit')}
                 </button>
               </div>
             </div>
@@ -216,10 +218,10 @@ export default function MyAccount({ customer }: MyAccountProps) {
             {customer.customer_type === 'pre_pay' && (
               <div style={{ background: theme.gradientPrimary, padding: '16px', borderRadius: '12px', color: 'white' }}>
                 <p style={{ fontSize: '12px', margin: '0 0 10px 0', opacity: 0.9, fontWeight: '600' }}>
-                  🎫 Voucher Balance
+                  🎫 {t('account.voucherBalance')}
                 </p>
                 {productVouchers.length === 0 ? (
-                  <p style={{ fontSize: '14px', margin: 0, opacity: 0.85 }}>No vouchers yet</p>
+                  <p style={{ fontSize: '14px', margin: 0, opacity: 0.85 }}>{t('account.noVouchers')}</p>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {productVouchers.map(row => (
@@ -249,7 +251,7 @@ export default function MyAccount({ customer }: MyAccountProps) {
                 textAlign: 'left',
               }}
             >
-              📋 Order History
+              📋 {t('account.orderHistory')}
             </button>
 
             <button
@@ -265,7 +267,7 @@ export default function MyAccount({ customer }: MyAccountProps) {
                 cursor: 'pointer',
               }}
             >
-              Sign Out
+              {t('account.logout')}
             </button>
           </div>
         </div>

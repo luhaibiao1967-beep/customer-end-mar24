@@ -6,6 +6,7 @@ import BottomNav from '../Components/BottomNav';
 import { theme } from '../theme';
 import { formatCurrency } from '../utils/format';
 import toast from 'react-hot-toast';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface Customer {
   id: string;
@@ -54,6 +55,7 @@ function getDefaultDeliveryDate(): string {
 export default function PlaceOrder({ customer }: PlaceOrderProps) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { t } = useLanguage();
   const editOrderId = searchParams.get('edit');
 
   const [products, setProducts] = useState<Product[]>([]);
@@ -432,7 +434,7 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
       <div style={{ minHeight: '100vh', background: theme.gradientPrimary, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div style={{ textAlign: 'center', color: 'white' }}>
           <div style={{ width: '40px', height: '40px', border: '4px solid rgba(255,255,255,0.3)', borderTop: '4px solid white', borderRadius: '50%', margin: '0 auto 16px', animation: 'spin 1s linear infinite' }} />
-          <p>Loading products...</p>
+          <p>{t('placeOrder.loadingProducts')}</p>
           <style>{`@keyframes spin { 0%{transform:rotate(0deg)} 100%{transform:rotate(360deg)} }`}</style>
         </div>
       </div>
@@ -445,18 +447,18 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
         <div style={{ background: 'white', borderRadius: '20px', padding: '40px', maxWidth: '400px', width: '100%', textAlign: 'center', boxShadow: '0 10px 40px rgba(0,0,0,0.2)' }}>
           <div style={{ fontSize: '64px', marginBottom: '16px' }}>✅</div>
           <h2 style={{ fontSize: '22px', color: theme.text, margin: '0 0 10px 0' }}>
-            {editOrderId ? 'Order Updated!' : 'Order Placed!'}
+            {editOrderId ? t('placeOrder.orderUpdated') : t('placeOrder.orderPlaced')}
           </h2>
           <p style={{ color: theme.textMuted, fontSize: '14px', margin: '0 0 24px 0' }}>
             {editOrderId
-              ? 'Your order has been updated successfully.'
-              : 'Your order has been received. We will arrange delivery soon.'}
+              ? t('placeOrder.orderUpdatedDesc')
+              : t('placeOrder.orderPlacedDesc')}
           </p>
           <button
             onClick={() => navigate('/customer-home')}
             style={{ width: '100%', padding: '14px', background: theme.gradientPrimary, color: 'white', border: 'none', borderRadius: '10px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer' }}
           >
-            Back to Home
+            {t('placeOrder.backToHome')}
           </button>
         </div>
       </div>
@@ -472,10 +474,10 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
           onClick={() => navigate('/customer-home')}
           style={{ padding: '10px 20px', background: 'rgba(255,255,255,0.2)', color: 'white', border: '2px solid white', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}
         >
-          ← Back
+          ← {t('common.back')}
         </button>
         <h1 style={{ color: 'white', fontSize: '20px', margin: 0 }}>
-          {editOrderId ? '✏️ Edit Order' : '🛒 New Delivery'}
+          {editOrderId ? `✏️ ${t('placeOrder.editOrder')}` : `🛒 ${t('placeOrder.newDelivery')}`}
         </h1>
         <div style={{ width: '80px' }} />
       </div>
@@ -485,15 +487,15 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
         {/* Unpaid orders block — daily later_pay */}
         {blockedByUnpaid && (
           <div style={{ background: '#fdecea', border: `2px solid ${theme.error}`, borderRadius: '16px', padding: '20px' }}>
-            <p style={{ margin: '0 0 8px 0', fontWeight: '700', color: theme.error, fontSize: '16px' }}>🚫 Outstanding Balance</p>
+            <p style={{ margin: '0 0 8px 0', fontWeight: '700', color: theme.error, fontSize: '16px' }}>🚫 {t('placeOrder.outstandingBalance')}</p>
             <p style={{ margin: '0 0 16px 0', fontSize: '14px', color: theme.error }}>
-              You have unpaid delivered orders. Please settle your balance before placing a new order.
+              {t('placeOrder.outstandingDesc')}
             </p>
             <button
               onClick={() => navigate('/orders')}
               style={{ padding: '12px 24px', background: theme.gradientPrimary, color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}
             >
-              💳 View &amp; Pay Bills
+              💳 {t('placeOrder.viewPayBills')}
             </button>
           </div>
         )}
@@ -501,7 +503,7 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
         {/* Voucher summary banner (pre_pay only) */}
         {isPrePay && productVouchers.size > 0 && (
           <div style={{ background: 'white', borderRadius: '16px', padding: '16px 20px', boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}>
-            <p style={{ fontSize: '13px', fontWeight: '600', color: theme.textMuted, margin: '0 0 10px 0' }}>🎫 Voucher Balance</p>
+            <p style={{ fontSize: '13px', fontWeight: '600', color: theme.textMuted, margin: '0 0 10px 0' }}>🎫 {t('account.voucherBalance')}</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               {products
                 .filter(p => productVouchers.has(p.id))
@@ -520,7 +522,7 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
         {/* Delivery Date */}
         <div style={{ background: 'white', borderRadius: '16px', padding: '20px', boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}>
           <label style={{ fontSize: '14px', fontWeight: '600', color: theme.text, display: 'block', marginBottom: '10px' }}>
-            📅 Delivery Date
+            📅 {t('placeOrder.deliveryDate')}
           </label>
           <input
             type="date"
@@ -533,9 +535,9 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
 
         {/* Products */}
         <div style={{ background: 'white', borderRadius: '16px', padding: '20px', boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}>
-          <p style={{ fontSize: '14px', fontWeight: '600', color: theme.text, margin: '0 0 16px 0' }}>🛍️ Select Products</p>
+          <p style={{ fontSize: '14px', fontWeight: '600', color: theme.text, margin: '0 0 16px 0' }}>🛍️ {t('placeOrder.selectProducts')}</p>
           {products.length === 0 ? (
-            <p style={{ color: theme.textMuted, textAlign: 'center', padding: '20px 0' }}>No products available.</p>
+            <p style={{ color: theme.textMuted, textAlign: 'center', padding: '20px 0' }}>{t('placeOrder.noProducts')}</p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {products.map(product => {
@@ -575,7 +577,7 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
                               onClick={() => navigate('/buy-vouchers')}
                               style={{ fontSize: '11px', fontWeight: '600', color: 'white', background: theme.gradientSuccess, border: 'none', borderRadius: '10px', padding: '2px 8px', cursor: 'pointer' }}
                             >
-                              Buy
+                              {t('placeOrder.buy')}
                             </button>
                           </span>
                         )}
@@ -608,12 +610,12 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
         {/* Notes */}
         <div style={{ background: 'white', borderRadius: '16px', padding: '20px', boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}>
           <label style={{ fontSize: '14px', fontWeight: '600', color: theme.text, display: 'block', marginBottom: '10px' }}>
-            📝 Notes (Optional)
+            📝 {t('placeOrder.notes')}
           </label>
           <textarea
             value={notes}
             onChange={e => setNotes(e.target.value)}
-            placeholder="E.g. Please leave at the door..."
+            placeholder={t('placeOrder.notesPlaceholder')}
             rows={3}
             style={{ width: '100%', padding: '12px', fontSize: '14px', border: `2px solid #eee`, borderRadius: '8px', outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }}
           />
@@ -622,7 +624,7 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
         {/* Order Summary */}
         {cartItems.length > 0 && (
           <div style={{ background: 'white', borderRadius: '16px', padding: '20px', boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}>
-            <p style={{ fontSize: '14px', fontWeight: '600', color: theme.text, margin: '0 0 12px 0' }}>📋 Order Summary</p>
+            <p style={{ fontSize: '14px', fontWeight: '600', color: theme.text, margin: '0 0 12px 0' }}>📋 {t('placeOrder.orderSummary')}</p>
             {cartItems.map(item => (
               <div key={item.product.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: theme.textMuted, marginBottom: '6px' }}>
                 <span>{item.product.name} × {item.quantity}</span>
@@ -630,7 +632,7 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
               </div>
             ))}
             <div style={{ borderTop: '1px solid #eee', marginTop: '10px', paddingTop: '10px', display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '16px' }}>
-              <span>Total</span>
+              <span>{t('common.total')}</span>
               <span style={{ color: theme.primary }}>{formatCurrency(totalAmount)}</span>
             </div>
           </div>
@@ -639,24 +641,24 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
         {/* Payment breakdown (pre_pay, partial or no vouchers) */}
         {isPrePay && cartItems.length > 0 && payableAmount > 0 && (
           <div style={{ background: '#fff3cd', border: `2px solid ${theme.warning}`, borderRadius: '16px', padding: '20px' }}>
-            <p style={{ margin: '0 0 10px 0', fontWeight: '600', color: '#856404' }}>💳 Rincian Pembayaran</p>
+            <p style={{ margin: '0 0 10px 0', fontWeight: '600', color: '#856404' }}>💳 {t('placeOrder.paymentBreakdown')}</p>
             {voucherBreakdown.map(({ item, byVoucher, byPayment }) => (
               <div key={item.product.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#856404', marginBottom: '4px' }}>
                 <span>{item.product.name} × {item.quantity}</span>
                 <span>
-                  {byVoucher > 0 && `${byVoucher} voucher`}
+                  {byVoucher > 0 && `${byVoucher} ${t('placeOrder.voucherBadge')}`}
                   {byVoucher > 0 && byPayment > 0 && ' + '}
                   {byPayment > 0 && formatCurrency(byPayment * getUnitPrice(item.product))}
                 </span>
               </div>
             ))}
             <div style={{ borderTop: '1px dashed #c4a217', marginTop: '10px', paddingTop: '10px', display: 'flex', justifyContent: 'space-between', fontWeight: '700', fontSize: '14px', color: '#856404' }}>
-              <span>Bayar via QRIS</span>
+              <span>{t('placeOrder.payViaQris')}</span>
               <span>{formatCurrency(payableAmount)}</span>
             </div>
             {payableAmount < totalAmount && (
               <p style={{ margin: '6px 0 0', fontSize: '12px', color: '#856404', opacity: 0.8 }}>
-                {formatCurrency(totalAmount - payableAmount)} ditanggung voucher
+                {formatCurrency(totalAmount - payableAmount)} {t('placeOrder.voucherCovered')}
               </p>
             )}
           </div>
@@ -666,16 +668,16 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
         {error === 'UNPAID_ORDERS' && (
           <div style={{ background: '#fdecea', border: `2px solid ${theme.error}`, borderRadius: '12px', padding: '16px' }}>
             <p style={{ margin: '0 0 8px 0', fontWeight: '700', color: theme.error, fontSize: '14px' }}>
-              🚫 Tagihan Belum Dibayar
+              🚫 {t('placeOrder.unpaidBills')}
             </p>
             <p style={{ margin: '0 0 12px 0', fontSize: '13px', color: theme.error }}>
-              Anda memiliki tagihan yang belum dilunasi. Mohon selesaikan pembayaran terlebih dahulu sebelum membuat pesanan baru.
+              {t('placeOrder.unpaidBillsDesc')}
             </p>
             <button
               onClick={() => navigate('/orders')}
               style={{ padding: '10px 20px', background: theme.gradientPrimary, color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}
             >
-              💳 Lihat &amp; Bayar Tagihan
+              💳 {t('placeOrder.viewPayBills')}
             </button>
           </div>
         )}
@@ -699,7 +701,7 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
               cursor: (submitting || !deliveryDate) ? 'not-allowed' : 'pointer',
             }}
           >
-            {submitting ? 'Processing...' : `Pay ${formatCurrency(payableAmount)} via QRIS`}
+            {submitting ? t('placeOrder.processing') : `Pay ${formatCurrency(payableAmount)} via QRIS`}
           </button>
         ) : (
           <button
@@ -712,7 +714,7 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
               cursor: (submitting || cartItems.length === 0) ? 'not-allowed' : 'pointer',
             }}
           >
-            {submitting ? 'Submitting...' : editOrderId ? '✅ Update Order' : '✅ Place Order'}
+            {submitting ? t('placeOrder.submitting') : editOrderId ? `✅ ${t('placeOrder.update')}` : `✅ ${t('placeOrder.submit')}`}
           </button>
         )}
       </div>
@@ -724,23 +726,22 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000, padding: '20px' }}>
           <div style={{ background: 'white', borderRadius: '20px', padding: '28px 24px', maxWidth: '360px', width: '100%', textAlign: 'center', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
             <p style={{ fontSize: '48px', margin: '0 0 12px 0' }}>⚠️</p>
-            <h3 style={{ fontSize: '18px', fontWeight: '700', color: theme.error, margin: '0 0 12px 0' }}>Outstanding Balance</h3>
+            <h3 style={{ fontSize: '18px', fontWeight: '700', color: theme.error, margin: '0 0 12px 0' }}>{t('placeOrder.outstandingBalance')}</h3>
             <p style={{ fontSize: '14px', color: '#555', margin: '0 0 24px 0', lineHeight: '1.5' }}>
-              You have unpaid delivered orders.<br />
-              Please settle your balance first before placing a new order.
+              {t('placeOrder.outstandingDesc')}
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <button
                 onClick={() => { setShowUnpaidModal(false); navigate('/orders'); }}
                 style={{ width: '100%', padding: '13px', background: theme.gradientPrimary, color: 'white', border: 'none', borderRadius: '10px', fontSize: '15px', fontWeight: 'bold', cursor: 'pointer' }}
               >
-                💳 View &amp; Pay Bills
+                💳 {t('placeOrder.viewPayBills')}
               </button>
               <button
                 onClick={() => setShowUnpaidModal(false)}
                 style={{ width: '100%', padding: '11px', background: 'none', color: theme.textMuted, border: `2px solid #ddd`, borderRadius: '10px', fontSize: '14px', cursor: 'pointer' }}
               >
-                Close
+                {t('common.close')}
               </button>
             </div>
           </div>

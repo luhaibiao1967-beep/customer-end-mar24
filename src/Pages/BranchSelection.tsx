@@ -14,6 +14,7 @@ import {
 import { supabase } from '../supabaseClient';
 import { theme } from '../theme';
 import toast from 'react-hot-toast';
+import { useLanguage } from '../contexts/LanguageContext';
 
 const MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string;
 
@@ -64,6 +65,7 @@ const BRANCH_ICON = (selected: boolean) => ({
 export default function BranchSelection({ customer, mode = 'setup' }: Props) {
   const { isLoaded } = useJsApiLoader({ googleMapsApiKey: MAPS_KEY, libraries: LIBRARIES });
   const navigate = useNavigate();
+  const { t } = useLanguage();
 
   const [branches, setBranches] = useState<BranchWithDistance[]>([]);
   const [customerCoords, setCustomerCoords] = useState<{ lat: number; lng: number } | null>(null);
@@ -129,7 +131,7 @@ export default function BranchSelection({ customer, mode = 'setup' }: Props) {
 
     const token = sessionStorage.getItem('auth_token');
     if (!token) {
-      toast.error('Session expired. Please log in again.');
+      toast.error(t('branch.sessionExpired'));
       setSaving(false);
       return;
     }
@@ -139,7 +141,7 @@ export default function BranchSelection({ customer, mode = 'setup' }: Props) {
     });
 
     if (error || !data?.success) {
-      toast.error('Failed to save. Please try again.');
+      toast.error(t('branch.saveFailed'));
       setSaving(false);
       return;
     }
@@ -172,7 +174,7 @@ export default function BranchSelection({ customer, mode = 'setup' }: Props) {
           borderTop: '4px solid white', borderRadius: '50%',
           animation: 'spin 1s linear infinite',
         }} />
-        <p style={{ fontSize: '16px', fontWeight: '500' }}>Loading...</p>
+        <p style={{ fontSize: '16px', fontWeight: '500' }}>{t('branch.loading')}</p>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     );
@@ -201,14 +203,14 @@ export default function BranchSelection({ customer, mode = 'setup' }: Props) {
               gap: '6px',
             }}
           >
-            &larr; Back
+            &larr; {t('common.back')}
           </button>
         )}
         <h1 style={{ color: 'white', fontSize: '22px', fontWeight: '700', margin: '0 0 4px' }}>
-          💧 Choose Your Water Branch
+          💧 {t('branch.title')}
         </h1>
         <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '13px', margin: 0 }}>
-          Hi {customer.name}! Search your address to find the nearest branch.
+          Hi {customer.name}! {t('branch.greeting')}
         </p>
       </div>
 
@@ -222,7 +224,7 @@ export default function BranchSelection({ customer, mode = 'setup' }: Props) {
           <input
             type="text"
             defaultValue={customer.address}
-            placeholder="Search your address..."
+            placeholder={t('branch.searchPlaceholder')}
             style={{
               width: '100%',
               padding: '13px 16px',
@@ -237,7 +239,7 @@ export default function BranchSelection({ customer, mode = 'setup' }: Props) {
         </Autocomplete>
         {!customerCoords && (
           <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '12px', margin: '6px 0 0 4px' }}>
-            ↑ Tap and select your address from the dropdown to find nearby branches
+            {t('branch.searchHint')}
           </p>
         )}
       </div>
@@ -271,7 +273,7 @@ export default function BranchSelection({ customer, mode = 'setup' }: Props) {
                     <strong>{branch.name}</strong><br />
                     {branch.address}
                     {branch.distance > 0 && (
-                      <><br /><span style={{ color: '#667eea' }}>{branch.distance.toFixed(1)} km away</span></>
+                      <><br /><span style={{ color: '#667eea' }}>{branch.distance.toFixed(1)} {t('branch.kmAway')}</span></>
                     )}
                   </div>
                 </InfoWindow>
@@ -286,9 +288,9 @@ export default function BranchSelection({ customer, mode = 'setup' }: Props) {
         <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '12px', margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
           {customerCoords
             ? showingAll
-              ? `All branches — none within service area (${branches.length})`
-              : `Nearby branches (${displayBranches.length})`
-            : `All branches (${displayBranches.length})`}
+              ? `${t('branch.allBranches')} (${branches.length})`
+              : `${t('branch.nearbyBranches')} (${displayBranches.length})`
+            : `${t('branch.nearbyBranches')} (${displayBranches.length})`}
         </p>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -333,7 +335,7 @@ export default function BranchSelection({ customer, mode = 'setup' }: Props) {
                     )}
                     {isSelected && (
                       <span style={{ background: theme.primary, color: 'white', fontSize: '11px', fontWeight: '700', padding: '3px 8px', borderRadius: '10px' }}>
-                        ✓ Selected
+                        ✓ {t('branch.selected')}
                       </span>
                     )}
                   </div>
@@ -356,7 +358,7 @@ export default function BranchSelection({ customer, mode = 'setup' }: Props) {
             transition: 'all 0.2s',
           }}
         >
-          {saving ? '⏳ Saving...' : selectedBranch ? `✅ Confirm — ${selectedBranch.name}` : 'Select a branch above'}
+          {saving ? `⏳ ${t('branch.saving')}` : selectedBranch ? `✅ ${t('branch.confirm')} — ${selectedBranch.name}` : t('branch.selectAbove')}
         </button>
       </div>
     </div>

@@ -6,83 +6,15 @@ import { FunctionsHttpError } from '@supabase/supabase-js';
 import { getOrCreateDeviceId } from '../lib/deviceId';
 import { theme } from '../theme';
 import { useJsApiLoader, Autocomplete } from '@react-google-maps/api';
+import { useLanguage } from '../contexts/LanguageContext';
 
 const MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string;
 const REGISTER_LIBRARIES: ('places')[] = ['places'];
 
-type Language = 'id' | 'en';
-
-const translations = {
-  id: {
-    title: 'Selamat Datang!',
-    subtitle: 'Daftar akun baru',
-    step1: 'Langkah 1: Isi formulir',
-    step2: 'Langkah 2: Verifikasi WhatsApp OTP',
-    formTitle: 'Formulir Pendaftaran',
-    otpTitle: 'Verifikasi WhatsApp',
-    otpSubtitle: 'Masukkan kode OTP yang dikirim ke WhatsApp Anda',
-    nameLabel: 'Nama Lengkap',
-    namePlaceholder: 'Budi Santoso',
-    addressLabel: 'Alamat Pengiriman',
-    addressPlaceholder: 'Jl. Sudirman No. 123, Jakarta Selatan',
-    whatsappLabel: 'Nomor WhatsApp',
-    whatsappPlaceholder: '812-3456-7890',
-    buttonNext: 'Lanjut',
-    buttonSending: 'Mengirim OTP...',
-    buttonVerify: 'Selesaikan Pendaftaran',
-    buttonVerifying: 'Membuat Akun...',
-    otpExpires: 'Kode berlaku',
-    resendOtp: 'Kirim ulang kode OTP',
-    resendIn: 'Kirim ulang dalam',
-    changeNumber: 'Ubah Nomor',
-    haveAccount: 'Sudah punya akun?',
-    checkWhatsapp: 'Cek WhatsApp Anda untuk link pesanan',
-    nextStep: 'Langkah selanjutnya:',
-    openWhatsapp: 'Buka WhatsApp Anda dan klik link yang dikirim untuk mulai memesan!',
-    footerBonus: 'Dapat 2 voucher gratis saat pendaftaran',
-    errorRequired: 'Mohon isi semua field yang diperlukan',
-    successTitle: 'Pendaftaran berhasil!',
-    successMessage: 'Link pesanan telah dikirim ke WhatsApp Anda. Silakan cek WhatsApp untuk melanjutkan.',
-    registrationComplete: 'Pendaftaran Selesai',
-  },
-  en: {
-    title: 'Welcome!',
-    subtitle: 'Create new account',
-    step1: 'Step 1: Fill the form',
-    step2: 'Step 2: Verify WhatsApp OTP',
-    formTitle: 'Registration Form',
-    otpTitle: 'WhatsApp Verification',
-    otpSubtitle: 'Enter the OTP code sent to your WhatsApp',
-    nameLabel: 'Full Name',
-    namePlaceholder: 'John Doe',
-    addressLabel: 'Delivery Address',
-    addressPlaceholder: 'Jl. Sudirman No. 123, South Jakarta',
-    whatsappLabel: 'WhatsApp Number',
-    whatsappPlaceholder: '812-3456-7890',
-    buttonNext: 'Next',
-    buttonSending: 'Sending OTP...',
-    buttonVerify: 'Complete Registration',
-    buttonVerifying: 'Creating Account...',
-    otpExpires: 'Code expires in',
-    resendOtp: 'Resend OTP code',
-    resendIn: 'Resend in',
-    changeNumber: 'Change Number',
-    haveAccount: 'Already have an account?',
-    checkWhatsapp: 'Check your WhatsApp for order link',
-    nextStep: 'Next step:',
-    openWhatsapp: 'Open your WhatsApp and click the link sent to start ordering!',
-    footerBonus: 'Get 2 free vouchers upon registration',
-    errorRequired: 'Please fill all required fields',
-    successTitle: 'Registration successful!',
-    successMessage: 'Order link has been sent to your WhatsApp. Please check WhatsApp to continue.',
-    registrationComplete: 'Registration Complete',
-  }
-};
-
 export default function CustomerRegister() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [language, setLanguage] = useState<Language>('id');
+  const { language, setLanguage, t } = useLanguage();
   const [step, setStep] = useState<'form' | 'otp'>('form');
   const [formData, setFormData] = useState({
     name: '',
@@ -100,8 +32,6 @@ export default function CustomerRegister() {
   const [devMagicLink, setDevMagicLink] = useState('');
   const [alreadyRegistered, setAlreadyRegistered] = useState(false);
   const [waMeUrl, setWaMeUrl] = useState('');
-
-  const t = translations[language];
 
   const [deviceId, setDeviceId] = useState<string | null>(() => searchParams.get('device_id'));
 
@@ -141,7 +71,7 @@ export default function CustomerRegister() {
 
     try {
       if (!formData.name || !formData.address || !formData.whatsapp) {
-        throw new Error(t.errorRequired);
+        throw new Error(t('register.errorRequired'));
       }
 
       const formattedWhatsApp = formatPhoneNumber(formData.whatsapp);
@@ -151,7 +81,7 @@ export default function CustomerRegister() {
         body: { phone: formattedWhatsApp, device_id: resolvedDeviceId || 'dummy' },
       });
       if (checkData?.bound || checkData?.needs_otp) {
-        setError(language === 'id' ? 'Nomor sudah terdaftar. Silakan login.' : 'Number already registered. Please login.');
+        setError(t('register.numberRegistered'));
         setLoading(false);
         return;
       }
@@ -186,10 +116,10 @@ export default function CustomerRegister() {
   const handleVerifyOTP = async (e: React.FormEvent) => {
     e.preventDefault();
     if (registrationSuccess) return; // Prevent double submission
-    
+
     setLoading(true);
     setError('');
-    setMessage(language === 'id' ? 'Membuat akun Anda...' : 'Creating your account...');
+    setMessage(t('register.creatingAccount'));
 
     try {
       const formattedWhatsApp = formatPhoneNumber(formData.whatsapp);
@@ -221,7 +151,7 @@ export default function CustomerRegister() {
       if (!data?.success) throw new Error(data?.error || 'Verification failed');
 
       setRegistrationSuccess(true);
-      setMessage(t.successMessage);
+      setMessage(t('register.successMessage'));
       if (data.magic_link) {
         setDevMagicLink(data.magic_link);
       }
@@ -236,7 +166,7 @@ export default function CustomerRegister() {
 
   const handleResendOTP = async () => {
     if (countdown > 0 || registrationSuccess) return;
-    
+
     setLoading(true);
     setError('');
     setMessage(language === 'id' ? 'Mengirim ulang OTP...' : 'Resending OTP...');
@@ -261,7 +191,7 @@ export default function CustomerRegister() {
       }
       if (!data?.success) throw new Error(data?.error || 'Resend failed');
 
-      setMessage(language === 'id' ? '📱 Kode OTP baru telah dikirim!' : '📱 New OTP code has been sent!');
+      setMessage(`📱 ${t('register.newOtpSent')}`);
       setCountdown(300);
       setOtpCode('');
       setLoading(false);
@@ -367,10 +297,10 @@ export default function CustomerRegister() {
             {registrationSuccess || alreadyRegistered ? '✅' : '👤'}
           </div>
           <h1 style={{ fontSize: '28px', fontWeight: 'bold', margin: '0 0 10px 0' }}>
-            {registrationSuccess ? t.registrationComplete : alreadyRegistered ? (language === 'id' ? 'Sudah Terdaftar' : 'Already Registered') : t.title}
+            {registrationSuccess ? t('register.registrationComplete') : alreadyRegistered ? (language === 'id' ? 'Sudah Terdaftar' : 'Already Registered') : t('register.title')}
           </h1>
           <p style={{ margin: 0, opacity: 0.9 }}>
-            {registrationSuccess ? t.successTitle : alreadyRegistered ? (language === 'id' ? 'Link masuk dikirim ke WhatsApp Anda' : 'Login link sent to your WhatsApp') : t.subtitle}
+            {registrationSuccess ? t('register.successTitle') : alreadyRegistered ? (language === 'id' ? 'Link masuk dikirim ke WhatsApp Anda' : 'Login link sent to your WhatsApp') : t('register.subtitle')}
           </p>
         </div>
 
@@ -388,14 +318,14 @@ export default function CustomerRegister() {
                 fontSize: '15px',
                 textAlign: 'center',
               }}>
-                ✅ {language === 'id' ? 'Anda sudah terdaftar!' : "You're already registered!"}
+                ✅ {t('register.alreadyRegistered')}
                 <br />
                 <span style={{ fontSize: '14px', opacity: 0.9 }}>
-                  {language === 'id' ? 'Link masuk telah dikirim ke WhatsApp Anda.' : 'Login link has been sent to your WhatsApp.'}
+                  {t('register.loginLinkSent')}
                 </span>
                 {devMagicLink && (
                   <span style={{ display: 'block', marginTop: '12px', fontSize: '13px', color: '#666' }}>
-                    {language === 'id' ? 'Tidak menerima? Klik tombol di bawah.' : "Didn't receive? Click the button below."}
+                    {t('register.didntReceive')}
                   </span>
                 )}
               </div>
@@ -419,7 +349,7 @@ export default function CustomerRegister() {
                         marginBottom: '12px',
                       }}
                     >
-                      💬 {language === 'id' ? 'Buka chat dengan kami' : 'Open chat with us'}
+                      💬 {t('register.openChat')}
                     </a>
                   )}
                   <a
@@ -436,7 +366,7 @@ export default function CustomerRegister() {
                       textDecoration: 'none',
                     }}
                   >
-                    {language === 'id' ? 'Masuk ke Dashboard' : 'Enter Dashboard'}
+                    {t('register.enterDashboard')}
                   </a>
                 </div>
               )}
@@ -446,7 +376,7 @@ export default function CustomerRegister() {
                   onClick={(e) => { e.preventDefault(); navigate('/'); }}
                   style={{ color: theme.primary, textDecoration: 'underline' }}
                 >
-                  {language === 'id' ? '← Kembali ke login' : '← Back to login'}
+                  {t('register.backToLogin')}
                 </a>
               </p>
             </div>
@@ -461,11 +391,11 @@ export default function CustomerRegister() {
                 fontSize: '13px',
                 color: '#1976d2'
               }}>
-                ℹ️ <strong>{t.step1}</strong> → <strong>{t.step2}</strong>
+                ℹ️ <strong>{t('register.step1')}</strong> → <strong>{t('register.step2')}</strong>
               </div>
 
               <h2 style={{ fontSize: '20px', marginBottom: '25px', fontWeight: 'bold' }}>
-                {t.formTitle}
+                {t('register.formTitle')}
               </h2>
 
               {/* Name */}
@@ -477,13 +407,13 @@ export default function CustomerRegister() {
                   marginBottom: '8px',
                   color: '#333'
                 }}>
-                  {t.nameLabel} *
+                  {t('register.nameLabel')} *
                 </label>
                 <input
                   type="text"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder={t.namePlaceholder}
+                  placeholder={t('register.namePlaceholder')}
                   style={{
                     width: '100%',
                     padding: '12px 15px',
@@ -505,7 +435,7 @@ export default function CustomerRegister() {
                   marginBottom: '8px',
                   color: '#333'
                 }}>
-                  📍 {t.addressLabel} *
+                  📍 {t('register.addressLabel')} *
                 </label>
                 {mapsLoaded ? (
                   <Autocomplete
@@ -522,7 +452,7 @@ export default function CustomerRegister() {
                       type="text"
                       value={formData.address}
                       onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                      placeholder={t.addressPlaceholder}
+                      placeholder={t('register.addressPlaceholder')}
                       style={{
                         width: '100%',
                         padding: '12px 15px',
@@ -539,7 +469,7 @@ export default function CustomerRegister() {
                     type="text"
                     value={formData.address}
                     onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                    placeholder={t.addressPlaceholder}
+                    placeholder={t('register.addressPlaceholder')}
                     style={{
                       width: '100%',
                       padding: '12px 15px',
@@ -567,7 +497,7 @@ export default function CustomerRegister() {
                   marginBottom: '8px',
                   color: '#333'
                 }}>
-                  💬 {t.whatsappLabel} *
+                  💬 {t('register.whatsappLabel')} *
                 </label>
                 <div style={{ position: 'relative' }}>
                   <span style={{
@@ -584,7 +514,7 @@ export default function CustomerRegister() {
                     type="tel"
                     value={formData.whatsapp}
                     onChange={(e) => setFormData({ ...formData, whatsapp: e.target.value })}
-                    placeholder={t.whatsappPlaceholder}
+                    placeholder={t('login.whatsappPlaceholder')}
                     style={{
                       width: '100%',
                       padding: '12px 15px 12px 55px',
@@ -628,24 +558,24 @@ export default function CustomerRegister() {
                   marginBottom: '15px'
                 }}
               >
-                {loading ? `⏳ ${t.buttonSending}` : `${t.buttonNext} →`}
+                {loading ? `⏳ ${t('register.buttonSending')}` : `${t('register.buttonNext')} →`}
               </button>
 
               <div style={{ textAlign: 'center' }}>
                 <p style={{ fontSize: '14px', color: '#666', margin: '0 0 8px 0' }}>
-                  {t.haveAccount}{' '}
+                  {t('register.haveAccount')}{' '}
                   <span style={{ color: theme.primary, fontWeight: 'bold' }}>
-                    {t.checkWhatsapp}
+                    {t('register.checkWhatsapp')}
                   </span>
                 </p>
                 <p style={{ fontSize: '13px', color: '#999', margin: '0 0 4px 0' }}>
-                  {language === 'id' ? 'Hilang link? ' : 'Lost your link? '}
+                  {t('register.lostLink')}{' '}
                   <a
                     href="/reauth"
                     onClick={(e) => { e.preventDefault(); navigate('/reauth'); }}
                     style={{ color: theme.primary, textDecoration: 'underline' }}
                   >
-                    {language === 'id' ? 'Dapatkan link baru' : 'Get new link'}
+                    {t('register.getNewLink')}
                   </a>
                 </p>
                 <p style={{ fontSize: '13px', color: '#999', margin: 0 }}>
@@ -654,7 +584,7 @@ export default function CustomerRegister() {
                     onClick={(e) => { e.preventDefault(); navigate('/'); }}
                     style={{ color: theme.primary, textDecoration: 'underline' }}
                   >
-                    {language === 'id' ? '← Kembali ke login' : '← Back to login'}
+                    {t('register.backToLogin')}
                   </a>
                 </p>
               </div>
@@ -662,10 +592,10 @@ export default function CustomerRegister() {
           ) : (
             <form onSubmit={handleVerifyOTP}>
               <h2 style={{ fontSize: '20px', marginBottom: '10px', fontWeight: 'bold' }}>
-                📱 {t.otpTitle}
+                📱 {t('register.otpTitle')}
               </h2>
               <p style={{ fontSize: '14px', color: '#666', marginBottom: '25px' }}>
-                {t.otpSubtitle}
+                {t('register.otpSubtitle')}
               </p>
 
               {countdown > 0 && !registrationSuccess && (
@@ -679,7 +609,7 @@ export default function CustomerRegister() {
                   fontSize: '14px',
                   textAlign: 'center'
                 }}>
-                  ⏱️ {t.otpExpires}: <strong>{formatCountdown(countdown)}</strong>
+                  ⏱️ {t('register.otpExpires')}: <strong>{formatCountdown(countdown)}</strong>
                 </div>
               )}
 
@@ -698,7 +628,7 @@ export default function CustomerRegister() {
                   {registrationSuccess && '✅'} {message}
                   {registrationSuccess && (
                     <div style={{ marginTop: '15px', padding: '12px', background: 'white', borderRadius: '8px', fontSize: '13px' }}>
-                      📱 <strong>{t.nextStep}</strong><br/>
+                      📱 <strong>{t('register.nextStep')}</strong><br/>
                       {devMagicLink ? (
                         <>
                           {language === 'id' ? 'Atau klik link di bawah untuk langsung masuk:' : 'Or click the link below to enter directly:'}
@@ -719,11 +649,11 @@ export default function CustomerRegister() {
                               textDecoration: 'none',
                             }}
                           >
-                            🔗 {language === 'id' ? 'Masuk ke Dashboard' : 'Enter Dashboard'}
+                            🔗 {t('register.enterDashboard')}
                           </a>
                         </>
                       ) : (
-                        t.openWhatsapp
+                        t('register.openWhatsapp')
                       )}
                     </div>
                   )}
@@ -787,7 +717,7 @@ export default function CustomerRegister() {
                   opacity: registrationSuccess ? 0.5 : 1
                 }}
               >
-                {loading ? `⏳ ${t.buttonVerifying}` : registrationSuccess ? `✅ ${t.registrationComplete}` : `✅ ${t.buttonVerify}`}
+                {loading ? `⏳ ${t('register.buttonVerifying')}` : registrationSuccess ? `✅ ${t('register.registrationComplete')}` : `✅ ${t('register.buttonVerify')}`}
               </button>
 
               {!registrationSuccess && (
@@ -806,7 +736,7 @@ export default function CustomerRegister() {
                         textDecoration: countdown > 0 ? 'none' : 'underline'
                       }}
                     >
-                      {countdown > 0 ? `${t.resendIn} ${formatCountdown(countdown)}` : `🔄 ${t.resendOtp}`}
+                      {countdown > 0 ? `${t('register.resendIn')} ${formatCountdown(countdown)}` : `🔄 ${t('register.resendOtp')}`}
                     </button>
                   </div>
 
@@ -829,7 +759,7 @@ export default function CustomerRegister() {
                         textDecoration: 'underline'
                       }}
                     >
-                      ← {t.changeNumber}
+                      ← {t('register.changeNumber')}
                     </button>
                   </div>
                 </>
@@ -846,7 +776,7 @@ export default function CustomerRegister() {
           borderTop: '1px solid #e0e0e0'
         }}>
           <p style={{ margin: 0, fontSize: '12px', color: '#999' }}>
-            🎁 {t.footerBonus}
+            🎁 {t('register.footerBonus')}
           </p>
         </div>
       </div>
