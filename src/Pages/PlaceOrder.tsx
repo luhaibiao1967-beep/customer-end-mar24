@@ -41,6 +41,11 @@ interface PlaceOrderProps {
 // Base price for refill gallon — update here if price changes
 const REFILL_BASE_PRICE = 15000;
 
+const isAccessory = (p: Product) => {
+  const lower = p.name.toLowerCase();
+  return lower.includes('pump') || lower.includes('rack');
+};
+
 function getJakartaDateString(date: Date = new Date()): string {
   return date.toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' }); // returns YYYY-MM-DD
 }
@@ -76,6 +81,9 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
 
   // Per-product voucher balances: productId → balance
   const [productVouchers, setProductVouchers] = useState<Map<string, number>>(new Map());
+
+  // Accessories section collapsed by default
+  const [showAccessories, setShowAccessories] = useState(false);
 
   const isPrePay = customer.customer_type === 'pre_pay';
 
@@ -212,7 +220,8 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
 
       const filtered = (data || []).filter(p => {
         const lower = p.name.toLowerCase();
-        return !lower.includes('empty') && !lower.includes('sample');
+        return !lower.includes('empty') && !lower.includes('sample')
+          && !(lower.includes('test') && customer.branch !== 'Demo');
       });
 
       filtered.sort((a, b) =>
@@ -540,7 +549,8 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
             <p style={{ color: theme.textMuted, textAlign: 'center', padding: '20px 0' }}>{t('placeOrder.noProducts')}</p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {products.map(product => {
+              {/* Main products */}
+              {products.filter(p => !isAccessory(p)).map(product => {
                 const qty = cart.get(product.id) || 0;
                 const unitPrice = getUnitPrice(product);
                 const voucherBalance = productVouchers.get(product.id);
@@ -559,7 +569,6 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
                             </span>
                           )}
                         </span>
-                        {/* Voucher badge + Buy button for pre_pay — always show, even if 0 */}
                         {isPrePay && (
                           <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <span style={{
@@ -603,6 +612,77 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
                   </div>
                 );
               })}
+
+              {/* Accessories toggle */}
+              {products.some(p => isAccessory(p)) && (
+                <>
+                  <button
+                    onClick={() => setShowAccessories(v => !v)}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: '10px 14px', background: theme.cardBgAlt, border: `1px dashed ${theme.primary}`, borderRadius: '10px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: theme.primary }}
+                  >
+                    <span>🔧 {t('placeOrder.accessories')}</span>
+                    <span>{showAccessories ? t('placeOrder.hideAccessories') : t('placeOrder.showAccessories')} {showAccessories ? '▲' : '▼'}</span>
+                  </button>
+
+                  {showAccessories && products.filter(p => isAccessory(p)).map(product => {
+                    const qty = cart.get(product.id) || 0;
+                    const unitPrice = getUnitPrice(product);
+                    const voucherBalance = productVouchers.get(product.id);
+                    const plusDisabled = false;
+
+                    return (
+                      <div key={product.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', background: qty > 0 ? '#f0fbfb' : theme.cardBgAlt, borderRadius: '10px', border: `2px solid ${qty > 0 ? theme.primary : 'transparent'}` }}>
+                        <div style={{ flex: 1 }}>
+                          <p style={{ margin: 0, fontWeight: '600', fontSize: '14px', color: theme.text }}>{product.name}</p>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px', flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: '13px', color: theme.textMuted }}>
+                              {formatCurrency(unitPrice)} / {product.unit}
+                            </span>
+                            {isPrePay && (
+                              <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span style={{
+                                  fontSize: '11px',
+                                  fontWeight: '600',
+                                  color: (voucherBalance ?? 0) > 0 ? theme.primary : theme.error,
+                                  background: (voucherBalance ?? 0) > 0 ? '#f0fbfb' : '#fdecea',
+                                  padding: '2px 8px',
+                                  borderRadius: '12px',
+                                  border: `1px solid ${(voucherBalance ?? 0) > 0 ? theme.primary : theme.error}`,
+                                }}>
+                                  🎫 {voucherBalance ?? 0}
+                                </span>
+                                <button
+                                  onClick={() => navigate('/buy-vouchers')}
+                                  style={{ fontSize: '11px', fontWeight: '600', color: 'white', background: theme.gradientSuccess, border: 'none', borderRadius: '10px', padding: '2px 8px', cursor: 'pointer' }}
+                                >
+                                  {t('placeOrder.buy')}
+                                </button>
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <button
+                            onClick={() => updateCart(product.id, -1)}
+                            disabled={qty === 0}
+                            style={{ width: '32px', height: '32px', borderRadius: '50%', border: 'none', background: qty > 0 ? theme.primary : '#ddd', color: 'white', fontSize: '18px', fontWeight: 'bold', cursor: qty > 0 ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                          >
+                            −
+                          </button>
+                          <span style={{ width: '28px', textAlign: 'center', fontWeight: 'bold', fontSize: '16px' }}>{qty}</span>
+                          <button
+                            onClick={() => updateCart(product.id, 1)}
+                            disabled={plusDisabled}
+                            style={{ width: '32px', height: '32px', borderRadius: '50%', border: 'none', background: plusDisabled ? '#ddd' : theme.primary, color: 'white', fontSize: '18px', fontWeight: 'bold', cursor: plusDisabled ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
             </div>
           )}
         </div>
