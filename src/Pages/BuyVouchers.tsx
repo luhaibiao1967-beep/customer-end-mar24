@@ -13,6 +13,7 @@ interface Customer {
   name: string;
   customer_type: string;
   voucher_balance: number;
+  branch: string;
 }
 
 interface BuyVouchersProps {
@@ -135,8 +136,15 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
           .order('name'),
       ]);
 
-      const pkgs = (pkgRes.data as VoucherPackage[]) || [];
-      const prods = (prodRes.data as Product[]) || [];
+      const isDemo = customer.branch === 'Demo';
+      const isTestProduct = (name: string) => name.toLowerCase().includes('test');
+
+      const pkgs = ((pkgRes.data as VoucherPackage[]) || []).filter(pkg =>
+        isDemo || !isTestProduct(pkg.products?.name ?? '')
+      );
+      const prods = ((prodRes.data as Product[]) || []).filter(p =>
+        isDemo || !isTestProduct(p.name)
+      );
 
       setPackages(pkgs);
       setProducts(prods);
