@@ -13,6 +13,32 @@ import { useLanguage } from '../contexts/LanguageContext';
 
 const APP_URL = 'https://vividaqua.online/';
 
+const loadImage = (src: string): Promise<HTMLImageElement> =>
+  new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+
+const drawRoundRect = (
+  ctx: CanvasRenderingContext2D,
+  x: number, y: number, w: number, h: number, r: number
+) => {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+};
+
 interface Customer {
   id: string;
   name: string;
@@ -56,6 +82,176 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
   const [paymentTerm, setPaymentTerm] = useState<string>('');
   const qrRef = useRef<HTMLCanvasElement>(null);
   const canOrder = customer.branch && customer.branch !== 'Pending';
+
+  const generateShareImage = async (): Promise<Blob | null> => {
+    const qrCanvas = qrRef.current;
+    if (!qrCanvas) return null;
+
+    const W = 540;
+    const H = 780;
+    const offscreen = document.createElement('canvas');
+    offscreen.width = W;
+    offscreen.height = H;
+    const ctx = offscreen.getContext('2d');
+    if (!ctx) return null;
+
+    // Background gradient
+    const bg = ctx.createLinearGradient(0, 0, W, H);
+    bg.addColorStop(0, '#4f46e5');
+    bg.addColorStop(0.55, '#7c3aed');
+    bg.addColorStop(1, '#a21caf');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, W, H);
+
+    // Decorative circles
+    ctx.save();
+    ctx.globalAlpha = 0.13;
+    ctx.fillStyle = 'white';
+    ctx.beginPath(); ctx.arc(W * 0.92, -10, 180, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(-20, H * 0.35, 110, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(W * 0.8, H * 0.88, 70, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(W * 0.15, H * 0.85, 45, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+
+    // Top wave shape
+    ctx.save();
+    ctx.globalAlpha = 0.08;
+    ctx.fillStyle = 'white';
+    ctx.beginPath();
+    ctx.moveTo(0, 220);
+    ctx.quadraticCurveTo(W * 0.25, 200, W * 0.5, 225);
+    ctx.quadraticCurveTo(W * 0.75, 250, W, 210);
+    ctx.lineTo(W, 0); ctx.lineTo(0, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    // Logo
+    try {
+      const logo = await loadImage(`${import.meta.env.BASE_URL}logo.png`);
+      const logoH = 58;
+      const logoW = (logo.width / logo.height) * logoH;
+      ctx.drawImage(logo, (W - logoW) / 2, 46, logoW, logoH);
+    } catch { /* fallback: draw emoji */ }
+
+    // Brand name
+    ctx.fillStyle = 'white';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.font = 'bold 42px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    ctx.fillText('VividAqua', W / 2, 164);
+
+    // Tagline
+    ctx.globalAlpha = 0.8;
+    ctx.font = '16px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    ctx.fillText('💧 Premium Water Delivery Service', W / 2, 196);
+    ctx.globalAlpha = 1;
+
+    // White card with shadow
+    const cardX = 44;
+    const cardY = 228;
+    const cardW = W - 88;
+    const cardH = 352;
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.3)';
+    ctx.shadowBlur = 32;
+    ctx.shadowOffsetY = 10;
+    ctx.fillStyle = 'white';
+    drawRoundRect(ctx, cardX, cardY, cardW, cardH, 24);
+    ctx.fill();
+    ctx.restore();
+
+    // Light gradient shimmer on card top
+    ctx.save();
+    const shimmer = ctx.createLinearGradient(cardX, cardY, cardX, cardY + 80);
+    shimmer.addColorStop(0, 'rgba(255,255,255,0.6)');
+    shimmer.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = shimmer;
+    drawRoundRect(ctx, cardX, cardY, cardW, 80, 24);
+    ctx.fill();
+    ctx.restore();
+
+    // "Scan to Order" label inside card (top)
+    ctx.fillStyle = '#7c3aed';
+    ctx.font = 'bold 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText('📲  SCAN TO ORDER', W / 2, cardY + 30);
+
+    // QR code
+    const qrSize = 216;
+    const qrX = (W - qrSize) / 2;
+    const qrY = cardY + 46;
+    // Subtle border around QR
+    ctx.save();
+    ctx.strokeStyle = '#e5e7eb';
+    ctx.lineWidth = 1.5;
+    drawRoundRect(ctx, qrX - 10, qrY - 10, qrSize + 20, qrSize + 20, 12);
+    ctx.stroke();
+    ctx.fillStyle = '#fafafa';
+    ctx.fill();
+    ctx.restore();
+    ctx.drawImage(qrCanvas, qrX, qrY, qrSize, qrSize);
+
+    // URL pill below QR
+    const urlText = APP_URL;
+    const pillW = 280;
+    const pillH = 28;
+    const pillX = (W - pillW) / 2;
+    const pillY = qrY + qrSize + 18;
+    ctx.fillStyle = '#f3f4f6';
+    drawRoundRect(ctx, pillX, pillY, pillW, pillH, 14);
+    ctx.fill();
+    ctx.fillStyle = '#6b7280';
+    ctx.font = '12px "SF Mono", "Fira Code", monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(urlText, W / 2, pillY + 14);
+
+    // Card bottom text
+    ctx.fillStyle = '#4f46e5';
+    ctx.font = 'bold 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText('Order air galon sekarang!', W / 2, cardY + cardH - 22);
+
+    // Bottom section
+    // Divider
+    ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(80, cardY + cardH + 44);
+    ctx.lineTo(W - 80, cardY + cardH + 44);
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+    ctx.font = 'bold 17px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText('Air galon bersih & berkualitas', W / 2, cardY + cardH + 78);
+
+    ctx.fillStyle = 'rgba(255,255,255,0.65)';
+    ctx.font = '14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    ctx.fillText('Pengiriman cepat ke rumah Anda ✨', W / 2, cardY + cardH + 106);
+
+    // Bottom badge
+    const badgeW = 210;
+    const badgeH = 36;
+    const badgeX = (W - badgeW) / 2;
+    const badgeY = H - 50;
+    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+    drawRoundRect(ctx, badgeX, badgeY, badgeW, badgeH, 18);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+    ctx.lineWidth = 1;
+    drawRoundRect(ctx, badgeX, badgeY, badgeW, badgeH, 18);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.font = '600 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('🌐  vividaqua.online', W / 2, badgeY + 18);
+
+    return new Promise(resolve => offscreen.toBlob(resolve, 'image/png'));
+  };
 
   useEffect(() => {
     loadHomeData();
@@ -487,15 +683,12 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
             <button
               onClick={async () => {
                 try {
-                  const canvas = qrRef.current;
-                  if (canvas && navigator.canShare) {
-                    const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'));
-                    if (blob) {
-                      const file = new File([blob], 'vividaqua-qr.png', { type: 'image/png' });
-                      if (navigator.canShare({ files: [file] })) {
-                        await navigator.share({ title: 'VividAqua', text: APP_URL, files: [file] });
-                        return;
-                      }
+                  const blob = await generateShareImage();
+                  if (blob && navigator.canShare) {
+                    const file = new File([blob], 'vividaqua.png', { type: 'image/png' });
+                    if (navigator.canShare({ files: [file] })) {
+                      await navigator.share({ title: 'VividAqua', text: 'Order air galon sekarang! ' + APP_URL, files: [file] });
+                      return;
                     }
                   }
                   if (navigator.share) {
