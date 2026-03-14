@@ -119,28 +119,20 @@ export default function CustomerReauth() {
       }}>
         <div style={{
           background: theme.gradientPrimary,
-          padding: '40px 20px',
+          padding: '32px 20px 24px',
           textAlign: 'center',
-          color: 'white'
+          color: 'white',
         }}>
-          <div style={{
-            width: '80px',
-            height: '80px',
-            background: 'white',
-            borderRadius: '50%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            margin: '0 auto 15px',
-            fontSize: '40px'
-          }}>
-            🔐
-          </div>
-          <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: '0 0 10px 0' }}>
-            Verifikasi Ulang
+          <img
+            src={`${import.meta.env.BASE_URL}logo.png`}
+            alt="VIVIDAQUA"
+            style={{ width: '100px', height: '100px', objectFit: 'contain', margin: '0 auto 12px', display: 'block' }}
+          />
+          <h1 style={{ fontSize: '22px', fontWeight: '800', margin: '0 0 6px 0' }}>
+            {step === 'phone' ? 'Verifikasi Identitas' : 'Masukkan Kode OTP'}
           </h1>
-          <p style={{ margin: 0, opacity: 0.9 }}>
-            Link Anda sudah kadaluarsa, masukkan OTP
+          <p style={{ margin: 0, opacity: 0.85, fontSize: '13px' }}>
+            {step === 'phone' ? 'Masukkan nomor WhatsApp Anda' : 'Kode telah dikirim ke WhatsApp Anda'}
           </p>
         </div>
 
@@ -193,7 +185,7 @@ export default function CustomerReauth() {
                 style={{
                   width: '100%',
                   padding: '14px',
-                  background: loading ? '#ccc' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  background: loading ? theme.disabled : theme.gradientPrimary,
                   color: 'white',
                   border: 'none',
                   borderRadius: '8px',

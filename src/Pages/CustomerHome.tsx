@@ -534,7 +534,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
                 disabled={!canOrder}
                 style={{
                   padding: '14px',
-                  background: canOrder ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : '#ccc',
+                  background: canOrder ? theme.gradientPrimary : theme.disabled,
                   color: 'white',
                   border: 'none',
                   borderRadius: '8px',
@@ -568,7 +568,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
               style={{
                 width: '100%',
                 padding: '14px',
-                background: canOrder ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : '#ccc',
+                background: canOrder ? theme.gradientPrimary : theme.disabled,
                 color: 'white',
                 border: 'none',
                 borderRadius: '8px',

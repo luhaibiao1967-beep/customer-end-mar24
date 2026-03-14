@@ -96,62 +96,51 @@ export default function CustomerLogin() {
         overflow: 'hidden',
       }}>
         <div style={{
-          display: 'flex',
-          justifyContent: 'flex-end',
-          gap: '8px',
-          padding: '12px 20px',
-          background: '#f8f9fa',
-        }}>
-          <button
-            onClick={() => setLanguage('id')}
-            style={{
-              padding: '6px 14px',
-              background: language === 'id' ? theme.gradientPrimary : 'transparent',
-              border: 'none',
-              borderRadius: '16px',
-              color: language === 'id' ? 'white' : theme.primary,
-              fontWeight: 'bold',
-              cursor: 'pointer',
-              fontSize: '13px',
-            }}
-          >
-            🇮🇩 ID
-          </button>
-          <button
-            onClick={() => setLanguage('en')}
-            style={{
-              padding: '6px 14px',
-              background: language === 'en' ? theme.gradientPrimary : 'transparent',
-              border: 'none',
-              borderRadius: '16px',
-              color: language === 'en' ? 'white' : theme.primary,
-              fontWeight: 'bold',
-              cursor: 'pointer',
-              fontSize: '13px',
-            }}
-          >
-            🇬🇧 EN
-          </button>
-        </div>
-
-        <div style={{
           background: theme.gradientPrimary,
-          padding: '16px 20px',
+          padding: '32px 20px 24px',
           textAlign: 'center',
           color: 'white',
+          position: 'relative',
         }}>
+          {/* Language toggle — inside header */}
           <div style={{
-            width: '280px',
-            height: '280px',
+            position: 'absolute',
+            top: '14px',
+            right: '14px',
             display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            margin: '0 auto 8px',
+            background: 'rgba(255,255,255,0.2)',
+            borderRadius: '8px',
+            padding: '3px',
+            gap: '2px',
           }}>
-            <img src={`${import.meta.env.BASE_URL}logo.png`} alt="Logo" style={{ width: '280px', height: '280px', objectFit: 'contain' }} />
+            {(['id', 'en'] as const).map((lang) => (
+              <button
+                key={lang}
+                onClick={() => setLanguage(lang)}
+                style={{
+                  padding: '5px 11px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  fontSize: '12px',
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  background: language === lang ? 'white' : 'transparent',
+                  color: language === lang ? theme.secondary : 'rgba(255,255,255,0.9)',
+                  transition: 'all 0.2s',
+                }}
+              >
+                {lang.toUpperCase()}
+              </button>
+            ))}
           </div>
-          <h1 style={{ fontSize: '28px', fontWeight: 'bold', margin: '0 0 10px 0' }}>{t('login.title')}</h1>
-          <p style={{ margin: 0, opacity: 0.9 }}>{t('login.subtitle')}</p>
+
+          <img
+            src={`${import.meta.env.BASE_URL}logo.png`}
+            alt="VIVIDAQUA"
+            style={{ width: '160px', height: '160px', objectFit: 'contain', margin: '0 auto 12px', display: 'block' }}
+          />
+          <h1 style={{ fontSize: '26px', fontWeight: '800', margin: '0 0 6px 0', letterSpacing: '0.5px' }}>{t('login.title')}</h1>
+          <p style={{ margin: 0, opacity: 0.85, fontSize: '14px' }}>{t('login.subtitle')}</p>
         </div>
 
         <div style={{ padding: '40px 30px' }}>
