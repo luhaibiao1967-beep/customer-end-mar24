@@ -38,3 +38,6 @@ supabase/.temp/
 
 # Plan docs
 docs/plans/
+
+# Local git dir backup (use GIT_DIR=.git_disabled if renamed)
+.git_disabled/

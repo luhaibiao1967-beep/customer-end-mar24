@@ -15,6 +15,7 @@ import { supabase } from '../supabaseClient';
 import { theme } from '../theme';
 import toast from 'react-hot-toast';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useColorTokens } from '../contexts/ColorTokensContext';
 
 const MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string;
 
@@ -66,6 +67,7 @@ export default function BranchSelection({ customer, mode = 'setup' }: Props) {
   const { isLoaded } = useJsApiLoader({ googleMapsApiKey: MAPS_KEY, libraries: LIBRARIES });
   const navigate = useNavigate();
   const { t } = useLanguage();
+  const { tokens } = useColorTokens();
 
   const [branches, setBranches] = useState<BranchWithDistance[]>([]);
   const [customerCoords, setCustomerCoords] = useState<{ lat: number; lng: number } | null>(null);
@@ -164,14 +166,14 @@ export default function BranchSelection({ customer, mode = 'setup' }: Props) {
   if (!isLoaded || loadingBranches) {
     return (
       <div style={{
-        minHeight: '100vh', background: theme.gradientPrimary,
+        minHeight: '100vh', background: tokens.pageBg,
         display: 'flex', flexDirection: 'column', alignItems: 'center',
-        justifyContent: 'center', color: 'white', gap: '16px',
+        justifyContent: 'center', color: tokens.text, gap: '16px',
       }}>
         <div style={{
           width: '48px', height: '48px',
-          border: '4px solid rgba(255,255,255,0.3)',
-          borderTop: '4px solid white', borderRadius: '50%',
+          border: `4px solid ${tokens.primaryBorder}`,
+          borderTop: `4px solid ${tokens.primary}`, borderRadius: '50%',
           animation: 'spin 1s linear infinite',
         }} />
         <p style={{ fontSize: '16px', fontWeight: '500' }}>{t('branch.loading')}</p>
@@ -181,16 +183,16 @@ export default function BranchSelection({ customer, mode = 'setup' }: Props) {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: theme.gradientPrimary, paddingBottom: '32px' }}>
+    <div style={{ minHeight: '100vh', background: tokens.pageBg, paddingBottom: '32px' }}>
 
       {/* Header */}
-      <div style={{ padding: '20px 16px 12px' }}>
+      <div style={{ padding: '20px 16px 12px', background: 'rgba(0,0,0,0.30)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }}>
         {mode === 'edit' && (
           <button
             onClick={() => navigate(-1)}
             style={{
-              background: 'rgba(255,255,255,0.2)',
-              border: 'none',
+              background: 'rgba(255,255,255,0.15)',
+              border: '1px solid rgba(255,255,255,0.3)',
               color: 'white',
               fontSize: '14px',
               fontWeight: '600',
@@ -206,10 +208,10 @@ export default function BranchSelection({ customer, mode = 'setup' }: Props) {
             &larr; {t('common.back')}
           </button>
         )}
-        <h1 style={{ color: 'white', fontSize: '22px', fontWeight: '700', margin: '0 0 4px' }}>
+        <h1 style={{ color: 'white', fontSize: '22px', fontWeight: '700', margin: '0 0 4px', textShadow: '0 1px 4px rgba(0,0,0,0.4)' }}>
           💧 {t('branch.title')}
         </h1>
-        <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '13px', margin: 0 }}>
+        <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '13px', margin: 0 }}>
           Hi {customer.name}! {t('branch.greeting')}
         </p>
       </div>
@@ -238,7 +240,7 @@ export default function BranchSelection({ customer, mode = 'setup' }: Props) {
           />
         </Autocomplete>
         {!customerCoords && (
-          <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '12px', margin: '6px 0 0 4px' }}>
+          <p style={{ color: tokens.muted, fontSize: '12px', margin: '6px 0 0 4px' }}>
             {t('branch.searchHint')}
           </p>
         )}
@@ -285,7 +287,7 @@ export default function BranchSelection({ customer, mode = 'setup' }: Props) {
 
       {/* Branch list */}
       <div style={{ padding: '0 16px' }}>
-        <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '12px', margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+        <p style={{ color: tokens.muted, fontSize: '12px', margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
           {customerCoords
             ? showingAll
               ? `${t('branch.allBranches')} (${branches.length})`
@@ -305,36 +307,37 @@ export default function BranchSelection({ customer, mode = 'setup' }: Props) {
                   setMapCenter({ lat: branch.latitude, lng: branch.longitude });
                 }}
                 style={{
-                  background: isSelected ? 'white' : 'rgba(255,255,255,0.15)',
+                  background: tokens.card,
                   borderRadius: '14px',
                   padding: '14px 16px',
                   cursor: 'pointer',
-                  border: isSelected ? `2px solid ${theme.primary}` : '2px solid transparent',
+                  border: isSelected ? `2px solid ${tokens.primary}` : `1px solid ${tokens.cardBorder}`,
+                  boxShadow: isSelected ? `0 4px 16px rgba(0,105,113,0.12)` : tokens.cardShadow,
                   transition: 'all 0.2s',
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <div style={{ flex: 1 }}>
-                    <p style={{ margin: '0 0 3px', fontWeight: '700', fontSize: '15px', color: isSelected ? theme.primary : 'white' }}>
+                    <p style={{ margin: '0 0 3px', fontWeight: '700', fontSize: '15px', color: isSelected ? tokens.primary : tokens.text }}>
                       {branch.name}
                     </p>
-                    <p style={{ margin: '0 0 3px', fontSize: '12px', color: isSelected ? '#555' : 'rgba(255,255,255,0.75)' }}>
+                    <p style={{ margin: '0 0 3px', fontSize: '12px', color: tokens.muted }}>
                       📍 {branch.address}
                     </p>
                     {branch.phone && (
-                      <p style={{ margin: 0, fontSize: '12px', color: isSelected ? '#555' : 'rgba(255,255,255,0.65)' }}>
+                      <p style={{ margin: 0, fontSize: '12px', color: tokens.muted }}>
                         📞 {branch.phone}
                       </p>
                     )}
                   </div>
                   <div style={{ textAlign: 'right', minWidth: '68px', paddingLeft: '8px' }}>
                     {branch.distance > 0 && (
-                      <p style={{ margin: '0 0 4px', fontSize: '13px', fontWeight: '600', color: isSelected ? theme.primary : 'rgba(255,255,255,0.9)' }}>
+                      <p style={{ margin: '0 0 4px', fontSize: '13px', fontWeight: '600', color: isSelected ? tokens.primary : tokens.muted }}>
                         {branch.distance.toFixed(1)} km
                       </p>
                     )}
                     {isSelected && (
-                      <span style={{ background: theme.primary, color: 'white', fontSize: '11px', fontWeight: '700', padding: '3px 8px', borderRadius: '10px' }}>
+                      <span style={{ background: tokens.primary, color: 'white', fontSize: '11px', fontWeight: '700', padding: '3px 8px', borderRadius: '10px' }}>
                         ✓ {t('branch.selected')}
                       </span>
                     )}
@@ -352,7 +355,7 @@ export default function BranchSelection({ customer, mode = 'setup' }: Props) {
           style={{
             width: '100%', marginTop: '16px', padding: '16px', border: 'none',
             borderRadius: '14px', fontSize: '16px', fontWeight: '700', color: 'white',
-            background: selectedBranch ? theme.gradientPrimary : 'rgba(255,255,255,0.2)',
+            background: selectedBranch ? tokens.gradientPrimary : tokens.divider,
             cursor: selectedBranch && !saving ? 'pointer' : 'not-allowed',
             boxShadow: selectedBranch ? '0 4px 20px rgba(0,0,0,0.2)' : 'none',
             transition: 'all 0.2s',

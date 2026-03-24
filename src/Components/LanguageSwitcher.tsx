@@ -1,6 +1,7 @@
 // src/Components/LanguageSwitcher.tsx
 import React from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useColorTokens } from '../contexts/ColorTokensContext';
 
 interface LanguageSwitcherProps {
   variant?: 'header' | 'inline';
@@ -8,6 +9,7 @@ interface LanguageSwitcherProps {
 
 export const LanguageSwitcher: React.FC<LanguageSwitcherProps> = ({ variant = 'header' }) => {
   const { language, setLanguage } = useLanguage();
+  const { tokens, isDark } = useColorTokens();
 
   if (variant === 'inline') {
     return (
@@ -54,49 +56,45 @@ export const LanguageSwitcher: React.FC<LanguageSwitcherProps> = ({ variant = 'h
 
   return (
     <div style={{
-      position: 'fixed',
-      top: '20px',
-      right: '20px',
-      zIndex: 1001,
       display: 'flex',
-      gap: '8px',
-      background: 'rgba(255,255,255,0.95)',
-      padding: '8px',
-      borderRadius: '12px',
-      boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-      backdropFilter: 'blur(10px)',
+      gap: '2px',
+      background: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+      padding: '3px',
+      borderRadius: '8px',
     }}>
       <button
         onClick={() => setLanguage('id')}
         style={{
-          padding: '8px 16px',
-          background: language === 'id' ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : 'transparent',
-          color: language === 'id' ? 'white' : '#666',
+          padding: '3px 8px',
+          background: language === 'id' ? tokens.card : 'transparent',
+          color: language === 'id' ? tokens.primary : tokens.muted,
           border: 'none',
-          borderRadius: '8px',
-          fontSize: '14px',
-          fontWeight: language === 'id' ? 'bold' : 'normal',
+          borderRadius: '5px',
+          fontSize: '11px',
+          fontWeight: language === 'id' ? 700 : 400,
           cursor: 'pointer',
           transition: 'all 0.2s',
+          boxShadow: language === 'id' ? '0 1px 3px rgba(0,0,0,0.12)' : 'none',
         }}
       >
-        🇮🇩 ID
+        ID
       </button>
       <button
         onClick={() => setLanguage('en')}
         style={{
-          padding: '8px 16px',
-          background: language === 'en' ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : 'transparent',
-          color: language === 'en' ? 'white' : '#666',
+          padding: '3px 8px',
+          background: language === 'en' ? tokens.card : 'transparent',
+          color: language === 'en' ? tokens.primary : tokens.muted,
           border: 'none',
-          borderRadius: '8px',
-          fontSize: '14px',
-          fontWeight: language === 'en' ? 'bold' : 'normal',
+          borderRadius: '5px',
+          fontSize: '11px',
+          fontWeight: language === 'en' ? 700 : 400,
           cursor: 'pointer',
           transition: 'all 0.2s',
+          boxShadow: language === 'en' ? '0 1px 3px rgba(0,0,0,0.12)' : 'none',
         }}
       >
-        🇬🇧 EN
+        EN
       </button>
     </div>
   );

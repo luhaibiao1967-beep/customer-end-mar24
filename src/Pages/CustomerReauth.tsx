@@ -119,7 +119,7 @@ export default function CustomerReauth() {
       }}>
         <div style={{
           background: theme.gradientPrimary,
-          padding: '32px 20px 24px',
+          padding: '24px 20px',
           textAlign: 'center',
           color: 'white',
         }}>

@@ -14,10 +14,12 @@ import OrderHistory from './Pages/OrderHistory';
 import PlaceOrder from './Pages/PlaceOrder';
 import MyAccount from './Pages/MyAccount';
 import OrderDelivery from './Pages/OrderDelivery';
+import SplashPreview from './Pages/SplashPreview';
 import MagicLinkHandler from './Components/MagicLinkHandler';
 import MagicLinkDiagnostics from './Pages/MagicLinkDiagnostics';
-import BottomNav from './Components/BottomNav';
+import BottomNavV0 from './Components/BottomNavV0';
 import { LanguageProvider } from './contexts/LanguageContext';
+import { ColorTokensProvider } from './contexts/ColorTokensContext';
 import { theme } from './theme';
 import { Toaster } from 'react-hot-toast';
 import toast from 'react-hot-toast';
@@ -106,129 +108,134 @@ function App() {
   }
 
   return (
-    <LanguageProvider>
-      <Toaster
-        position="top-center"
-        toastOptions={{
-          duration: 3000,
-          style: { borderRadius: '10px', fontWeight: '600', fontSize: '14px' },
-          success: { style: { background: '#e8f5e9', color: '#2e7d32' } },
-          error: { style: { background: '#fdecea', color: '#c62828' } },
-        }}
-      />
-      <Router>
-        <Routes>
-          {/* Magic Link Route - Validates token and redirects */}
-          <Route path="/home" element={<MagicLinkHandler />} />
-
-        {/* Magic Link diagnostics - no auth required */}
-        <Route path="/diagnostics" element={<MagicLinkDiagnostics />} />
-
-        {/* Login - Entry point: enter WhatsApp, old customer gets link, new goes to register */}
-        <Route
-          path="/"
-          element={customer ? <Navigate to="/customer-home" replace /> : <CustomerLogin />}
+    <ColorTokensProvider>
+      <LanguageProvider>
+        <Toaster
+          position="top-center"
+          toastOptions={{
+            duration: 3000,
+            style: { borderRadius: '10px', fontWeight: '600', fontSize: '14px' },
+            success: { style: { background: '#e8f5e9', color: '#2e7d32' } },
+            error: { style: { background: '#fdecea', color: '#c62828' } },
+          }}
         />
-        <Route
-          path="/login"
-          element={customer ? <Navigate to="/customer-home" replace /> : <CustomerLogin />}
-        />
+        <Router>
+          <Routes>
+            {/* Magic Link Route - Validates token and redirects */}
+            <Route path="/home" element={<MagicLinkHandler />} />
 
-        {/* Public registration */}
-        <Route 
-          path="/register" 
-          element={customer ? <Navigate to="/customer-home" replace /> : <CustomerRegister />} 
-        />
+          {/* Magic Link diagnostics - no auth required */}
+          <Route path="/diagnostics" element={<MagicLinkDiagnostics />} />
 
-        {/* Re-authentication via OTP */}
-        <Route
-          path="/reauth"
-          element={customer ? <Navigate to="/customer-home" replace /> : <CustomerReauth />}
-        />
+          {/* Splash animation preview */}
+          <Route path="/splash-preview" element={<SplashPreview />} />
 
-        {/* Protected routes - require authentication via magic link */}
-        <Route
-          path="/customer-home"
-          element={
-            customer ? (
-              customer.branch === 'Pending' || !customer.branch ? (
-                <BranchSelection customer={customer} />
+          {/* Login - Entry point: enter WhatsApp, old customer gets link, new goes to register */}
+          <Route
+            path="/"
+            element={customer ? <Navigate to="/customer-home" replace /> : <CustomerLogin />}
+          />
+          <Route
+            path="/login"
+            element={customer ? <Navigate to="/customer-home" replace /> : <CustomerLogin />}
+          />
+
+          {/* Public registration */}
+          <Route
+            path="/register"
+            element={customer ? <Navigate to="/customer-home" replace /> : <CustomerRegister />}
+          />
+
+          {/* Re-authentication via OTP */}
+          <Route
+            path="/reauth"
+            element={customer ? <Navigate to="/customer-home" replace /> : <CustomerReauth />}
+          />
+
+          {/* Protected routes - require authentication via magic link */}
+          <Route
+            path="/customer-home"
+            element={
+              customer ? (
+                customer.branch === 'Pending' || !customer.branch ? (
+                  <BranchSelection customer={customer} />
+                ) : (
+                  <CustomerHome customer={customer} />
+                )
               ) : (
-                <CustomerHome customer={customer} />
+                <Navigate to="/" replace />
               )
-            ) : (
-              <Navigate to="/" replace />
-            )
-          }
-        />
-        <Route
-          path="/buy-vouchers"
-          element={
-            customer ? (
-              <BuyVouchers customer={customer} />
-            ) : (
-              <Navigate to="/" replace />
-            )
-          }
-        />
-        <Route
-          path="/place-order"
-          element={
-            !customer ? (
-              <Navigate to="/" replace />
-            ) : (!customer.branch || customer.branch === 'Pending') ? (
-              <NoBranchRedirect />
-            ) : (
-              <PlaceOrder customer={customer} />
-            )
-          }
-        />
-        <Route
-          path="/orders"
-          element={
-            customer ? (
-              <OrderHistory customer={customer} />
-            ) : (
-              <Navigate to="/" replace />
-            )
-          }
-        />
-        <Route
-          path="/orders/:orderId/delivery"
-          element={
-            customer ? (
-              <OrderDelivery />
-            ) : (
-              <Navigate to="/" replace />
-            )
-          }
-        />
-        <Route
-          path="/select-branch"
-          element={
-            customer ? (
-              <BranchSelection customer={customer} mode="edit" />
-            ) : (
-              <Navigate to="/" replace />
-            )
-          }
-        />
-        <Route
-          path="/account"
-          element={
-            customer ? (
-              <MyAccount customer={customer} />
-            ) : (
-              <Navigate to="/" replace />
-            )
-          }
-        />
+            }
+          />
+          <Route
+            path="/buy-vouchers"
+            element={
+              customer ? (
+                <BuyVouchers customer={customer} />
+              ) : (
+                <Navigate to="/" replace />
+              )
+            }
+          />
+          <Route
+            path="/place-order"
+            element={
+              !customer ? (
+                <Navigate to="/" replace />
+              ) : (!customer.branch || customer.branch === 'Pending') ? (
+                <NoBranchRedirect />
+              ) : (
+                <PlaceOrder customer={customer} />
+              )
+            }
+          />
+          <Route
+            path="/orders"
+            element={
+              customer ? (
+                <OrderHistory customer={customer} />
+              ) : (
+                <Navigate to="/" replace />
+              )
+            }
+          />
+          <Route
+            path="/orders/:orderId/delivery"
+            element={
+              customer ? (
+                <OrderDelivery />
+              ) : (
+                <Navigate to="/" replace />
+              )
+            }
+          />
+          <Route
+            path="/select-branch"
+            element={
+              customer ? (
+                <BranchSelection customer={customer} mode="edit" />
+              ) : (
+                <Navigate to="/" replace />
+              )
+            }
+          />
+          <Route
+            path="/account"
+            element={
+              customer ? (
+                <MyAccount customer={customer} />
+              ) : (
+                <Navigate to="/" replace />
+              )
+            }
+          />
 
-        {/* Catch all */}
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-      </Router>
-    </LanguageProvider>
+          {/* Catch all */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+        </Router>
+      </LanguageProvider>
+    </ColorTokensProvider>
   );
 }
 

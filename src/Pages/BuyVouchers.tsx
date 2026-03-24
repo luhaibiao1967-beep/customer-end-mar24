@@ -2,11 +2,11 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
-import BottomNav from '../Components/BottomNav';
-import { theme } from '../theme';
+import BottomNavV0 from '../Components/BottomNavV0';
 import { formatCurrency } from '../utils/format';
 import toast from 'react-hot-toast';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useColorTokens } from '../contexts/ColorTokensContext';
 
 interface Customer {
   id: string;
@@ -76,6 +76,7 @@ function InfoPanel({ description, imageUrl }: { description: string | null; imag
 
 // ─── Info toggle button ──────────────────────────────────────────────────────
 function InfoButton({ expanded, onClick }: { expanded: boolean; onClick: () => void }) {
+  const { tokens } = useColorTokens();
   return (
     <button
       onClick={onClick}
@@ -83,9 +84,9 @@ function InfoButton({ expanded, onClick }: { expanded: boolean; onClick: () => v
         width: '28px',
         height: '28px',
         borderRadius: '50%',
-        border: `1.5px solid ${theme.primary}`,
-        background: expanded ? theme.primary : 'white',
-        color: expanded ? 'white' : theme.primary,
+        border: `1.5px solid ${tokens.primary}`,
+        background: expanded ? tokens.primary : 'white',
+        color: expanded ? 'white' : tokens.primary,
         fontSize: '13px',
         fontWeight: 'bold',
         cursor: 'pointer',
@@ -103,6 +104,7 @@ function InfoButton({ expanded, onClick }: { expanded: boolean; onClick: () => v
 
 export default function BuyVouchers({ customer }: BuyVouchersProps) {
   const { t } = useLanguage();
+  const { tokens } = useColorTokens();
   const navigate = useNavigate();
   const [packages, setPackages] = useState<VoucherPackage[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -280,27 +282,13 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
   const productIdsWithPackages = new Set(packages.map(p => p.product_id));
   const otherProducts = products.filter(p => !productIdsWithPackages.has(p.id));
 
-  if (customer.customer_type !== 'pre_pay') {
-    return (
-      <div style={{ minHeight: '100vh', background: theme.gradientPrimary, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-        <div style={{ background: 'white', borderRadius: '20px', padding: '40px', maxWidth: '500px', textAlign: 'center' }}>
-          <p style={{ fontSize: '48px', margin: '0 0 20px 0' }}>ℹ️</p>
-          <h2 style={{ fontSize: '24px', marginBottom: '15px' }}>{t('vouchers.notAvailable')}</h2>
-          <p style={{ color: '#666', marginBottom: '30px' }}>{t('vouchers.postpaidMsg').split('\n')[0]}<br />{t('vouchers.postpaidMsg').split('\n')[1]}</p>
-          <button onClick={() => navigate('/customer-home')} style={{ padding: '12px 30px', background: theme.gradientPrimary, color: 'white', border: 'none', borderRadius: '8px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer' }}>{t('vouchers.backToHome')}</button>
-        </div>
-        <BottomNav customer={customer} />
-      </div>
-    );
-  }
-
   return (
-    <div style={{ minHeight: '100vh', background: theme.gradientPrimary, padding: '20px', paddingBottom: '80px' }}>
+    <div style={{ minHeight: '100vh', background: tokens.pageBg, padding: '20px', paddingBottom: '80px' }}>
 
       {/* Header */}
-      <div style={{ maxWidth: '800px', margin: '0 auto 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <button onClick={() => navigate('/customer-home')} style={{ padding: '10px 20px', background: 'rgba(255,255,255,0.2)', color: 'white', border: '2px solid white', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}>← {t('common.back')}</button>
-        <h1 style={{ color: 'white', fontSize: '22px', margin: 0 }}>🛒 {t('vouchers.title')}</h1>
+      <div style={{ maxWidth: '800px', margin: '0 auto 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0,0,0,0.30)', borderRadius: '16px', padding: '12px 16px', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }}>
+        <button onClick={() => navigate('/customer-home')} style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.15)', color: 'white', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}>← {t('common.back')}</button>
+        <h1 style={{ color: 'white', fontSize: '20px', margin: 0, textShadow: '0 1px 4px rgba(0,0,0,0.4)' }}>🛒 {t('vouchers.title')}</h1>
         <div style={{ width: '80px' }} />
       </div>
 
@@ -308,30 +296,26 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
 
         {/* Current voucher balances */}
         {currentVouchers.size > 0 && (
-          <div style={{ background: 'white', borderRadius: '16px', padding: '16px 20px', boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}>
-            <p style={{ margin: '0 0 10px 0', fontSize: '12px', color: theme.textMuted, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{t('vouchers.currentBalance')}</p>
+          <div style={{ background: tokens.card, borderRadius: '16px', padding: '16px 20px', boxShadow: tokens.cardShadow, backdropFilter: tokens.cardBlur, WebkitBackdropFilter: tokens.cardBlur, border: `1px solid ${tokens.cardBorder}` }}>
+            <p style={{ margin: '0 0 10px 0', fontSize: '12px', color: tokens.muted, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{t('vouchers.currentBalance')}</p>
             {Array.from(currentVouchers.entries()).map(([productId, balance]) => (
               <div key={productId} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0' }}>
-                <span style={{ fontSize: '13px', color: theme.text }}>{productNames.get(productId) ?? '—'}</span>
-                <span style={{ fontSize: '22px', fontWeight: 'bold', color: theme.primary }}>{balance}</span>
+                <span style={{ fontSize: '13px', color: tokens.text }}>{productNames.get(productId) ?? '—'}</span>
+                <span style={{ fontSize: '22px', fontWeight: 'bold', color: tokens.primary }}>{balance}</span>
               </div>
             ))}
           </div>
         )}
 
         {loading ? (
-          <div style={{ background: 'white', borderRadius: '16px', padding: '40px', textAlign: 'center' }}>
-            <p style={{ color: theme.textMuted }}>{t('vouchers.loading')}</p>
+          <div style={{ background: tokens.card, borderRadius: '16px', padding: '40px', textAlign: 'center', boxShadow: tokens.cardShadow, backdropFilter: tokens.cardBlur, WebkitBackdropFilter: tokens.cardBlur, border: `1px solid ${tokens.cardBorder}` }}>
+            <p style={{ color: tokens.muted }}>{t('vouchers.loading')}</p>
           </div>
         ) : (
           <>
             {/* ── Refill Packages ── */}
             {packages.length > 0 && (
               <>
-                <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '12px', margin: '0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  💧 {t('vouchers.refillPackages')}
-                </p>
-
                 {/* Single-unit: qty selector */}
                 {singlePkg && (() => {
                   const qtyKey = singlePkg.product_id + '_single';
@@ -341,14 +325,17 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
                   const hasInfo = !!(singlePkg.description || singlePkg.image_url);
                   const expanded = expandedPanels.has(singlePkg.id);
                   return (
-                    <div style={{ background: 'white', borderRadius: '16px', padding: '20px', boxShadow: '0 4px 20px rgba(0,0,0,0.12)' }}>
+                    <div style={{ background: tokens.card, borderRadius: '16px', padding: '20px', boxShadow: tokens.cardShadow, backdropFilter: tokens.cardBlur, WebkitBackdropFilter: tokens.cardBlur, border: `1px solid ${tokens.cardBorder}` }}>
+                      <p style={{ margin: '0 0 14px', fontSize: '12px', color: tokens.primary, fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        💧 {t('vouchers.refillPackages')}
+                      </p>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
                         <div style={{ flex: 1 }}>
-                          <p style={{ margin: 0, fontSize: '16px', fontWeight: 'bold', color: theme.text }}>{singlePkg.products?.name} — {t('vouchers.perVoucher')}</p>
-                          <p style={{ margin: '4px 0 0', fontSize: '12px', color: theme.textMuted }}>{formatCurrency(singlePkg.price)} {t('vouchers.perVoucherPrice')}</p>
+                          <p style={{ margin: 0, fontSize: '16px', fontWeight: 'bold', color: tokens.text }}>{singlePkg.products?.name} — {t('vouchers.perVoucher')}</p>
+                          <p style={{ margin: '4px 0 0', fontSize: '12px', color: tokens.muted }}>{formatCurrency(singlePkg.price)} {t('vouchers.perVoucherPrice')}</p>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <p style={{ margin: 0, fontSize: '17px', fontWeight: 'bold', color: theme.primary }}>
+                          <p style={{ margin: 0, fontSize: '17px', fontWeight: 'bold', color: tokens.primary }}>
                             {formatCurrency(singlePkg.price * qty)}
                           </p>
                           {hasInfo && <InfoButton expanded={expanded} onClick={() => toggleExpand(singlePkg.id)} />}
@@ -356,15 +343,15 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
                       </div>
                       {expanded && <InfoPanel description={singlePkg.description} imageUrl={singlePkg.image_url} />}
                       <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: expanded ? '14px' : '0' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', border: `1.5px solid ${theme.primary}`, borderRadius: '8px', overflow: 'hidden' }}>
-                          <button onClick={() => setQty(qtyKey, -1)} style={{ width: '36px', height: '36px', background: 'white', border: 'none', fontSize: '18px', color: theme.primary, cursor: 'pointer', fontWeight: 'bold' }}>−</button>
-                          <span style={{ minWidth: '32px', textAlign: 'center', fontSize: '15px', fontWeight: '600', color: theme.text }}>{qty}</span>
-                          <button onClick={() => setQty(qtyKey, +1)} style={{ width: '36px', height: '36px', background: 'white', border: 'none', fontSize: '18px', color: theme.primary, cursor: 'pointer', fontWeight: 'bold' }}>+</button>
+                        <div style={{ display: 'flex', alignItems: 'center', border: `1.5px solid ${tokens.primary}`, borderRadius: '8px', overflow: 'hidden' }}>
+                          <button onClick={() => setQty(qtyKey, -1)} style={{ width: '36px', height: '36px', background: 'white', border: 'none', fontSize: '18px', color: tokens.primary, cursor: 'pointer', fontWeight: 'bold' }}>−</button>
+                          <span style={{ minWidth: '32px', textAlign: 'center', fontSize: '15px', fontWeight: '600', color: tokens.text }}>{qty}</span>
+                          <button onClick={() => setQty(qtyKey, +1)} style={{ width: '36px', height: '36px', background: 'white', border: 'none', fontSize: '18px', color: tokens.primary, cursor: 'pointer', fontWeight: 'bold' }}>+</button>
                         </div>
                         <button
                           onClick={() => product && handleBuyCustom(product, getQty(qtyKey))}
                           disabled={isPaying || !product}
-                          style={{ flex: 1, padding: '10px', background: isPaying ? '#ccc' : theme.gradientPrimary, color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: isPaying ? 'not-allowed' : 'pointer' }}
+                          style={{ flex: 1, padding: '10px', background: isPaying ? tokens.inputBg : tokens.primaryBg, color: isPaying ? tokens.muted : tokens.primary, border: isPaying ? `1px dashed ${tokens.muted}` : `1px dashed ${tokens.primary}`, borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: isPaying ? 'not-allowed' : 'pointer' }}
                         >
                           {isPaying ? t('vouchers.loadingPayment') : t('vouchers.buyNow')}
                         </button>
@@ -373,59 +360,74 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
                   );
                 })()}
 
-                {/* Multi-qty: fixed price */}
-                {multiPackages.map(pkg => {
-                  const hasInfo = !!(pkg.description || pkg.image_url);
-                  const expanded = expandedPanels.has(pkg.id);
-                  return (
-                    <div key={pkg.id} style={{ background: 'white', borderRadius: '16px', padding: '20px', boxShadow: '0 4px 20px rgba(0,0,0,0.12)' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                        <div style={{ flex: 1 }}>
-                          <p style={{ margin: 0, fontSize: '20px', fontWeight: 'bold', color: theme.text }}>{pkg.qty} Vouchers</p>
-                          <p style={{ margin: '4px 0 0', fontSize: '12px', color: theme.textMuted }}>{pkg.label} · {pkg.products?.name}</p>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <div style={{ textAlign: 'right' }}>
-                            <p style={{ margin: 0, fontSize: '18px', fontWeight: 'bold', color: theme.primary }}>{formatCurrency(pkg.price)}</p>
-                            <p style={{ margin: '2px 0 0', fontSize: '11px', color: theme.textMuted }}>{formatCurrency(Math.round(pkg.price / pkg.qty))}/voucher</p>
-                          </div>
-                          {hasInfo && <InfoButton expanded={expanded} onClick={() => toggleExpand(pkg.id)} />}
-                        </div>
+                {/* Multi-qty: two-column grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  {multiPackages.map((pkg, idx) => {
+                    const hasInfo = !!(pkg.description || pkg.image_url);
+                    const expanded = expandedPanels.has(pkg.id);
+                    const isHot = idx === 0;
+                    return (
+                      <div key={pkg.id} style={{ position: 'relative', background: tokens.card, borderRadius: '16px', padding: '16px', boxShadow: tokens.cardShadow, backdropFilter: tokens.cardBlur, WebkitBackdropFilter: tokens.cardBlur, border: `1px solid ${isHot ? tokens.primaryBorder : tokens.cardBorder}` }}>
+                        {/* Badge */}
+                        {pkg.label && (
+                          <span style={{
+                            display: 'inline-block', marginBottom: '10px',
+                            padding: '3px 10px', borderRadius: '999px', fontSize: '10px', fontWeight: '700',
+                            background: tokens.gradientPrimary, color: 'white',
+                            letterSpacing: '0.03em',
+                          }}>
+                            {isHot ? '🔥 Hot Sales' : pkg.label}
+                          </span>
+                        )}
+                        <p style={{ margin: 0, fontSize: '22px', fontWeight: '900', color: tokens.text }}>{pkg.qty}</p>
+                        <p style={{ margin: '2px 0 6px', fontSize: '11px', color: tokens.muted }}>Vouchers · {pkg.products?.name}</p>
+                        <p style={{ margin: '0 0 2px', fontSize: '16px', fontWeight: '700', color: tokens.primary }}>{formatCurrency(pkg.price)}</p>
+                        <p style={{ margin: '0 0 12px', fontSize: '10px', color: tokens.muted }}>{formatCurrency(Math.round(pkg.price / pkg.qty))}/voucher</p>
+                        {hasInfo && <div style={{ marginBottom: '8px' }}><InfoButton expanded={expanded} onClick={() => toggleExpand(pkg.id)} /></div>}
+                        {expanded && <InfoPanel description={pkg.description} imageUrl={pkg.image_url} />}
+                        <button
+                          onClick={() => handleBuyPackage(pkg)}
+                          disabled={paying === pkg.id}
+                          style={{
+                            width: '100%', padding: '10px', marginTop: expanded ? '10px' : '0',
+                            background: paying === pkg.id ? tokens.inputBg : tokens.gradientPrimary,
+                            color: paying === pkg.id ? tokens.muted : 'white',
+                            border: 'none', borderRadius: '999px',
+                            fontSize: '13px', fontWeight: '700',
+                            cursor: paying === pkg.id ? 'not-allowed' : 'pointer',
+                          }}
+                        >
+                          {paying === pkg.id ? t('vouchers.loadingPayment') : t('vouchers.buyNow')}
+                        </button>
                       </div>
-                      {expanded && <InfoPanel description={pkg.description} imageUrl={pkg.image_url} />}
-                      <button
-                        onClick={() => handleBuyPackage(pkg)}
-                        disabled={paying === pkg.id}
-                        style={{ width: '100%', padding: '12px', marginTop: expanded ? '14px' : '0', background: paying === pkg.id ? '#ccc' : theme.gradientPrimary, color: 'white', border: 'none', borderRadius: '8px', fontSize: '15px', fontWeight: 'bold', cursor: paying === pkg.id ? 'not-allowed' : 'pointer' }}
-                      >
-                        {paying === pkg.id ? t('vouchers.loadingPayment') : t('vouchers.buyNow')}
-                      </button>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </>
             )}
 
             {/* ── Other Products ── */}
             {otherProducts.length > 0 && (
               <>
-                <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '12px', margin: '4px 0 0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  🛍️ {t('vouchers.otherProducts')}
-                </p>
-                {otherProducts.map(product => {
+                {otherProducts.map((product, index) => {
                   const qty = getQty(product.id);
                   const isPaying = paying === `custom_${product.id}`;
                   const hasInfo = !!(product.description || product.image_url);
                   const expanded = expandedPanels.has(product.id);
                   return (
-                    <div key={product.id} style={{ background: 'white', borderRadius: '16px', padding: '20px', boxShadow: '0 4px 20px rgba(0,0,0,0.12)' }}>
+                    <div key={product.id} style={{ background: tokens.card, borderRadius: '16px', padding: '20px', boxShadow: tokens.cardShadow, backdropFilter: tokens.cardBlur, WebkitBackdropFilter: tokens.cardBlur, border: `1px solid ${tokens.cardBorder}` }}>
+                      {index === 0 && (
+                        <p style={{ margin: '0 0 14px', fontSize: '12px', color: tokens.primary, fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                          🛍️ {t('vouchers.otherProducts')}
+                        </p>
+                      )}
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
                         <div style={{ flex: 1 }}>
-                          <p style={{ margin: 0, fontSize: '16px', fontWeight: 'bold', color: theme.text }}>{product.name}</p>
-                          <p style={{ margin: '4px 0 0', fontSize: '12px', color: theme.textMuted }}>{formatCurrency(product.price)} / {product.unit}</p>
+                          <p style={{ margin: 0, fontSize: '16px', fontWeight: 'bold', color: tokens.text }}>{product.name}</p>
+                          <p style={{ margin: '4px 0 0', fontSize: '12px', color: tokens.muted }}>{formatCurrency(product.price)} / {product.unit}</p>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <p style={{ margin: 0, fontSize: '17px', fontWeight: 'bold', color: theme.primary }}>
+                          <p style={{ margin: 0, fontSize: '17px', fontWeight: 'bold', color: tokens.primary }}>
                             {formatCurrency(product.price * qty)}
                           </p>
                           {hasInfo && <InfoButton expanded={expanded} onClick={() => toggleExpand(product.id)} />}
@@ -433,15 +435,15 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
                       </div>
                       {expanded && <InfoPanel description={product.description} imageUrl={product.image_url} />}
                       <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: expanded ? '14px' : '0' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', border: `1.5px solid ${theme.primary}`, borderRadius: '8px', overflow: 'hidden' }}>
-                          <button onClick={() => setQty(product.id, -1)} style={{ width: '36px', height: '36px', background: 'white', border: 'none', fontSize: '18px', color: theme.primary, cursor: 'pointer', fontWeight: 'bold' }}>−</button>
-                          <span style={{ minWidth: '32px', textAlign: 'center', fontSize: '15px', fontWeight: '600', color: theme.text }}>{qty}</span>
-                          <button onClick={() => setQty(product.id, +1)} style={{ width: '36px', height: '36px', background: 'white', border: 'none', fontSize: '18px', color: theme.primary, cursor: 'pointer', fontWeight: 'bold' }}>+</button>
+                        <div style={{ display: 'flex', alignItems: 'center', border: `1.5px solid ${tokens.primary}`, borderRadius: '8px', overflow: 'hidden' }}>
+                          <button onClick={() => setQty(product.id, -1)} style={{ width: '36px', height: '36px', background: 'white', border: 'none', fontSize: '18px', color: tokens.primary, cursor: 'pointer', fontWeight: 'bold' }}>−</button>
+                          <span style={{ minWidth: '32px', textAlign: 'center', fontSize: '15px', fontWeight: '600', color: tokens.text }}>{qty}</span>
+                          <button onClick={() => setQty(product.id, +1)} style={{ width: '36px', height: '36px', background: 'white', border: 'none', fontSize: '18px', color: tokens.primary, cursor: 'pointer', fontWeight: 'bold' }}>+</button>
                         </div>
                         <button
                           onClick={() => handleBuyCustom(product)}
                           disabled={isPaying}
-                          style={{ flex: 1, padding: '10px', background: isPaying ? '#ccc' : theme.gradientPrimary, color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: isPaying ? 'not-allowed' : 'pointer' }}
+                          style={{ flex: 1, padding: '10px', background: isPaying ? tokens.inputBg : tokens.primaryBg, color: isPaying ? tokens.muted : tokens.primary, border: isPaying ? `1px dashed ${tokens.muted}` : `1px dashed ${tokens.primary}`, borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: isPaying ? 'not-allowed' : 'pointer' }}
                         >
                           {isPaying ? t('vouchers.loadingPayment') : t('vouchers.buyNow')}
                         </button>
@@ -453,19 +455,19 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
             )}
 
             {packages.length === 0 && otherProducts.length === 0 && (
-              <div style={{ background: 'white', borderRadius: '16px', padding: '40px', textAlign: 'center' }}>
-                <p style={{ color: theme.textMuted }}>{t('vouchers.noProducts')}</p>
+              <div style={{ background: tokens.card, borderRadius: '16px', padding: '40px', textAlign: 'center', boxShadow: tokens.cardShadow, backdropFilter: tokens.cardBlur, WebkitBackdropFilter: tokens.cardBlur, border: `1px solid ${tokens.cardBorder}` }}>
+                <p style={{ color: tokens.muted }}>{t('vouchers.noProducts')}</p>
               </div>
             )}
           </>
         )}
 
-        <div style={{ background: 'rgba(255,255,255,0.15)', borderRadius: '12px', padding: '14px 16px', fontSize: '12px', color: 'rgba(255,255,255,0.9)' }}>
+        <div style={{ background: tokens.primaryBg, borderRadius: '12px', padding: '14px 16px', fontSize: '12px', color: tokens.muted }}>
           ℹ️ {t('vouchers.autoAdd')}
         </div>
       </div>
 
-      <BottomNav customer={customer} />
+      <BottomNavV0 customer={customer} />
 
     </div>
   );

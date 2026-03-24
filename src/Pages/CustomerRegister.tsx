@@ -279,22 +279,19 @@ export default function CustomerRegister() {
         {/* Header */}
         <div style={{
           background: theme.gradientPrimary,
-          padding: '40px 20px',
+          padding: '16px 20px',
           textAlign: 'center',
           color: 'white'
         }}>
           <div style={{
-            width: '80px',
-            height: '80px',
-            background: 'white',
-            borderRadius: '50%',
+            width: '180px',
+            height: '180px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            margin: '0 auto 15px',
-            fontSize: '40px'
+            margin: '0 auto 8px',
           }}>
-            {registrationSuccess || alreadyRegistered ? '✅' : '👤'}
+            <img src={`${import.meta.env.BASE_URL}logo.png`} alt="VividAqua" style={{ width: '180px', height: '180px', objectFit: 'contain' }} />
           </div>
           <h1 style={{ fontSize: '28px', fontWeight: 'bold', margin: '0 0 10px 0' }}>
             {registrationSuccess ? t('register.registrationComplete') : alreadyRegistered ? (language === 'id' ? 'Sudah Terdaftar' : 'Already Registered') : t('register.title')}

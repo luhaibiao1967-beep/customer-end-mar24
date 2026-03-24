@@ -22,7 +22,7 @@ serve(async (req) => {
     // Validate token → get customer
     const { data: customer, error: custErr } = await supabase
       .from('customers')
-      .select('id, customer_type, payment_term')
+      .select('id, customer_type, payment_term, credit_limit')
       .eq('auth_token', token)
       .single()
 
@@ -69,6 +69,7 @@ serve(async (req) => {
         last_delivery_date: lastDeliveryResult.data?.delivery_date ?? null,
         unpaid_amount: unpaidAmount,
         payment_term: customer.payment_term || 'daily',
+        credit_limit: customer.credit_limit ?? null,
         pending_orders: pendingResult.data || [],
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }

@@ -1,15 +1,17 @@
-// src/Pages/CustomerHome.tsx - CORRECTED VERSION
-// Fixed: customer_type checks, sessionStorage, logout navigation
-
+// src/Pages/CustomerHome.tsx - v0 style redesign
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { QRCodeCanvas } from 'qrcode.react';
 import { supabase } from '../supabaseClient';
-import BottomNav from '../Components/BottomNav';
-import { theme } from '../theme';
+import BottomNavV0 from '../Components/BottomNavV0';
+import TopNavV0 from '../Components/TopNavV0';
+import VividAquaProductCard from '../Components/VividAquaProductCard';
 import { formatCurrency } from '../utils/format';
 import { useLanguage } from '../contexts/LanguageContext';
+import { Ticket, Droplets, ChevronRight } from 'lucide-react';
+import { theme } from '../theme';
+import { useColorTokens } from '../contexts/ColorTokensContext';
 
 const APP_URL = 'https://vividaqua.online/';
 
@@ -71,208 +73,122 @@ interface ProductVoucherRow {
   products: { name: string } | null;
 }
 
+interface VoucherSlide {
+  id: string;
+  title: string;
+  tickets: number;
+  subtitle: string;
+  badge: string;
+  /** /public pack art (spaces OK — encoded in URL) */
+  packImage: string;
+}
+
+
 export default function CustomerHome({ customer }: CustomerHomeProps) {
   const navigate = useNavigate();
   const { t } = useLanguage();
+  const { tokens: C, isDark } = useColorTokens();
   const [loading, setLoading] = useState(false);
+  const [activeVoucherSlide, setActiveVoucherSlide] = useState(0);
   const [pendingOrders, setPendingOrders] = useState<Order[]>([]);
   const [productVouchers, setProductVouchers] = useState<ProductVoucherRow[]>([]);
   const [unpaidAmount, setUnpaidAmount] = useState(0);
+  const [creditLimit, setCreditLimit] = useState<number | null>(null);
   const [lastDeliveryDate, setLastDeliveryDate] = useState<string | null>(null);
   const [paymentTerm, setPaymentTerm] = useState<string>('');
   const qrRef = useRef<HTMLCanvasElement>(null);
   const canOrder = customer.branch && customer.branch !== 'Pending';
 
+  const base = import.meta.env.BASE_URL;
+  const voucherSlides: VoucherSlide[] = [
+    {
+      id: 'voucher-10',
+      title: 'Paket 10 Voucher',
+      tickets: 10,
+      subtitle: 'Cocok untuk kebutuhan rumah tangga ringan',
+      badge: 'Starter',
+      packImage: `${base}${encodeURIComponent('10 Pack Indonesia.jpg')}`,
+    },
+    {
+      id: 'voucher-20',
+      title: 'Paket 20 Voucher',
+      tickets: 20,
+      subtitle: 'Pilihan paling hemat untuk pemakaian rutin',
+      badge: 'Best Value',
+      packImage: `${base}${encodeURIComponent('20 Pack Indonesia.jpg')}`,
+    },
+    {
+      id: 'voucher-50',
+      title: 'Paket 50 Voucher',
+      tickets: 50,
+      subtitle: 'Untuk keluarga besar atau kebutuhan usaha',
+      badge: 'Bulk Save',
+      packImage: `${base}${encodeURIComponent('50 Pack Indonesia.jpg')}`,
+    },
+  ];
+
+  // Product Gallery packages
+  const galleryItems = [
+    { title: 'Starter Pack', subtitle: '10 vouchers', count: 10 },
+    { title: 'Value Pack', subtitle: '20 vouchers', count: 20 },
+    { title: 'Bulk Pack', subtitle: '50 vouchers', count: 50 },
+    { title: 'Custom Order', subtitle: 'Order anytime', count: null },
+  ];
+
   const generateShareImage = async (): Promise<Blob | null> => {
     const qrCanvas = qrRef.current;
     if (!qrCanvas) return null;
-
-    const W = 540;
-    const H = 780;
+    const W = 540, H = 780;
     const offscreen = document.createElement('canvas');
-    offscreen.width = W;
-    offscreen.height = H;
+    offscreen.width = W; offscreen.height = H;
     const ctx = offscreen.getContext('2d');
     if (!ctx) return null;
-
-    // Background gradient
     const bg = ctx.createLinearGradient(0, 0, W, H);
-    bg.addColorStop(0, '#4f46e5');
-    bg.addColorStop(0.55, '#7c3aed');
-    bg.addColorStop(1, '#a21caf');
-    ctx.fillStyle = bg;
-    ctx.fillRect(0, 0, W, H);
-
-    // Decorative circles
-    ctx.save();
-    ctx.globalAlpha = 0.13;
-    ctx.fillStyle = 'white';
+    bg.addColorStop(0, '#4f46e5'); bg.addColorStop(0.55, '#7c3aed'); bg.addColorStop(1, '#a21caf');
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+    ctx.save(); ctx.globalAlpha = 0.13; ctx.fillStyle = 'white';
     ctx.beginPath(); ctx.arc(W * 0.92, -10, 180, 0, Math.PI * 2); ctx.fill();
     ctx.beginPath(); ctx.arc(-20, H * 0.35, 110, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc(W * 0.8, H * 0.88, 70, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc(W * 0.15, H * 0.85, 45, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
-
-    // Top wave shape
-    ctx.save();
-    ctx.globalAlpha = 0.08;
-    ctx.fillStyle = 'white';
-    ctx.beginPath();
-    ctx.moveTo(0, 220);
-    ctx.quadraticCurveTo(W * 0.25, 200, W * 0.5, 225);
-    ctx.quadraticCurveTo(W * 0.75, 250, W, 210);
-    ctx.lineTo(W, 0); ctx.lineTo(0, 0);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-
-    // Logo
     try {
       const logo = await loadImage(`${import.meta.env.BASE_URL}logo.png`);
-      const logoH = 58;
-      const logoW = (logo.width / logo.height) * logoH;
+      const logoH = 58, logoW = (logo.width / logo.height) * logoH;
       ctx.drawImage(logo, (W - logoW) / 2, 46, logoW, logoH);
-    } catch { /* fallback: draw emoji */ }
-
-    // Brand name
-    ctx.fillStyle = 'white';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'alphabetic';
-    ctx.font = 'bold 42px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-    ctx.fillText('VividAqua', W / 2, 164);
-
-    // Tagline
-    ctx.globalAlpha = 0.8;
-    ctx.font = '16px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-    ctx.fillText('💧 Premium Water Delivery Service', W / 2, 196);
-    ctx.globalAlpha = 1;
-
-    // White card with shadow
-    const cardX = 44;
-    const cardY = 228;
-    const cardW = W - 88;
-    const cardH = 352;
-    ctx.save();
-    ctx.shadowColor = 'rgba(0,0,0,0.3)';
-    ctx.shadowBlur = 32;
-    ctx.shadowOffsetY = 10;
-    ctx.fillStyle = 'white';
-    drawRoundRect(ctx, cardX, cardY, cardW, cardH, 24);
-    ctx.fill();
-    ctx.restore();
-
-    // Light gradient shimmer on card top
-    ctx.save();
-    const shimmer = ctx.createLinearGradient(cardX, cardY, cardX, cardY + 80);
-    shimmer.addColorStop(0, 'rgba(255,255,255,0.6)');
-    shimmer.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = shimmer;
-    drawRoundRect(ctx, cardX, cardY, cardW, 80, 24);
-    ctx.fill();
-    ctx.restore();
-
-    // "Scan to Order" label inside card (top)
-    ctx.fillStyle = '#7c3aed';
-    ctx.font = 'bold 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'alphabetic';
-    ctx.fillText('📲  SCAN TO ORDER', W / 2, cardY + 30);
-
-    // QR code
-    const qrSize = 216;
-    const qrX = (W - qrSize) / 2;
-    const qrY = cardY + 46;
-    // Subtle border around QR
-    ctx.save();
-    ctx.strokeStyle = '#e5e7eb';
-    ctx.lineWidth = 1.5;
-    drawRoundRect(ctx, qrX - 10, qrY - 10, qrSize + 20, qrSize + 20, 12);
-    ctx.stroke();
-    ctx.fillStyle = '#fafafa';
-    ctx.fill();
-    ctx.restore();
+    } catch { }
+    ctx.fillStyle = 'white'; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    ctx.font = 'bold 42px -apple-system, sans-serif'; ctx.fillText('VividAqua', W / 2, 164);
+    const cardX = 44, cardY = 228, cardW = W - 88, cardH = 352;
+    ctx.save(); ctx.shadowColor = 'rgba(0,0,0,0.3)'; ctx.shadowBlur = 32; ctx.shadowOffsetY = 10;
+    ctx.fillStyle = 'white'; drawRoundRect(ctx, cardX, cardY, cardW, cardH, 24); ctx.fill(); ctx.restore();
+    const qrSize = 216, qrX = (W - qrSize) / 2, qrY = cardY + 46;
     ctx.drawImage(qrCanvas, qrX, qrY, qrSize, qrSize);
-
-    // URL pill below QR
-    const urlText = APP_URL;
-    const pillW = 280;
-    const pillH = 28;
-    const pillX = (W - pillW) / 2;
-    const pillY = qrY + qrSize + 18;
-    ctx.fillStyle = '#f3f4f6';
-    drawRoundRect(ctx, pillX, pillY, pillW, pillH, 14);
-    ctx.fill();
-    ctx.fillStyle = '#6b7280';
-    ctx.font = '12px "SF Mono", "Fira Code", monospace';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(urlText, W / 2, pillY + 14);
-
-    // Card bottom text
-    ctx.fillStyle = '#4f46e5';
-    ctx.font = 'bold 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-    ctx.textBaseline = 'alphabetic';
-    ctx.fillText('Order air galon sekarang!', W / 2, cardY + cardH - 22);
-
-    // Bottom section
-    // Divider
-    ctx.strokeStyle = 'rgba(255,255,255,0.2)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(80, cardY + cardH + 44);
-    ctx.lineTo(W - 80, cardY + cardH + 44);
-    ctx.stroke();
-
-    ctx.fillStyle = 'rgba(255,255,255,0.92)';
-    ctx.font = 'bold 17px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'alphabetic';
-    ctx.fillText('Air galon bersih & berkualitas', W / 2, cardY + cardH + 78);
-
-    ctx.fillStyle = 'rgba(255,255,255,0.65)';
-    ctx.font = '14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-    ctx.fillText('Pengiriman cepat ke rumah Anda ✨', W / 2, cardY + cardH + 106);
-
-    // Bottom badge
-    const badgeW = 210;
-    const badgeH = 36;
-    const badgeX = (W - badgeW) / 2;
-    const badgeY = H - 50;
-    ctx.fillStyle = 'rgba(255,255,255,0.15)';
-    drawRoundRect(ctx, badgeX, badgeY, badgeW, badgeH, 18);
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
-    ctx.lineWidth = 1;
-    drawRoundRect(ctx, badgeX, badgeY, badgeW, badgeH, 18);
-    ctx.stroke();
-    ctx.fillStyle = 'rgba(255,255,255,0.9)';
-    ctx.font = '600 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('🌐  vividaqua.online', W / 2, badgeY + 18);
-
     return new Promise(resolve => offscreen.toBlob(resolve, 'image/png'));
   };
 
   useEffect(() => {
     loadHomeData();
-    if (customer.customer_type === 'pre_pay') loadProductVouchers();
+    loadProductVouchers();
   }, [customer.id]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setActiveVoucherSlide(prev => (prev + 1) % voucherSlides.length);
+    }, 4000);
+    return () => window.clearInterval(timer);
+  }, [voucherSlides.length]);
 
   const loadHomeData = async () => {
     try {
       const token = sessionStorage.getItem('auth_token');
       if (!token) return;
-      const { data, error } = await supabase.functions.invoke('get-home-data', {
-        body: { token },
-      });
+      const { data, error } = await supabase.functions.invoke('get-home-data', { body: { token } });
       if (error || !data?.success) return;
       setPendingOrders(data.pending_orders || []);
       setLastDeliveryDate(data.last_delivery_date ?? null);
       setUnpaidAmount(data.unpaid_amount ?? 0);
+      setCreditLimit(data.credit_limit ?? null);
       setPaymentTerm(data.payment_term || 'daily');
-    } catch {
-      // silently fail — UI shows defaults
-    }
+    } catch { }
   };
 
   const loadProductVouchers = async () => {
@@ -282,35 +198,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
         .select('product_id, balance, products(name)')
         .eq('customer_id', customer.id);
       setProductVouchers((data as ProductVoucherRow[]) || []);
-    } catch {
-      // silently fail
-    }
-  };
-
-  const handleDeleteOrder = async (orderId: string) => {
-    if (!confirm(t('home.deleteConfirm'))) return;
-
-    try {
-      const { error: itemsError } = await supabase
-        .from('order_items')
-        .delete()
-        .eq('order_id', orderId);
-
-      if (itemsError) throw itemsError;
-
-      const { error: orderError } = await supabase
-        .from('orders')
-        .delete()
-        .eq('id', orderId);
-
-      if (orderError) throw orderError;
-
-      toast.success(t('home.deleteSuccess'));
-      loadHomeData();
-    } catch (err: any) {
-      console.error('Error deleting order:', err);
-      toast.error(t('home.deleteFailed') + err.message);
-    }
+    } catch { }
   };
 
   const handleSignOut = () => {
@@ -322,364 +210,344 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
     navigate('/', { replace: true });
   };
 
-  const formatDate = (dateString: string): string => {
-    return new Date(dateString).toLocaleDateString('id-ID', {
-      timeZone: 'Asia/Jakarta',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-  };
+  const formatDate = (dateString: string) =>
+    new Date(dateString).toLocaleDateString('id-ID', { timeZone: 'Asia/Jakarta', year: 'numeric', month: 'long', day: 'numeric' });
 
-  const getStatusColor = (status: string): string => {
-    switch (status) {
-      case 'pending':
-        return theme.warning;
-      case 'scheduled':
-        return theme.info;
-      default:
-        return '#999';
-    }
-  };
+  const getStatusColor = (status: string) =>
+    status === 'pending' ? theme.warning : status === 'scheduled' ? theme.info : '#999';
 
-  const getStatusIcon = (status: string): string => {
-    switch (status) {
-      case 'pending':
-        return '⏳';
-      case 'scheduled':
-        return '📅';
-      default:
-        return '📦';
-    }
-  };
+  const getStatusLabel = (status: string) =>
+    status === 'pending' ? t('home.statusPending') : status === 'scheduled' ? t('home.statusScheduled') : status.toUpperCase();
+
+  const totalVouchers = productVouchers.reduce((sum, v) => sum + v.balance, 0);
+  const pendingCount = pendingOrders.filter(o => o.status === 'pending').length;
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      background: theme.gradientPrimary,
-      padding: '20px',
-      paddingBottom: '80px',
-    }}>
-      {/* Navigation Bar */}
-      <div style={{
-        maxWidth: '1200px',
-        margin: '0 auto 20px',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center'
-      }}>
-        <img src={`${import.meta.env.BASE_URL}logo.png`} alt="Water Delivery" style={{ height: '36px', objectFit: 'contain' }} />
-        <button
-          onClick={handleSignOut}
-          disabled={loading}
-          style={{
-            padding: '10px 20px',
-            background: 'rgba(255,255,255,0.2)',
-            color: 'white',
-            border: '2px solid white',
-            borderRadius: '8px',
-            fontSize: '14px',
-            fontWeight: 'bold',
-            cursor: loading ? 'not-allowed' : 'pointer'
-          }}
-        >
-          {loading ? '...' : t('home.signOut')}
-        </button>
+    <div style={{ minHeight: '100vh', background: C.pageBg }}>
+      <TopNavV0 customerName={customer.name} onSignOut={handleSignOut} loading={loading} />
+
+      {/* Hidden QR canvas for share feature */}
+      <div style={{ position: 'absolute', left: -9999, top: -9999, pointerEvents: 'none' }}>
+        <QRCodeCanvas ref={qrRef} value={APP_URL} size={216} level="H"
+          imageSettings={{ src: `${import.meta.env.BASE_URL}shortcut.png`, width: 60, height: 60, excavate: true }}
+        />
       </div>
 
-      {/* Main Content */}
-      <div style={{
-        maxWidth: '800px',
-        margin: '0 auto'
-      }}>
-        {/* Customer Card */}
+      <div style={{ maxWidth: 430, margin: '0 auto', padding: '70px 16px 100px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+
+        {/* ── 1. Promo Slideshow ── */}
         <div style={{
-          background: 'white',
-          borderRadius: '20px',
-          padding: '24px',
-          marginBottom: '20px',
-          boxShadow: '0 10px 40px rgba(0,0,0,0.2)'
+          background: isDark
+            ? 'linear-gradient(170deg, #020f28 0%, #031739 52%, #062451 100%)'
+            : 'rgba(255,255,255,0.18)',
+          borderRadius: 20,
+          boxShadow: isDark ? '0 16px 36px rgba(2,15,40,0.38)' : '0 8px 24px rgba(0,0,0,0.12)',
+          overflow: 'hidden',
+          border: isDark ? 'none' : '1px solid rgba(255,255,255,0.35)',
+          backdropFilter: isDark ? 'none' : 'blur(8px)',
         }}>
-          <div style={{ marginBottom: '20px' }}>
-            <h2 style={{ fontSize: '20px', margin: '0 0 4px 0', fontWeight: '600' }}>
-              {customer.name}
-            </h2>
-            <p style={{ fontSize: '13px', color: theme.textMuted, margin: 0 }}>
-              {customer.customer_type === 'pre_pay' ? t('home.prepaid') : t('home.postpaid')}
+          <div style={{ padding: '12px 20px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <p style={{ margin: 0, fontSize: 12, opacity: 0.95, letterSpacing: '0.03em', fontWeight: 700, color: 'white' }}>
+              VIVIDAQUA PROMO PACKAGES
             </p>
+            <span style={{ fontSize: 11, opacity: 0.8, color: 'white' }}>Swipe / Auto Slide</span>
           </div>
-
-          {/* Voucher Balance - pre_pay: per-product breakdown */}
-          {customer.customer_type === 'pre_pay' && (
-            <div style={{ marginBottom: '20px' }}>
-              <div style={{ background: theme.gradientPrimary, padding: '16px 20px', borderRadius: '12px', color: 'white' }}>
-                <p style={{ fontSize: '12px', margin: '0 0 12px 0', opacity: 0.9, fontWeight: '600' }}>
-                  🎫 {t('home.voucherBalance')}
-                </p>
-                {productVouchers.length === 0 ? (
-                  <p style={{ fontSize: '14px', margin: 0, opacity: 0.85 }}>{t('home.noVouchers')}</p>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {productVouchers.map(row => (
-                      <div key={row.product_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: '13px', opacity: 0.9 }}>{row.products?.name ?? '—'}</span>
-                        <span style={{ fontSize: '20px', fontWeight: 'bold' }}>{row.balance}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Pending Orders Section */}
-          {pendingOrders.length > 0 && (
-            <div style={{ marginBottom: '20px' }}>
-              <h3 style={{ fontSize: '18px', marginBottom: '15px', color: theme.primary }}>
-                📋 {t('home.pendingOrders')}
-              </h3>
-              {pendingOrders.map((order) => (
-                <div
-                  key={order.id}
-                  style={{
-                    background: '#f8f9fa',
-                    borderRadius: '12px',
-                    padding: '20px',
-                    marginBottom: '15px',
-                    border: `2px solid ${getStatusColor(order.status)}`
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '15px' }}>
-                    <div>
-                      <p style={{
-                        display: 'inline-block',
-                        background: getStatusColor(order.status),
-                        color: 'white',
-                        padding: '4px 12px',
-                        borderRadius: '20px',
-                        fontSize: '12px',
-                        fontWeight: 'bold',
-                        margin: '0 0 10px 0'
-                      }}>
-                        {getStatusIcon(order.status)} {order.status.toUpperCase()}
-                      </p>
-                      <p style={{ fontSize: '14px', color: '#666', margin: '5px 0' }}>
-                        🗓️ {t('home.delivery')} <strong>{formatDate(order.delivery_date)}</strong>
-                      </p>
-                        <p style={{ fontSize: '16px', color: theme.success, fontWeight: 'bold', margin: '5px 0' }}>
-                        💰 {formatCurrency(order.total_amount)}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Action Buttons - Only for pending orders */}
-                  {order.status === 'pending' && (
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                      <button
-                        onClick={() => navigate(`/place-order?edit=${order.id}`)}
-                        style={{
-                          padding: '10px',
-                          background: theme.info,
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '8px',
-                          fontSize: '14px',
-                          fontWeight: 'bold',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        {t('home.edit')}
-                      </button>
-                      <button
-                        onClick={() => handleDeleteOrder(order.id)}
-                        style={{
-                          padding: '10px',
-                          background: theme.error,
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '8px',
-                          fontSize: '14px',
-                          fontWeight: 'bold',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        {t('home.delete')}
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Scheduled message */}
-                  {order.status === 'scheduled' && (
-                    <div style={{
-                      background: '#e3f2fd',
-                      padding: '10px',
-                      borderRadius: '8px',
-                      fontSize: '13px',
-                      color: '#1976d2',
-                      textAlign: 'center'
-                    }}>
-                      ℹ️ {t('home.scheduledMsg')}
-                    </div>
-                  )}
+          <div style={{ overflow: 'hidden', padding: '6px 8px 0' }}>
+            <div style={{
+              display: 'flex',
+              width: `${voucherSlides.length * 100}%`,
+              transform: `translateX(-${activeVoucherSlide * (100 / voucherSlides.length)}%)`,
+              transition: 'transform 420ms ease',
+            }}>
+              {voucherSlides.map(slide => (
+                <div key={slide.id} style={{ width: `${100 / voucherSlides.length}%`, padding: '6px 4px 10px', boxSizing: 'border-box' }}>
+                  <VividAquaProductCard
+                    title={slide.title}
+                    ticketCount={slide.tickets}
+                    subtitle={slide.subtitle}
+                    badge={slide.badge}
+                    packImage={slide.packImage}
+                    onBuy={() => navigate('/buy-vouchers')}
+                  />
                 </div>
               ))}
             </div>
-          )}
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: 8, padding: '2px 0 14px' }}>
+            {voucherSlides.map((slide, idx) => (
+              <button
+                key={slide.id}
+                type="button"
+                onClick={() => setActiveVoucherSlide(idx)}
+                style={{
+                  width: activeVoucherSlide === idx ? 20 : 8, height: 8,
+                  borderRadius: 999, border: 'none',
+                  background: activeVoucherSlide === idx ? 'white' : 'rgba(255,255,255,0.45)',
+                  cursor: 'pointer', transition: 'all 220ms ease',
+                }}
+              />
+            ))}
+          </div>
+        </div>
 
-          {/* Action Buttons - pre_pay (matches water depot schema) */}
-          {customer.customer_type === 'pre_pay' ? (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-              <button
-                onClick={() => navigate('/place-order')}
-                disabled={!canOrder}
-                style={{
-                  padding: '14px',
-                  background: canOrder ? theme.gradientPrimary : theme.disabled,
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '8px',
-                  fontSize: '16px',
-                  fontWeight: 'bold',
-                  cursor: canOrder ? 'pointer' : 'not-allowed'
-                }}
-              >
-                🛒 {t('home.orderDelivery')}
-              </button>
-              <button
-                onClick={() => navigate('/buy-vouchers')}
-                style={{
-                  padding: '14px',
-                  background: theme.gradientSuccess,
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '8px',
-                  fontSize: '16px',
-                  fontWeight: 'bold',
-                  cursor: 'pointer'
-                }}
-              >
-                🎫 {t('home.buyVouchers')}
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => navigate('/place-order')}
-              disabled={!canOrder}
+        {/* ── 2. Quick Actions ── */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          {/* Buy Vouchers */}
+          <button
+              onClick={() => navigate('/buy-vouchers')}
               style={{
-                width: '100%',
-                padding: '14px',
-                background: canOrder ? theme.gradientPrimary : theme.disabled,
-                color: 'white',
-                border: 'none',
-                borderRadius: '8px',
-                fontSize: '16px',
-                fontWeight: 'bold',
-                cursor: canOrder ? 'pointer' : 'not-allowed'
+                padding: 16, borderRadius: 16,
+                background: C.card, border: `1px solid ${C.cardBorder}`,
+                backdropFilter: C.cardBlur, WebkitBackdropFilter: C.cardBlur,
+                boxShadow: C.cardShadow,
+                cursor: 'pointer', textAlign: 'left',
               }}
             >
-              🛒 {t('home.orderDelivery')}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{
+                  width: 48, height: 48, borderRadius: 14,
+                  background: C.gradientPrimary,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                }}>
+                  <Ticket size={22} color="white" />
+                </div>
+                <div>
+                  <p style={{ color: C.text, fontWeight: 600, fontSize: 14, margin: 0 }}>Buy Vouchers</p>
+                  <p style={{ color: C.muted, fontSize: 11, margin: '2px 0 0' }}>Save more</p>
+                </div>
+              </div>
             </button>
-          )}
+
+          {/* Order Delivery */}
+          <button
+            onClick={() => canOrder && navigate('/place-order')}
+            style={{
+              padding: 16, borderRadius: 16,
+              background: C.card, border: `1px solid ${canOrder ? C.cardBorder : C.divider}`,
+              backdropFilter: C.cardBlur, WebkitBackdropFilter: C.cardBlur,
+              boxShadow: C.cardShadow,
+              cursor: canOrder ? 'pointer' : 'not-allowed',
+              textAlign: 'left',
+              opacity: canOrder ? 1 : 0.6,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{
+                width: 48, height: 48, borderRadius: 14,
+                background: C.gradientPrimary,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              }}>
+                <Droplets size={22} color="white" />
+              </div>
+              <div>
+                <p style={{ color: C.text, fontWeight: 600, fontSize: 14, margin: 0 }}>Order Delivery</p>
+                <p style={{ color: C.muted, fontSize: 11, margin: '2px 0 0' }}>Fast delivery</p>
+              </div>
+            </div>
+          </button>
         </div>
 
-        {/* Quick Info */}
-        <div style={{
-          background: 'white',
-          borderRadius: '20px',
-          padding: '24px',
-          boxShadow: '0 10px 40px rgba(0,0,0,0.2)'
-        }}>
-          <h3 style={{ fontSize: '18px', margin: '0 0 16px 0', fontWeight: '600' }}>📊 {t('home.quickInfo')}</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-
-            {/* Account Status */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', background: '#f8f9fa', borderRadius: '10px' }}>
-              <span style={{ fontSize: '13px', color: '#666' }}>{t('home.accountStatus')}</span>
-              <span style={{ fontSize: '13px', fontWeight: '600', color: canOrder ? theme.success : theme.warning }}>
-                {canOrder ? `✅ ${t('home.active')}` : `⏳ ${t('home.pendingSetup')}`}
-              </span>
+        {/* ── 3. My Account Overview ── */}
+        <div style={{ background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 16, padding: 16, backdropFilter: C.cardBlur, WebkitBackdropFilter: C.cardBlur, boxShadow: C.cardShadow }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+            <p style={{ color: C.text, fontWeight: 600, fontSize: 15, margin: 0 }}>My Account</p>
+            <button
+              onClick={() => navigate('/account')}
+              style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: C.primary, fontSize: 12, cursor: 'pointer' }}
+            >
+              View Details <ChevronRight size={13} />
+            </button>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, textAlign: 'center' }}>
+            <div>
+              <p style={{
+                fontSize: 26, fontWeight: 900, margin: 0,
+                background: C.gradientPrimary,
+                WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+              }}>
+                {totalVouchers}
+              </p>
+              <p style={{ color: C.muted, fontSize: 11, margin: '4px 0 0' }}>Vouchers</p>
             </div>
-
-            {/* Service Branch */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', background: '#f8f9fa', borderRadius: '10px' }}>
-              <span style={{ fontSize: '13px', color: '#666' }}>{t('home.serviceBranch')}</span>
-              <span style={{ fontSize: '13px', fontWeight: '600', color: theme.text }}>
-                {customer.branch === 'Pending' || !customer.branch ? '—' : customer.branch}
-              </span>
+            <div>
+              <p style={{
+                fontSize: 26, fontWeight: 900, margin: 0,
+                background: C.gradientPrimary,
+                WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+              }}>
+                {pendingCount}
+              </p>
+              <p style={{ color: C.muted, fontSize: 11, margin: '4px 0 0' }}>Delivery</p>
             </div>
-
-            {/* Billing Cycle */}
-            {paymentTerm && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', background: '#f8f9fa', borderRadius: '10px' }}>
-                <span style={{ fontSize: '13px', color: '#666' }}>{t('home.billingCycle')}</span>
-                <span style={{ fontSize: '13px', fontWeight: '600', color: theme.text }}>
-                  {{ daily: 'Daily', weekly: 'Weekly', biweekly: 'Biweekly', monthly: 'Monthly' }[paymentTerm] ?? paymentTerm}
-                </span>
-              </div>
-            )}
-
-            {/* On Delivery (scheduled) */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', background: '#f8f9fa', borderRadius: '10px' }}>
-              <span style={{ fontSize: '13px', color: '#666' }}>{t('home.onDelivery')}</span>
-              <span style={{ fontSize: '13px', fontWeight: '600', color: theme.info }}>
-                {pendingOrders.filter(o => o.status === 'scheduled').length} order(s)
-              </span>
+            <div>
+              {customer.customer_type !== 'pre_pay' ? (
+                <>
+                  <p style={{ fontSize: unpaidAmount > 0 ? 16 : 26, fontWeight: 700, margin: 0, color: unpaidAmount > 0 ? '#ef4444' : C.primary }}>
+                    {unpaidAmount > 0 ? formatCurrency(unpaidAmount) : '0'}
+                  </p>
+                  <p style={{ color: C.muted, fontSize: 11, margin: '4px 0 0' }}>Unpaid</p>
+                </>
+              ) : (
+                <>
+                  <p style={{ fontSize: 26, fontWeight: 700, margin: 0, background: 'linear-gradient(135deg, #00A0E9, #00CED1)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                    0
+                  </p>
+                  <p style={{ color: C.muted, fontSize: 11, margin: '4px 0 0' }}>Points</p>
+                </>
+              )}
             </div>
+          </div>
+        </div>
 
-            {/* Unpaid Amount — later_pay only */}
-            {customer.customer_type !== 'pre_pay' && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', background: unpaidAmount > 0 ? '#fff3e0' : '#f8f9fa', borderRadius: '10px', border: unpaidAmount > 0 ? '1px solid #ffb74d' : 'none' }}>
-                <div>
-                  <span style={{ fontSize: '13px', color: '#666' }}>{t('home.unpaidAmount')}</span>
-                  <div style={{ fontSize: '13px', fontWeight: '700', color: unpaidAmount > 0 ? theme.error : theme.success }}>
-                    {unpaidAmount > 0 ? formatCurrency(unpaidAmount) : `✅ ${t('home.allPaid')}`}
+        {/* ── 4. Pending Orders ── */}
+        {pendingOrders.length > 0 && (
+          <div style={{
+            background: C.card, border: `1px solid ${C.cardBorder}`,
+            borderRadius: 14, padding: 16,
+            backdropFilter: C.cardBlur, WebkitBackdropFilter: C.cardBlur,
+          }}>
+            <p style={{ color: C.text, fontWeight: 700, fontSize: 15, margin: '0 0 12px' }}>
+              {t('home.pendingOrders')}
+            </p>
+            {pendingOrders.map(order => (
+              <div key={order.id} style={{
+                background: C.card,
+                border: `1px solid ${getStatusColor(order.status)}`,
+                borderRadius: 14, padding: 16, marginBottom: 10,
+                backdropFilter: C.cardBlur, WebkitBackdropFilter: C.cardBlur,
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: 12 }}>
+                  <div>
+                    <span style={{
+                      display: 'inline-block',
+                      background: getStatusColor(order.status), color: 'white',
+                      padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, marginBottom: 6,
+                    }}>
+                      {getStatusLabel(order.status)}
+                    </span>
+                    <p style={{ color: C.muted, fontSize: 13, margin: '4px 0' }}>
+                      {t('home.delivery')}: <strong style={{ color: C.text }}>{formatDate(order.delivery_date)}</strong>
+                    </p>
+                    <p style={{ color: theme.success, fontSize: 15, fontWeight: 700, margin: '4px 0 0' }}>
+                      {formatCurrency(order.total_amount)}
+                    </p>
                   </div>
                 </div>
-                {unpaidAmount > 0 && (
-                  <button
-                    onClick={() => navigate('/orders')}
-                    style={{ padding: '8px 14px', background: theme.error, color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer', whiteSpace: 'nowrap' }}
-                  >
-                    {`${t('home.payNow')} →`}
-                  </button>
-                )}
+                <button
+                  onClick={() => navigate(`/orders/${order.id}/delivery`)}
+                  style={{ width: '100%', padding: '9px', background: C.primaryBg, color: C.primary, border: `1px solid ${C.primaryBorder}`, borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+                >
+                  {t('home.details')} →
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ── 5. Credit Limit + Unpaid Warning (later_pay) ── */}
+        {customer.customer_type !== 'pre_pay' && (unpaidAmount > 0 || creditLimit !== null) && (
+          <div style={{
+            background: unpaidAmount > 0 ? 'rgba(234,88,12,0.12)' : C.primaryBg,
+            border: `1px solid ${unpaidAmount > 0 ? 'rgba(251,146,60,0.4)' : C.primaryBorder}`,
+            borderRadius: 14, padding: 16,
+          }}>
+            {/* Credit limit bar */}
+            {creditLimit !== null && (
+              <div style={{ marginBottom: unpaidAmount > 0 ? 12 : 0 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <p style={{ color: C.muted, fontSize: 12, margin: 0 }}>{t('home.creditUsed')}</p>
+                  <p style={{ color: C.text, fontSize: 12, fontWeight: 700, margin: 0 }}>
+                    {formatCurrency(unpaidAmount)} / {formatCurrency(creditLimit)}
+                  </p>
+                </div>
+                <div style={{ height: 6, borderRadius: 99, background: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)', overflow: 'hidden' }}>
+                  <div style={{
+                    height: '100%', borderRadius: 99,
+                    width: `${Math.min(100, creditLimit > 0 ? (unpaidAmount / creditLimit) * 100 : 0)}%`,
+                    background: unpaidAmount / creditLimit > 0.8 ? '#ef4444' : unpaidAmount / creditLimit > 0.5 ? '#f97316' : C.primary,
+                    transition: 'width 0.5s ease',
+                  }} />
+                </div>
               </div>
             )}
+            {unpaidAmount > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                  <p style={{ color: C.muted, fontSize: 12, margin: 0 }}>{t('home.unpaidAmount')}</p>
+                  <p style={{ color: '#ef4444', fontSize: 16, fontWeight: 700, margin: '4px 0 0' }}>
+                    {formatCurrency(unpaidAmount)}
+                  </p>
+                </div>
+                <button
+                  onClick={() => navigate('/orders')}
+                  style={{ padding: '8px 14px', background: C.primary, color: 'white', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                >
+                  {t('home.payNow')} →
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
-            {/* Last Delivery */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', background: '#f8f9fa', borderRadius: '10px' }}>
-              <span style={{ fontSize: '13px', color: '#666' }}>{t('home.lastDelivery')}</span>
-              <span style={{ fontSize: '13px', fontWeight: '600', color: theme.text }}>
-                {lastDeliveryDate ? formatDate(lastDeliveryDate) : '—'}
-              </span>
-            </div>
-
+        {/* ── 6. Product Gallery ── */}
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <p style={{ color: 'white', fontWeight: 600, fontSize: 15, margin: 0 }}>Product Gallery</p>
+            <span style={{ color: C.muted, fontSize: 11 }}>Swipe to see more</span>
+          </div>
+          <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 8, scrollbarWidth: 'none' }}>
+            {galleryItems.map((item, i) => (
+              <button
+                key={i}
+                onClick={() => navigate(item.count ? '/buy-vouchers' : '/place-order')}
+                style={{
+                  flexShrink: 0, width: 120,
+                  background: C.card, border: `1px solid ${C.cardBorder}`,
+                  backdropFilter: C.cardBlur, WebkitBackdropFilter: C.cardBlur,
+                  borderRadius: 14, overflow: 'hidden', cursor: 'pointer', textAlign: 'left',
+                }}
+              >
+                <div style={{
+                  aspectRatio: '1', background: 'linear-gradient(135deg, rgba(77,204,204,0.12), rgba(0,139,139,0.15))',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  {item.count ? (
+                    <div style={{ textAlign: 'center' }}>
+                      <Ticket size={28} color={C.primary} style={{ opacity: 0.7 }} />
+                      <p style={{
+                        fontSize: 22, fontWeight: 800, margin: '4px 0 0',
+                        background: 'linear-gradient(135deg, #00A0E9, #00CED1)',
+                        WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+                      }}>{item.count}</p>
+                    </div>
+                  ) : (
+                    <Droplets size={32} color={C.primary} style={{ opacity: 0.6 }} />
+                  )}
+                </div>
+                <div style={{ padding: '10px 12px' }}>
+                  <p style={{ color: C.text, fontWeight: 600, fontSize: 12, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {item.title}
+                  </p>
+                  <p style={{ color: C.muted, fontSize: 11, margin: '3px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {item.subtitle}
+                  </p>
+                </div>
+              </button>
+            ))}
           </div>
         </div>
 
-        {/* Share App Card */}
-        <div style={{ background: 'white', borderRadius: '20px', padding: '24px', marginTop: '20px', boxShadow: '0 10px 40px rgba(0,0,0,0.2)', textAlign: 'center' }}>
-          <h3 style={{ fontSize: '16px', fontWeight: '600', margin: '0 0 4px 0' }}>{t('home.shareApp')}</h3>
-          <p style={{ fontSize: '12px', color: theme.textMuted, margin: '0 0 16px 0' }}>{t('home.scanShare')}</p>
-
-          <div style={{ display: 'inline-block', padding: '12px', background: '#f8f9fa', borderRadius: '12px', marginBottom: '16px' }}>
-            <QRCodeCanvas
-              ref={qrRef}
-              value={APP_URL}
-              size={160}
-              level="H"
-              imageSettings={{
-                src: '/shortcut.png',
-                height: 36,
-                width: 36,
-                excavate: true,
-              }}
+        {/* ── 7. Share App / QR ── */}
+        <div style={{ background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 16, padding: 20, textAlign: 'center', backdropFilter: C.cardBlur, WebkitBackdropFilter: C.cardBlur, boxShadow: C.cardShadow }}>
+          <p style={{ color: C.text, fontWeight: 600, fontSize: 15, margin: '0 0 4px' }}>{t('home.shareApp')}</p>
+          <p style={{ color: C.muted, fontSize: 12, margin: '0 0 16px' }}>{t('home.scanShare')}</p>
+          <div style={{ display: 'inline-block', padding: 12, background: isDark ? 'rgba(255,255,255,0.06)' : '#f5f5f5', border: `1px solid ${C.cardBorder}`, borderRadius: 12, marginBottom: 14 }}>
+            <QRCodeCanvas value={APP_URL} size={140} level="H" bgColor={isDark ? 'transparent' : '#f5f5f5'} fgColor={isDark ? 'white' : '#333333'}
+              imageSettings={{ src: `${import.meta.env.BASE_URL}shortcut.png`, width: 40, height: 40, excavate: true }}
             />
           </div>
-
-          <p style={{ fontSize: '11px', color: theme.textMuted, margin: '0 0 14px 0', wordBreak: 'break-all' }}>{APP_URL}</p>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+          <p style={{ color: C.muted, fontSize: 11, margin: '0 0 14px', wordBreak: 'break-all' }}>{APP_URL}</p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <button
               onClick={async () => {
                 try {
@@ -697,20 +565,15 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
                     await navigator.clipboard.writeText(APP_URL);
                     toast.success(t('home.linkCopied'));
                   }
-                } catch {
-                  // user cancelled
-                }
+                } catch { }
               }}
-              style={{ padding: '10px', background: theme.gradientPrimary, color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer' }}
+              style={{ padding: '10px', background: C.primary, color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
             >
               {t('home.share')}
             </button>
             <button
-              onClick={async () => {
-                await navigator.clipboard.writeText(APP_URL);
-                toast.success(t('home.linkCopied'));
-              }}
-              style={{ padding: '10px', background: 'white', color: theme.primary, border: `2px solid ${theme.primary}`, borderRadius: '8px', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer' }}
+              onClick={async () => { await navigator.clipboard.writeText(APP_URL); toast.success(t('home.linkCopied')); }}
+              style={{ padding: '10px', background: C.primaryBg, color: C.primary, border: `1px solid ${C.primaryBorder}`, borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
             >
               {t('home.copyLink')}
             </button>
@@ -718,7 +581,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
         </div>
 
       </div>
-      <BottomNav customer={customer} />
+      <BottomNavV0 customer={customer} />
     </div>
   );
 }

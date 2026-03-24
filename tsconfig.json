@@ -12,7 +12,11 @@
     "noEmit": true,
     "jsx": "react-jsx",
     "strict": false,
-    "types": ["vite/client", "@types/google.maps"]
+    "types": ["vite/client", "@types/google.maps"],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
   },
   "include": ["src"]
 }

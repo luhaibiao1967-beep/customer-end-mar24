@@ -63,8 +63,8 @@ serve(async (req) => {
 
     const isPrePay = customer.customer_type === 'pre_pay'
 
-    // Validate per-product voucher balances for pre_pay customers
-    if (isPrePay && product_deductions && product_deductions.length > 0) {
+    // Validate per-product voucher balances (all customer types)
+    if (product_deductions && product_deductions.length > 0) {
       for (const deduction of product_deductions) {
         if (deduction.quantity <= 0) continue
 
@@ -79,6 +79,20 @@ serve(async (req) => {
         if (available < deduction.quantity) {
           throw new Error(`Insufficient vouchers for product (need ${deduction.quantity}, have ${available})`)
         }
+      }
+    }
+
+    // Credit limit check for later_pay
+    if (!isPrePay && customer.credit_limit != null && !edit_order_id) {
+      const { data: unpaidRows } = await supabase
+        .from('orders')
+        .select('total_amount')
+        .eq('customer_id', customer.id)
+        .eq('payment_status', 'unpaid')
+
+      const unpaidSum = (unpaidRows || []).reduce((s: number, o: any) => s + (o.total_amount || 0), 0)
+      if (unpaidSum + order.total_amount > customer.credit_limit) {
+        throw new Error('CREDIT_LIMIT_EXCEEDED')
       }
     }
 
@@ -151,8 +165,8 @@ serve(async (req) => {
       )
       if (itemsError) throw new Error('Failed to create order items: ' + itemsError.message)
 
-      // Deduct per-product vouchers (pre_pay)
-      if (isPrePay && product_deductions && product_deductions.length > 0) {
+      // Deduct per-product vouchers (all customer types)
+      if (product_deductions && product_deductions.length > 0) {
         for (const deduction of product_deductions) {
           if (deduction.quantity <= 0) continue
 

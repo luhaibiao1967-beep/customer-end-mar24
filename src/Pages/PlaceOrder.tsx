@@ -1,12 +1,13 @@
 // src/Pages/PlaceOrder.tsx - Add New Delivery Order
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
-import BottomNav from '../Components/BottomNav';
+import BottomNavV0 from '../Components/BottomNavV0';
 import { theme } from '../theme';
 import { formatCurrency } from '../utils/format';
 import toast from 'react-hot-toast';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useColorTokens } from '../contexts/ColorTokensContext';
 
 interface Customer {
   id: string;
@@ -61,6 +62,7 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { t } = useLanguage();
+  const { tokens, isDark } = useColorTokens();
   const editOrderId = searchParams.get('edit');
 
   const [products, setProducts] = useState<Product[]>([]);
@@ -78,6 +80,10 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
   // Unpaid orders block (daily later_pay)
   const [blockedByUnpaid, setBlockedByUnpaid] = useState(false);
   const [showUnpaidModal, setShowUnpaidModal] = useState(false);
+
+  // Credit limit (later_pay)
+  const [creditLimit, setCreditLimit] = useState<number | null>(null);
+  const [unpaidCredit, setUnpaidCredit] = useState<number>(0);
 
   // Per-product voucher balances: productId → balance
   const [productVouchers, setProductVouchers] = useState<Map<string, number>>(new Map());
@@ -119,15 +125,13 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
   const totalAmount = cartItems.reduce((sum, item) =>
     sum + getUnitPrice(item.product) * item.quantity, 0);
 
-  // For pre_pay: per-product breakdown of voucher coverage vs QRIS shortfall
-  const voucherBreakdown = isPrePay
-    ? cartItems.map(item => {
-        const available = productVouchers.get(item.product.id) ?? 0;
-        const byVoucher = Math.min(item.quantity, available);
-        const byPayment = item.quantity - byVoucher;
-        return { item, byVoucher, byPayment };
-      })
-    : [];
+  // Per-product breakdown of voucher coverage vs remaining (QRIS for pre_pay / credit for later_pay)
+  const voucherBreakdown = cartItems.map(item => {
+    const available = productVouchers.get(item.product.id) ?? 0;
+    const byVoucher = Math.min(item.quantity, available);
+    const byPayment = item.quantity - byVoucher;
+    return { item, byVoucher, byPayment };
+  });
   const payableAmount = voucherBreakdown.reduce(
     (sum, { item, byPayment }) => sum + byPayment * getUnitPrice(item.product), 0
   );
@@ -137,6 +141,7 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
     loadProducts();
     fetchFreshCustomerData();
     checkUnpaidBlock();
+    fetchUnpaidCredit();
   }, []);
 
   const checkUnpaidBlock = async () => {
@@ -169,17 +174,34 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
     try {
       const { data } = await supabase
         .from('customers')
-        .select('discount')
+        .select('discount, credit_limit')
         .eq('id', customer.id)
         .single();
-      if (data) setFreshDiscount(data.discount || 0);
+      if (data) {
+        setFreshDiscount(data.discount || 0);
+        setCreditLimit(data.credit_limit ?? null);
+      }
     } catch {
       // silently fall back
     }
   };
 
+  const fetchUnpaidCredit = async () => {
+    if (isPrePay) return;
+    try {
+      const { data } = await supabase
+        .from('orders')
+        .select('total_amount')
+        .eq('customer_id', customer.id)
+        .eq('payment_status', 'unpaid');
+      const sum = (data || []).reduce((s: number, o: any) => s + (o.total_amount || 0), 0);
+      setUnpaidCredit(sum);
+    } catch {
+      // silently fail
+    }
+  };
+
   const fetchProductVouchers = async () => {
-    if (!isPrePay) return;
     try {
       const { data } = await supabase
         .from('customer_product_vouchers')
@@ -289,10 +311,6 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
       setError('Please select a delivery date.');
       return;
     }
-    if (isPrePay && !hasEnoughVouchers) {
-      setError('Insufficient vouchers for some products. Please buy more.');
-      return;
-    }
 
     setSubmitting(true);
     setError('');
@@ -309,13 +327,19 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
         discount: item.product.is_refill ? (freshDiscount || 0) : 0,
       }));
 
-      // Build per-product deductions for pre_pay
-      const product_deductions = isPrePay
-        ? cartItems.map(item => ({
-            product_id: item.product.id,
-            quantity: item.quantity,
-          }))
-        : [];
+      // Credit limit check for later_pay (frontend guard)
+      if (!isPrePay && !editOrderId && creditLimit !== null) {
+        if (unpaidCredit + payableAmount > creditLimit) {
+          setError('CREDIT_LIMIT_EXCEEDED');
+          setSubmitting(false);
+          return;
+        }
+      }
+
+      // Build per-product voucher deductions (all customer types)
+      const product_deductions = voucherBreakdown
+        .filter(({ byVoucher }) => byVoucher > 0)
+        .map(({ item, byVoucher }) => ({ product_id: item.product.id, quantity: byVoucher }));
 
       const { data, error } = await supabase.functions.invoke('submit-order', {
         body: {
@@ -324,7 +348,7 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
             delivery_date: deliveryDate,
             note: notes || null,
             total_amount: totalAmount,
-            payment_status: isPrePay ? 'paid' : 'unpaid',
+            payment_status: payableAmount === 0 ? 'paid' : 'unpaid',
           },
           items: orderItems,
           product_deductions,
@@ -338,11 +362,15 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
           setError('UNPAID_ORDERS');
           return;
         }
+        if (data?.error === 'CREDIT_LIMIT_EXCEEDED') {
+          setError('CREDIT_LIMIT_EXCEEDED');
+          return;
+        }
         throw new Error(data?.error || 'Unknown error');
       }
 
       // Refresh local voucher map optimistically
-      if (isPrePay && !editOrderId) {
+      if (!editOrderId) {
         setProductVouchers(prev => {
           const next = new Map(prev);
           for (const item of cartItems) {
@@ -440,9 +468,9 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
 
   if (loading) {
     return (
-      <div style={{ minHeight: '100vh', background: theme.gradientPrimary, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ textAlign: 'center', color: 'white' }}>
-          <div style={{ width: '40px', height: '40px', border: '4px solid rgba(255,255,255,0.3)', borderTop: '4px solid white', borderRadius: '50%', margin: '0 auto 16px', animation: 'spin 1s linear infinite' }} />
+      <div style={{ minHeight: '100vh', background: tokens.pageBg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ textAlign: 'center', color: tokens.text }}>
+          <div style={{ width: '40px', height: '40px', border: `4px solid ${tokens.primaryBorder}`, borderTop: `4px solid ${tokens.primary}`, borderRadius: '50%', margin: '0 auto 16px', animation: 'spin 1s linear infinite' }} />
           <p>{t('placeOrder.loadingProducts')}</p>
           <style>{`@keyframes spin { 0%{transform:rotate(0deg)} 100%{transform:rotate(360deg)} }`}</style>
         </div>
@@ -452,20 +480,20 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
 
   if (showSuccess) {
     return (
-      <div style={{ minHeight: '100vh', background: theme.gradientPrimary, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-        <div style={{ background: 'white', borderRadius: '20px', padding: '40px', maxWidth: '400px', width: '100%', textAlign: 'center', boxShadow: '0 10px 40px rgba(0,0,0,0.2)' }}>
+      <div style={{ minHeight: '100vh', background: tokens.pageBg, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+        <div style={{ background: tokens.card, borderRadius: '20px', padding: '40px', maxWidth: '400px', width: '100%', textAlign: 'center', boxShadow: '0 10px 40px rgba(0,0,0,0.2)', backdropFilter: tokens.cardBlur, WebkitBackdropFilter: tokens.cardBlur, border: `1px solid ${tokens.primaryBorder}` }}>
           <div style={{ fontSize: '64px', marginBottom: '16px' }}>✅</div>
-          <h2 style={{ fontSize: '22px', color: theme.text, margin: '0 0 10px 0' }}>
+          <h2 style={{ fontSize: '22px', color: tokens.text, margin: '0 0 10px 0' }}>
             {editOrderId ? t('placeOrder.orderUpdated') : t('placeOrder.orderPlaced')}
           </h2>
-          <p style={{ color: theme.textMuted, fontSize: '14px', margin: '0 0 24px 0' }}>
+          <p style={{ color: tokens.muted, fontSize: '14px', margin: '0 0 24px 0' }}>
             {editOrderId
               ? t('placeOrder.orderUpdatedDesc')
               : t('placeOrder.orderPlacedDesc')}
           </p>
           <button
             onClick={() => navigate('/customer-home')}
-            style={{ width: '100%', padding: '14px', background: theme.gradientPrimary, color: 'white', border: 'none', borderRadius: '10px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer' }}
+            style={{ width: '100%', padding: '14px', background: tokens.gradientPrimary, color: 'white', border: 'none', borderRadius: '10px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer' }}
           >
             {t('placeOrder.backToHome')}
           </button>
@@ -475,17 +503,17 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: theme.gradientPrimary, padding: '20px', paddingBottom: '100px' }}>
+    <div style={{ minHeight: '100vh', background: tokens.pageBg, padding: '20px', paddingBottom: '100px' }}>
 
       {/* Header */}
-      <div style={{ maxWidth: '800px', margin: '0 auto 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ maxWidth: '800px', margin: '0 auto 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0,0,0,0.30)', borderRadius: '16px', padding: '12px 16px', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }}>
         <button
           onClick={() => navigate('/customer-home')}
-          style={{ padding: '10px 20px', background: 'rgba(255,255,255,0.2)', color: 'white', border: '2px solid white', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}
+          style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.15)', color: 'white', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}
         >
           ← {t('common.back')}
         </button>
-        <h1 style={{ color: 'white', fontSize: '20px', margin: 0 }}>
+        <h1 style={{ color: 'white', fontSize: '20px', margin: 0, textShadow: '0 1px 4px rgba(0,0,0,0.4)' }}>
           {editOrderId ? `✏️ ${t('placeOrder.editOrder')}` : `🛒 ${t('placeOrder.newDelivery')}`}
         </h1>
         <div style={{ width: '80px' }} />
@@ -502,7 +530,7 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
             </p>
             <button
               onClick={() => navigate('/orders')}
-              style={{ padding: '12px 24px', background: theme.gradientPrimary, color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}
+              style={{ padding: '12px 24px', background: tokens.gradientPrimary, color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}
             >
               💳 {t('placeOrder.viewPayBills')}
             </button>
@@ -511,15 +539,15 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
 
         {/* Voucher summary banner (pre_pay only) */}
         {isPrePay && productVouchers.size > 0 && (
-          <div style={{ background: 'white', borderRadius: '16px', padding: '16px 20px', boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}>
-            <p style={{ fontSize: '13px', fontWeight: '600', color: theme.textMuted, margin: '0 0 10px 0' }}>🎫 {t('account.voucherBalance')}</p>
+          <div style={{ background: tokens.card, borderRadius: '16px', padding: '16px 20px', boxShadow: '0 4px 20px rgba(0,0,0,0.15)', backdropFilter: tokens.cardBlur, WebkitBackdropFilter: tokens.cardBlur, border: `1px solid ${tokens.primaryBorder}` }}>
+            <p style={{ fontSize: '13px', fontWeight: '600', color: tokens.muted, margin: '0 0 10px 0' }}>🎫 {t('account.voucherBalance')}</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               {products
                 .filter(p => productVouchers.has(p.id))
                 .map(p => (
                   <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
-                    <span style={{ color: theme.text }}>{p.name}</span>
-                    <span style={{ fontWeight: 'bold', color: (productVouchers.get(p.id) ?? 0) > 0 ? theme.primary : theme.error }}>
+                    <span style={{ color: tokens.text }}>{p.name}</span>
+                    <span style={{ fontWeight: 'bold', color: (productVouchers.get(p.id) ?? 0) > 0 ? tokens.primary : theme.error }}>
                       {productVouchers.get(p.id) ?? 0}
                     </span>
                   </div>
@@ -529,8 +557,8 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
         )}
 
         {/* Delivery Date */}
-        <div style={{ background: 'white', borderRadius: '16px', padding: '20px', boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}>
-          <label style={{ fontSize: '14px', fontWeight: '600', color: theme.text, display: 'block', marginBottom: '10px' }}>
+        <div style={{ background: tokens.card, borderRadius: '16px', padding: '20px', boxShadow: '0 4px 20px rgba(0,0,0,0.15)', backdropFilter: tokens.cardBlur, WebkitBackdropFilter: tokens.cardBlur, border: `1px solid ${tokens.primaryBorder}` }}>
+          <label style={{ fontSize: '14px', fontWeight: '600', color: tokens.text, display: 'block', marginBottom: '10px' }}>
             📅 {t('placeOrder.deliveryDate')}
           </label>
           <input
@@ -538,30 +566,30 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
             value={deliveryDate}
             min={today}
             onChange={e => setDeliveryDate(e.target.value)}
-            style={{ width: '100%', padding: '12px', fontSize: '16px', border: `2px solid ${theme.primary}`, borderRadius: '8px', outline: 'none', boxSizing: 'border-box' }}
+            style={{ width: '100%', padding: '12px', fontSize: '16px', border: `2px solid ${tokens.primary}`, borderRadius: '8px', outline: 'none', boxSizing: 'border-box', background: tokens.inputBg, color: tokens.text, colorScheme: isDark ? 'dark' : 'light' }}
           />
         </div>
 
         {/* Products */}
-        <div style={{ background: 'white', borderRadius: '16px', padding: '20px', boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}>
-          <p style={{ fontSize: '14px', fontWeight: '600', color: theme.text, margin: '0 0 16px 0' }}>🛍️ {t('placeOrder.selectProducts')}</p>
+        <div style={{ background: tokens.card, borderRadius: '16px', padding: '20px', boxShadow: '0 4px 20px rgba(0,0,0,0.15)', backdropFilter: tokens.cardBlur, WebkitBackdropFilter: tokens.cardBlur, border: `1px solid ${tokens.primaryBorder}` }}>
+          <p style={{ fontSize: '14px', fontWeight: '600', color: tokens.text, margin: '0 0 16px 0' }}>🛍️ {t('placeOrder.selectProducts')}</p>
           {products.length === 0 ? (
-            <p style={{ color: theme.textMuted, textAlign: 'center', padding: '20px 0' }}>{t('placeOrder.noProducts')}</p>
+            <p style={{ color: tokens.muted, textAlign: 'center', padding: '20px 0' }}>{t('placeOrder.noProducts')}</p>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
               {/* Main products */}
-              {products.filter(p => !isAccessory(p)).map(product => {
+              {products.filter(p => !isAccessory(p)).map((product, idx, arr) => {
                 const qty = cart.get(product.id) || 0;
                 const unitPrice = getUnitPrice(product);
-                const voucherBalance = productVouchers.get(product.id);
                 const plusDisabled = false;
 
                 return (
-                  <div key={product.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', background: qty > 0 ? '#f0fbfb' : theme.cardBgAlt, borderRadius: '10px', border: `2px solid ${qty > 0 ? theme.primary : 'transparent'}` }}>
+                  <Fragment key={product.id}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', background: qty > 0 ? tokens.primaryBg : 'transparent', borderRadius: qty > 0 ? '10px' : '0', border: qty > 0 ? `2px solid ${tokens.primary}` : 'none', margin: qty > 0 ? '4px 0' : '0' }}>
                     <div style={{ flex: 1 }}>
-                      <p style={{ margin: 0, fontWeight: '600', fontSize: '14px', color: theme.text }}>{product.name}</p>
+                      <p style={{ margin: 0, fontWeight: '600', fontSize: '14px', color: tokens.text }}>{product.name}</p>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px', flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: '13px', color: theme.textMuted }}>
+                        <span style={{ fontSize: '13px', color: tokens.muted }}>
                           {formatCurrency(unitPrice)} / {product.unit}
                           {!isPrePay && product.is_refill && freshDiscount > 0 && (
                             <span style={{ marginLeft: '6px', color: theme.success, fontSize: '11px' }}>
@@ -569,34 +597,13 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
                             </span>
                           )}
                         </span>
-                        {isPrePay && (
-                          <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <span style={{
-                              fontSize: '11px',
-                              fontWeight: '600',
-                              color: (voucherBalance ?? 0) > 0 ? theme.primary : theme.error,
-                              background: (voucherBalance ?? 0) > 0 ? '#f0fbfb' : '#fdecea',
-                              padding: '2px 8px',
-                              borderRadius: '12px',
-                              border: `1px solid ${(voucherBalance ?? 0) > 0 ? theme.primary : theme.error}`,
-                            }}>
-                              🎫 {voucherBalance ?? 0}
-                            </span>
-                            <button
-                              onClick={() => navigate('/buy-vouchers')}
-                              style={{ fontSize: '11px', fontWeight: '600', color: 'white', background: theme.gradientSuccess, border: 'none', borderRadius: '10px', padding: '2px 8px', cursor: 'pointer' }}
-                            >
-                              {t('placeOrder.buy')}
-                            </button>
-                          </span>
-                        )}
                       </div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                       <button
                         onClick={() => updateCart(product.id, -1)}
                         disabled={qty === 0}
-                        style={{ width: '32px', height: '32px', borderRadius: '50%', border: 'none', background: qty > 0 ? theme.primary : '#ddd', color: 'white', fontSize: '18px', fontWeight: 'bold', cursor: qty > 0 ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        style={{ width: '32px', height: '32px', borderRadius: '50%', border: 'none', background: qty > 0 ? tokens.primary : isDark ? 'rgba(255,255,255,0.12)' : '#ddd', color: 'white', fontSize: '18px', fontWeight: 'bold', cursor: qty > 0 ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                       >
                         −
                       </button>
@@ -604,12 +611,16 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
                       <button
                         onClick={() => updateCart(product.id, 1)}
                         disabled={plusDisabled}
-                        style={{ width: '32px', height: '32px', borderRadius: '50%', border: 'none', background: plusDisabled ? '#ddd' : theme.primary, color: 'white', fontSize: '18px', fontWeight: 'bold', cursor: plusDisabled ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        style={{ width: '32px', height: '32px', borderRadius: '50%', border: 'none', background: plusDisabled ? isDark ? 'rgba(255,255,255,0.12)' : '#ddd' : tokens.primary, color: 'white', fontSize: '18px', fontWeight: 'bold', cursor: plusDisabled ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                       >
                         +
                       </button>
                     </div>
                   </div>
+                  {idx < arr.length - 1 && (
+                    <div style={{ height: 1, background: tokens.divider, margin: '0 4px' }} />
+                  )}
+                  </Fragment>
                 );
               })}
 
@@ -618,54 +629,33 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
                 <>
                   <button
                     onClick={() => setShowAccessories(v => !v)}
-                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: '10px 14px', background: theme.cardBgAlt, border: `1px dashed ${theme.primary}`, borderRadius: '10px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: theme.primary }}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: '10px 14px', background: tokens.primaryBg, border: `1px dashed ${tokens.primary}`, borderRadius: '10px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: tokens.primary }}
                   >
                     <span>🔧 {t('placeOrder.accessories')}</span>
                     <span>{showAccessories ? t('placeOrder.hideAccessories') : t('placeOrder.showAccessories')} {showAccessories ? '▲' : '▼'}</span>
                   </button>
 
-                  {showAccessories && products.filter(p => isAccessory(p)).map(product => {
+                  {showAccessories && products.filter(p => isAccessory(p)).map((product, idx, arr) => {
                     const qty = cart.get(product.id) || 0;
                     const unitPrice = getUnitPrice(product);
-                    const voucherBalance = productVouchers.get(product.id);
                     const plusDisabled = false;
 
                     return (
-                      <div key={product.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', background: qty > 0 ? '#f0fbfb' : theme.cardBgAlt, borderRadius: '10px', border: `2px solid ${qty > 0 ? theme.primary : 'transparent'}` }}>
+                      <Fragment key={product.id}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', background: qty > 0 ? tokens.primaryBg : 'transparent', borderRadius: qty > 0 ? '10px' : '0', border: qty > 0 ? `2px solid ${tokens.primary}` : 'none', margin: qty > 0 ? '4px 0' : '0' }}>
                         <div style={{ flex: 1 }}>
-                          <p style={{ margin: 0, fontWeight: '600', fontSize: '14px', color: theme.text }}>{product.name}</p>
+                          <p style={{ margin: 0, fontWeight: '600', fontSize: '14px', color: tokens.text }}>{product.name}</p>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px', flexWrap: 'wrap' }}>
-                            <span style={{ fontSize: '13px', color: theme.textMuted }}>
+                            <span style={{ fontSize: '13px', color: tokens.muted }}>
                               {formatCurrency(unitPrice)} / {product.unit}
                             </span>
-                            {isPrePay && (
-                              <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <span style={{
-                                  fontSize: '11px',
-                                  fontWeight: '600',
-                                  color: (voucherBalance ?? 0) > 0 ? theme.primary : theme.error,
-                                  background: (voucherBalance ?? 0) > 0 ? '#f0fbfb' : '#fdecea',
-                                  padding: '2px 8px',
-                                  borderRadius: '12px',
-                                  border: `1px solid ${(voucherBalance ?? 0) > 0 ? theme.primary : theme.error}`,
-                                }}>
-                                  🎫 {voucherBalance ?? 0}
-                                </span>
-                                <button
-                                  onClick={() => navigate('/buy-vouchers')}
-                                  style={{ fontSize: '11px', fontWeight: '600', color: 'white', background: theme.gradientSuccess, border: 'none', borderRadius: '10px', padding: '2px 8px', cursor: 'pointer' }}
-                                >
-                                  {t('placeOrder.buy')}
-                                </button>
-                              </span>
-                            )}
                           </div>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                           <button
                             onClick={() => updateCart(product.id, -1)}
                             disabled={qty === 0}
-                            style={{ width: '32px', height: '32px', borderRadius: '50%', border: 'none', background: qty > 0 ? theme.primary : '#ddd', color: 'white', fontSize: '18px', fontWeight: 'bold', cursor: qty > 0 ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            style={{ width: '32px', height: '32px', borderRadius: '50%', border: 'none', background: qty > 0 ? tokens.primary : isDark ? 'rgba(255,255,255,0.12)' : '#ddd', color: 'white', fontSize: '18px', fontWeight: 'bold', cursor: qty > 0 ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                           >
                             −
                           </button>
@@ -673,12 +663,16 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
                           <button
                             onClick={() => updateCart(product.id, 1)}
                             disabled={plusDisabled}
-                            style={{ width: '32px', height: '32px', borderRadius: '50%', border: 'none', background: plusDisabled ? '#ddd' : theme.primary, color: 'white', fontSize: '18px', fontWeight: 'bold', cursor: plusDisabled ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            style={{ width: '32px', height: '32px', borderRadius: '50%', border: 'none', background: plusDisabled ? isDark ? 'rgba(255,255,255,0.12)' : '#ddd' : tokens.primary, color: 'white', fontSize: '18px', fontWeight: 'bold', cursor: plusDisabled ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                           >
                             +
                           </button>
                         </div>
                       </div>
+                      {idx < arr.length - 1 && (
+                        <div style={{ height: 1, background: tokens.divider, margin: '0 4px' }} />
+                      )}
+                      </Fragment>
                     );
                   })}
                 </>
@@ -688,8 +682,8 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
         </div>
 
         {/* Notes */}
-        <div style={{ background: 'white', borderRadius: '16px', padding: '20px', boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}>
-          <label style={{ fontSize: '14px', fontWeight: '600', color: theme.text, display: 'block', marginBottom: '10px' }}>
+        <div style={{ background: tokens.card, borderRadius: '16px', padding: '20px', boxShadow: '0 4px 20px rgba(0,0,0,0.15)', backdropFilter: tokens.cardBlur, WebkitBackdropFilter: tokens.cardBlur, border: `1px solid ${tokens.primaryBorder}` }}>
+          <label style={{ fontSize: '14px', fontWeight: '600', color: tokens.text, display: 'block', marginBottom: '10px' }}>
             📝 {t('placeOrder.notes')}
           </label>
           <textarea
@@ -697,48 +691,59 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
             onChange={e => setNotes(e.target.value)}
             placeholder={t('placeOrder.notesPlaceholder')}
             rows={3}
-            style={{ width: '100%', padding: '12px', fontSize: '14px', border: `2px solid #eee`, borderRadius: '8px', outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }}
+            style={{ width: '100%', padding: '12px', fontSize: '14px', border: `2px solid ${tokens.primary}`, borderRadius: '8px', outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box', background: tokens.inputBg, color: tokens.text }}
           />
         </div>
 
         {/* Order Summary */}
         {cartItems.length > 0 && (
-          <div style={{ background: 'white', borderRadius: '16px', padding: '20px', boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}>
-            <p style={{ fontSize: '14px', fontWeight: '600', color: theme.text, margin: '0 0 12px 0' }}>📋 {t('placeOrder.orderSummary')}</p>
+          <div style={{ background: tokens.card, borderRadius: '16px', padding: '20px', boxShadow: '0 4px 20px rgba(0,0,0,0.15)', backdropFilter: tokens.cardBlur, WebkitBackdropFilter: tokens.cardBlur, border: `1px solid ${tokens.primaryBorder}` }}>
+            <p style={{ fontSize: '14px', fontWeight: '600', color: tokens.text, margin: '0 0 12px 0' }}>📋 {t('placeOrder.orderSummary')}</p>
             {cartItems.map(item => (
-              <div key={item.product.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: theme.textMuted, marginBottom: '6px' }}>
+              <div key={item.product.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: tokens.muted, marginBottom: '6px' }}>
                 <span>{item.product.name} × {item.quantity}</span>
                 <span>{formatCurrency(getUnitPrice(item.product) * item.quantity)}</span>
               </div>
             ))}
             <div style={{ borderTop: '1px solid #eee', marginTop: '10px', paddingTop: '10px', display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '16px' }}>
               <span>{t('common.total')}</span>
-              <span style={{ color: theme.primary }}>{formatCurrency(totalAmount)}</span>
+              <span style={{ color: tokens.primary }}>{formatCurrency(totalAmount)}</span>
             </div>
           </div>
         )}
 
-        {/* Payment breakdown (pre_pay, partial or no vouchers) */}
-        {isPrePay && cartItems.length > 0 && payableAmount > 0 && (
-          <div style={{ background: '#fff3cd', border: `2px solid ${theme.warning}`, borderRadius: '16px', padding: '20px' }}>
-            <p style={{ margin: '0 0 10px 0', fontWeight: '600', color: '#856404' }}>💳 {t('placeOrder.paymentBreakdown')}</p>
-            {voucherBreakdown.map(({ item, byVoucher, byPayment }) => (
-              <div key={item.product.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#856404', marginBottom: '4px' }}>
-                <span>{item.product.name} × {item.quantity}</span>
-                <span>
-                  {byVoucher > 0 && `${byVoucher} ${t('placeOrder.voucherBadge')}`}
-                  {byVoucher > 0 && byPayment > 0 && ' + '}
-                  {byPayment > 0 && formatCurrency(byPayment * getUnitPrice(item.product))}
-                </span>
-              </div>
-            ))}
-            <div style={{ borderTop: '1px dashed #c4a217', marginTop: '10px', paddingTop: '10px', display: 'flex', justifyContent: 'space-between', fontWeight: '700', fontSize: '14px', color: '#856404' }}>
-              <span>{t('placeOrder.payViaQris')}</span>
-              <span>{formatCurrency(payableAmount)}</span>
+        {/* Payment breakdown (pre_pay with QRIS, or later_pay with vouchers applied) */}
+        {cartItems.length > 0 && (isPrePay ? payableAmount > 0 : voucherBreakdown.some(v => v.byVoucher > 0)) && (
+          <div style={{ background: tokens.card, borderRadius: '16px', padding: '20px', boxShadow: '0 4px 20px rgba(0,0,0,0.15)', backdropFilter: tokens.cardBlur, WebkitBackdropFilter: tokens.cardBlur, border: `1px solid ${tokens.primaryBorder}` }}>
+            <p style={{ margin: '0 0 12px 0', fontWeight: '700', color: tokens.text, fontSize: '14px' }}>💳 {t('placeOrder.paymentBreakdown')}</p>
+            {voucherBreakdown.filter(({ byPayment }) => byPayment > 0).map(({ item, byVoucher, byPayment }) => {
+              const available = productVouchers.get(item.product.id) ?? 0;
+              return (
+                <div key={item.product.id} style={{ marginBottom: '10px', padding: '10px 12px', background: tokens.primaryBg, borderRadius: '10px', border: `1px solid ${tokens.primaryBorder}` }}>
+                  <p style={{ margin: '0 0 6px 0', fontWeight: '600', fontSize: '13px', color: tokens.text }}>{item.product.name} × {item.quantity}</p>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: tokens.muted, marginBottom: '3px' }}>
+                    <span>🎫 {t('placeOrder.currentVouchers')}: <strong style={{ color: tokens.primary }}>{available}</strong></span>
+                    {byVoucher > 0 && <span style={{ color: tokens.primary }}>{t('placeOrder.coveredBy')} {byVoucher}</span>}
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: tokens.muted }}>
+                    <span>{t('placeOrder.atFullPrice')}: <strong>{byPayment}</strong></span>
+                    <span style={{ fontWeight: '600', color: tokens.text }}>{formatCurrency(byPayment * getUnitPrice(item.product))}</span>
+                  </div>
+                </div>
+              );
+            })}
+            <div style={{ borderTop: `1px solid ${tokens.divider}`, marginTop: '4px', paddingTop: '12px', display: 'flex', justifyContent: 'space-between', fontWeight: '700', fontSize: '15px', color: tokens.text }}>
+              <span>{isPrePay ? t('placeOrder.payViaQris') : t('placeOrder.onCredit')}</span>
+              <span style={{ color: tokens.primary }}>{formatCurrency(payableAmount)}</span>
             </div>
             {payableAmount < totalAmount && (
-              <p style={{ margin: '6px 0 0', fontSize: '12px', color: '#856404', opacity: 0.8 }}>
+              <p style={{ margin: '6px 0 0', fontSize: '12px', color: tokens.muted }}>
                 {formatCurrency(totalAmount - payableAmount)} {t('placeOrder.voucherCovered')}
+              </p>
+            )}
+            {!isPrePay && creditLimit !== null && (
+              <p style={{ margin: '6px 0 0', fontSize: '12px', color: unpaidCredit + payableAmount > creditLimit ? theme.error : tokens.muted }}>
+                {t('home.creditLimit')}: {formatCurrency(Math.max(0, creditLimit - unpaidCredit))} {t('placeOrder.remaining')}
               </p>
             )}
           </div>
@@ -755,51 +760,58 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
             </p>
             <button
               onClick={() => navigate('/orders')}
-              style={{ padding: '10px 20px', background: theme.gradientPrimary, color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}
+              style={{ padding: '10px 20px', background: tokens.gradientPrimary, color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}
             >
               💳 {t('placeOrder.viewPayBills')}
             </button>
           </div>
         )}
 
+        {/* Credit limit exceeded */}
+        {error === 'CREDIT_LIMIT_EXCEEDED' && (
+          <div style={{ background: '#fdecea', border: `2px solid ${theme.error}`, borderRadius: '12px', padding: '16px' }}>
+            <p style={{ margin: '0 0 6px 0', fontWeight: '700', color: theme.error, fontSize: '14px' }}>
+              🚫 {t('placeOrder.creditLimitExceeded')}
+            </p>
+            <p style={{ margin: 0, fontSize: '13px', color: theme.error }}>
+              {t('placeOrder.creditLimitDesc')}{creditLimit !== null ? ` (${formatCurrency(Math.max(0, creditLimit - unpaidCredit))} ${t('placeOrder.remaining')})` : ''}
+            </p>
+          </div>
+        )}
+
         {/* Error */}
-        {error && error !== 'UNPAID_ORDERS' && (
+        {error && error !== 'UNPAID_ORDERS' && error !== 'CREDIT_LIMIT_EXCEEDED' && (
           <div style={{ background: '#fdecea', border: `2px solid ${theme.error}`, borderRadius: '12px', padding: '14px 16px', color: theme.error, fontSize: '14px' }}>
             ⚠️ {error}
           </div>
         )}
 
         {/* Submit */}
-        {isPrePay && !hasEnoughVouchers && cartItems.length > 0 ? (
-          <button
-            onClick={handlePayWithQris}
-            disabled={submitting || !deliveryDate}
-            style={{
-              width: '100%', padding: '16px',
-              background: (submitting || !deliveryDate) ? '#ccc' : theme.gradientPrimary,
-              color: 'white', border: 'none', borderRadius: '12px', fontSize: '16px', fontWeight: 'bold',
-              cursor: (submitting || !deliveryDate) ? 'not-allowed' : 'pointer',
-            }}
-          >
-            {submitting ? t('placeOrder.processing') : `Pay ${formatCurrency(payableAmount)} via QRIS`}
-          </button>
-        ) : (
-          <button
-            onClick={() => blockedByUnpaid ? setShowUnpaidModal(true) : handleSubmit()}
-            disabled={submitting || cartItems.length === 0}
-            style={{
-              width: '100%', padding: '16px',
-              background: (submitting || cartItems.length === 0) ? '#ccc' : theme.gradientPrimary,
-              color: 'white', border: 'none', borderRadius: '12px', fontSize: '16px', fontWeight: 'bold',
-              cursor: (submitting || cartItems.length === 0) ? 'not-allowed' : 'pointer',
-            }}
-          >
-            {submitting ? t('placeOrder.submitting') : editOrderId ? `✅ ${t('placeOrder.update')}` : `✅ ${t('placeOrder.submit')}`}
-          </button>
-        )}
+        <button
+          onClick={() => {
+            if (blockedByUnpaid) { setShowUnpaidModal(true); return; }
+            if (isPrePay && !hasEnoughVouchers) { handlePayWithQris(); return; }
+            handleSubmit();
+          }}
+          disabled={submitting || cartItems.length === 0}
+          style={{
+            width: '100%', padding: '16px',
+            background: (submitting || cartItems.length === 0) ? (isDark ? 'rgba(255,255,255,0.1)' : '#ccc') : tokens.gradientPrimary,
+            color: 'white', border: 'none', borderRadius: '12px', fontSize: '16px', fontWeight: 'bold',
+            cursor: (submitting || cartItems.length === 0) ? 'not-allowed' : 'pointer',
+          }}
+        >
+          {submitting
+            ? t('placeOrder.processing')
+            : editOrderId
+              ? `✅ ${t('placeOrder.update')}`
+              : isPrePay && !hasEnoughVouchers && cartItems.length > 0
+                ? `💳 ${t('placeOrder.submit')} · ${t('placeOrder.payViaQris')} ${formatCurrency(payableAmount)}`
+                : `✅ ${t('placeOrder.submit')}`}
+        </button>
       </div>
 
-      <BottomNav customer={customer} />
+      <BottomNavV0 customer={customer} />
 
       {/* Unpaid Orders Modal */}
       {showUnpaidModal && (
@@ -813,13 +825,13 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <button
                 onClick={() => { setShowUnpaidModal(false); navigate('/orders'); }}
-                style={{ width: '100%', padding: '13px', background: theme.gradientPrimary, color: 'white', border: 'none', borderRadius: '10px', fontSize: '15px', fontWeight: 'bold', cursor: 'pointer' }}
+                style={{ width: '100%', padding: '13px', background: tokens.gradientPrimary, color: 'white', border: 'none', borderRadius: '10px', fontSize: '15px', fontWeight: 'bold', cursor: 'pointer' }}
               >
                 💳 {t('placeOrder.viewPayBills')}
               </button>
               <button
                 onClick={() => setShowUnpaidModal(false)}
-                style={{ width: '100%', padding: '11px', background: 'none', color: theme.textMuted, border: `2px solid #ddd`, borderRadius: '10px', fontSize: '14px', cursor: 'pointer' }}
+                style={{ width: '100%', padding: '11px', background: 'none', color: tokens.muted, border: `2px solid #ddd`, borderRadius: '10px', fontSize: '14px', cursor: 'pointer' }}
               >
                 {t('common.close')}
               </button>

@@ -1,14 +1,197 @@
-/* 使用远程 CSS 导入，这通常不会被 CSP 拦截 */
-@import url("https://unpkg.com/tailwindcss@^2/dist/tailwind.min.css");
+@import "tailwindcss";
 
-/* 补丁：手动定义一些 3000 端口可能用到的基础样式 */
-body {
-  margin: 0;
-  background-color: #f3f4f6;
-  font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+/* VIVIDAQUA Design System - Dark Theme */
+:root {
+  /* Colors - Tech-forward, Premium Water Brand */
+  --background: oklch(0.12 0.01 240);
+  --foreground: oklch(0.98 0 0);
+  --card: oklch(0.16 0.015 240);
+  --card-foreground: oklch(0.98 0 0);
+  --popover: oklch(0.14 0.012 240);
+  --popover-foreground: oklch(0.98 0 0);
+  
+  /* Primary - Cyan/Teal (Pure Water) */
+  --primary: oklch(0.75 0.15 195);
+  --primary-foreground: oklch(0.12 0.01 240);
+  
+  /* Secondary - Deep Blue (Regular Water) */
+  --secondary: oklch(0.22 0.025 240);
+  --secondary-foreground: oklch(0.98 0 0);
+  
+  --muted: oklch(0.20 0.02 240);
+  --muted-foreground: oklch(0.65 0 0);
+  
+  /* Accent - Bright Cyan (Highlights) */
+  --accent: oklch(0.70 0.18 200);
+  --accent-foreground: oklch(0.12 0.01 240);
+  
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.98 0 0);
+  
+  --border: oklch(0.25 0.03 240);
+  --input: oklch(0.20 0.025 240);
+  --ring: oklch(0.70 0.15 195);
+  
+  /* Chart colors for data visualization */
+  --chart-1: oklch(0.75 0.15 195);
+  --chart-2: oklch(0.65 0.18 220);
+  --chart-3: oklch(0.55 0.12 240);
+  --chart-4: oklch(0.80 0.12 180);
+  --chart-5: oklch(0.60 0.10 260);
+  
+  --radius: 0.75rem;
 }
 
-/* Google Places Autocomplete dropdown */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    margin: 0;
+    font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+  }
+}
+
+
+/* VIVIDAQUA Brand Gradients */
+.gradient-water {
+  background: linear-gradient(135deg, #00A0E9 0%, #00B4D8 50%, #00CED1 100%);
+}
+
+.gradient-water-text {
+  background: linear-gradient(135deg, #00A0E9 0%, #00B4D8 50%, #00CED1 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Glow Effects */
+.glow-primary {
+  box-shadow: 0 0 20px rgba(0, 180, 216, 0.3), 0 0 40px rgba(0, 180, 216, 0.1);
+}
+
+.glow-text {
+  text-shadow: 0 0 20px rgba(0, 180, 216, 0.5);
+}
+
+/* Mobile App Shell */
+.app-shell {
+  max-width: 430px;
+  margin: 0 auto;
+  min-height: 100vh;
+  min-height: 100dvh;
+  position: relative;
+  overflow-x: hidden;
+}
+
+/* Safe Areas */
+.safe-bottom {
+  padding-bottom: calc(80px + env(safe-area-inset-bottom, 16px));
+}
+
+.bottom-nav-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Hide Scrollbar */
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Glass Effect */
+.glass {
+  background: rgba(22, 30, 40, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+/* Animations */
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+@keyframes molecule {
+  0% { transform: translate(0, 0) scale(1); opacity: 0.6; }
+  25% { transform: translate(10px, -15px) scale(1.1); opacity: 0.8; }
+  50% { transform: translate(-5px, -25px) scale(0.9); opacity: 0.6; }
+  75% { transform: translate(-15px, -10px) scale(1.05); opacity: 0.7; }
+  100% { transform: translate(0, 0) scale(1); opacity: 0.6; }
+}
+
+.animate-molecule {
+  animation: molecule 4s ease-in-out infinite;
+}
+
+@keyframes ripple {
+  0% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+
+.animate-ripple {
+  animation: ripple 2s ease-out infinite;
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(0, 180, 216, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 40px rgba(0, 180, 216, 0.5);
+  }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* Google Places Autocomplete */
 .pac-container {
   z-index: 99999 !important;
   border-radius: 8px;

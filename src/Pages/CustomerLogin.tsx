@@ -6,6 +6,7 @@ import { supabase } from '../supabaseClient'
 import { getOrCreateDeviceId, getStoredDeviceId } from '../lib/deviceId'
 import { theme } from '../theme'
 import { useLanguage } from '../contexts/LanguageContext'
+import { useColorTokens } from '../contexts/ColorTokensContext'
 
 export default function CustomerLogin() {
   const navigate = useNavigate()
@@ -16,6 +17,7 @@ export default function CustomerLogin() {
   const [status, setStatus] = useState<'idle' | 'new_customer'>('idle')
   const [deviceId, setDeviceId] = useState<string | null>(() => getStoredDeviceId())
   const { language, setLanguage, t } = useLanguage()
+  const { tokens } = useColorTokens()
 
   useEffect(() => {
     const wa = searchParams.get('whatsapp') || searchParams.get('wa') || searchParams.get('phone')
@@ -84,56 +86,67 @@ export default function CustomerLogin() {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      background: theme.gradientPrimary,
+      background: tokens.pageBg,
       padding: '20px',
     }}>
       <div style={{
-        background: 'white',
+        background: tokens.card,
         borderRadius: '20px',
         boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
         width: '100%',
         maxWidth: '420px',
         overflow: 'hidden',
+        backdropFilter: tokens.cardBlur,
+        WebkitBackdropFilter: tokens.cardBlur,
       }}>
         <div style={{
-          background: theme.gradientPrimary,
-          padding: '32px 20px 24px',
+          display: 'flex',
+          justifyContent: 'flex-end',
+          gap: '8px',
+          padding: '12px 20px',
+          background: tokens.inputBg,
+        }}>
+          <button
+            type="button"
+            onClick={() => setLanguage('id')}
+            style={{
+              padding: '6px 14px',
+              background: language === 'id' ? tokens.gradientPrimary : 'transparent',
+              border: 'none',
+              borderRadius: '16px',
+              color: language === 'id' ? 'white' : tokens.primary,
+              fontWeight: 'bold',
+              cursor: 'pointer',
+              fontSize: '13px',
+            }}
+          >
+            🇮🇩 ID
+          </button>
+          <button
+            type="button"
+            onClick={() => setLanguage('en')}
+            style={{
+              padding: '6px 14px',
+              background: language === 'en' ? tokens.gradientPrimary : 'transparent',
+              border: 'none',
+              borderRadius: '16px',
+              color: language === 'en' ? 'white' : tokens.primary,
+              fontWeight: 'bold',
+              cursor: 'pointer',
+              fontSize: '13px',
+            }}
+          >
+            🇬🇧 EN
+          </button>
+        </div>
+
+        <div style={{
+          background: tokens.gradientPrimary,
+          padding: '24px 20px',
           textAlign: 'center',
           color: 'white',
           position: 'relative',
         }}>
-          {/* Language toggle — inside header */}
-          <div style={{
-            position: 'absolute',
-            top: '14px',
-            right: '14px',
-            display: 'flex',
-            background: 'rgba(255,255,255,0.2)',
-            borderRadius: '8px',
-            padding: '3px',
-            gap: '2px',
-          }}>
-            {(['id', 'en'] as const).map((lang) => (
-              <button
-                key={lang}
-                onClick={() => setLanguage(lang)}
-                style={{
-                  padding: '5px 11px',
-                  borderRadius: '6px',
-                  border: 'none',
-                  fontSize: '12px',
-                  fontWeight: '700',
-                  cursor: 'pointer',
-                  background: language === lang ? 'white' : 'transparent',
-                  color: language === lang ? theme.secondary : 'rgba(255,255,255,0.9)',
-                  transition: 'all 0.2s',
-                }}
-              >
-                {lang.toUpperCase()}
-              </button>
-            ))}
-          </div>
-
           <img
             src={`${import.meta.env.BASE_URL}logo.png`}
             alt="VIVIDAQUA"
@@ -164,7 +177,7 @@ export default function CustomerLogin() {
                 style={{
                   width: '100%',
                   padding: '14px',
-                  background: theme.gradientPrimary,
+                  background: tokens.gradientPrimary,
                   color: 'white',
                   border: 'none',
                   borderRadius: '8px',
@@ -183,8 +196,8 @@ export default function CustomerLogin() {
                   padding: '12px',
                   marginTop: '12px',
                   background: 'transparent',
-                  color: theme.primary,
-                  border: `1px solid ${theme.primary}`,
+                  color: tokens.primary,
+                  border: `1px solid ${tokens.primary}`,
                   borderRadius: '8px',
                   fontSize: '14px',
                   cursor: 'pointer',
@@ -200,7 +213,7 @@ export default function CustomerLogin() {
                 fontSize: '14px',
                 fontWeight: '500',
                 marginBottom: '8px',
-                color: '#333',
+                color: tokens.text,
               }}>
                 💬 {t('login.whatsappLabel')}
               </label>
@@ -210,7 +223,7 @@ export default function CustomerLogin() {
                   left: '15px',
                   top: '50%',
                   transform: 'translateY(-50%)',
-                  color: '#666',
+                  color: tokens.muted,
                   fontSize: '16px',
                 }}>
                   +62
@@ -252,7 +265,7 @@ export default function CustomerLogin() {
                 style={{
                   width: '100%',
                   padding: '14px',
-                  background: loading ? theme.disabled : theme.gradientPrimary,
+                  background: loading ? theme.disabled : tokens.gradientPrimary,
                   color: 'white',
                   border: 'none',
                   borderRadius: '8px',
@@ -269,7 +282,7 @@ export default function CustomerLogin() {
                 <a
                   href="/register"
                   onClick={(e) => { e.preventDefault(); navigate('/register'); }}
-                  style={{ color: theme.primary, fontWeight: 'bold', textDecoration: 'underline' }}
+                  style={{ color: tokens.primary, fontWeight: 'bold', textDecoration: 'underline' }}
                 >
                   {t('login.registerHere')}
                 </a>
