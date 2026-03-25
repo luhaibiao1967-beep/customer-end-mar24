@@ -2,6 +2,7 @@
 // 设备绑定：已绑定则静默登录，未绑定则 OTP 或注册
 import React, { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { FunctionsHttpError } from '@supabase/supabase-js'
 import { supabase } from '../supabaseClient'
 import { getOrCreateDeviceId, getStoredDeviceId } from '../lib/deviceId'
 import { theme } from '../theme'
@@ -49,7 +50,12 @@ export default function CustomerLogin() {
         body: { phone: formattedPhone, device_id: resolvedDeviceId },
       })
 
-      if (functionError) throw functionError
+      if (functionError) {
+        if (functionError instanceof FunctionsHttpError && functionError.context?.status === 401) {
+          throw new Error('__LOGIN_401__')
+        }
+        throw functionError
+      }
 
       if (data.bound && data.customer && data.auth_token) {
         sessionStorage.setItem('customer', JSON.stringify(data.customer))
@@ -69,7 +75,15 @@ export default function CustomerLogin() {
         setStatus('new_customer')
       }
     } catch (err: any) {
-      setError(err.message || 'Terjadi kesalahan')
+      if (err?.message === '__LOGIN_401__') {
+        setError(t('login.functions401'))
+        return
+      }
+      const fetchFailed =
+        err?.name === 'FunctionsFetchError' ||
+        (typeof err?.message === 'string' &&
+          err.message.includes('Failed to send a request to the Edge Function'))
+      setError(fetchFailed ? t('login.functionsUnreachable') : err.message || 'Terjadi kesalahan')
     } finally {
       setLoading(false)
     }

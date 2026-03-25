@@ -143,7 +143,7 @@ export default function MyAccount({ customer }: MyAccountProps) {
     <div style={{ minHeight: '100vh', background: COLOR.pageBg }}>
       <TopNavV0 customerName={customer.name} />
 
-      <div style={{ maxWidth: 430, margin: '0 auto', paddingTop: 64, paddingBottom: 100 }}>
+      <div style={{ maxWidth: 430, margin: '0 auto', paddingTop: 60, paddingBottom: 88 }}>
 
         {/* ── Header ── */}
         <div style={{ position: 'relative', overflow: 'hidden' }}>
@@ -221,7 +221,7 @@ export default function MyAccount({ customer }: MyAccountProps) {
         {/* ── Voucher Stats (pre_pay only) ── */}
         {customer.customer_type === 'pre_pay' && productVouchers.length > 0 && (
           <div style={{ padding: '0 16px 16px' }}>
-            <div style={{ ...card, padding: 16 }}>
+            <div style={{ ...card, padding: 12 }}>
               <div style={{
                 display: 'grid',
                 gridTemplateColumns: `repeat(${Math.min(productVouchers.length, 4)}, 1fr)`,
@@ -247,7 +247,7 @@ export default function MyAccount({ customer }: MyAccountProps) {
         )}
 
         {/* ── Menu Groups ── */}
-        <div style={{ padding: '0 16px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+        <div style={{ padding: '0 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
 
           {/* Orders */}
           <div>
@@ -336,7 +336,7 @@ export default function MyAccount({ customer }: MyAccountProps) {
               {/* Delivery Address */}
               <div style={{ borderBottom: `1px solid ${COLOR.divider}` }}>
                 {editingAddress ? (
-                  <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 6 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                       <div style={iconBox}><MapPin size={18} color={COLOR.primary} /></div>
                       <span style={{ color: COLOR.text, fontWeight: 500, fontSize: 15 }}>Delivery Address</span>

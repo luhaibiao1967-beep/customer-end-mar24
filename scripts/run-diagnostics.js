@@ -3,8 +3,21 @@
  * 运行 Magic Link 诊断，查看最近发送记录和错误详情
  * 用法: node scripts/run-diagnostics.js
  */
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL_CLOUD || 'https://zpxdxyjzseuvdhxbuqpc.supabase.co';
-const SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY_CLOUD || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpweGR4eWp6c2V1dmRoeGJ1cXBjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk4MDk5NzcsImV4cCI6MjA4NTM4NTk3N30.kXzhMg7q_CNsmG_6uF0EPB2asACyfgz-B_ocBHI3lQM';
+const SUPABASE_URL =
+  process.env.VITE_SUPABASE_URL_CLOUD ||
+  process.env.VITE_SUPABASE_URL ||
+  process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  '';
+const SUPABASE_ANON_KEY =
+  process.env.VITE_SUPABASE_ANON_KEY_CLOUD ||
+  process.env.VITE_SUPABASE_ANON_KEY ||
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY ||
+  '';
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  console.error('Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY (or *_CLOUD). See .env.example.');
+  process.exit(1);
+}
 
 async function main() {
   const res = await fetch(`${SUPABASE_URL}/functions/v1/auth-magic-link-diagnostics`, {

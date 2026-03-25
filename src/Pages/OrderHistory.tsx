@@ -295,10 +295,10 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
     new Date(dateString).toLocaleDateString('id-ID', { timeZone: 'Asia/Jakarta', year: 'numeric', month: 'long', day: 'numeric' });
 
   return (
-    <div style={{ minHeight: '100vh', background: tokens.pageBg, padding: '20px', paddingBottom: '80px' }}>
+    <div style={{ minHeight: '100vh', background: tokens.pageBg, padding: '14px', paddingBottom: '88px' }}>
 
       {/* Header */}
-      <div style={{ maxWidth: '800px', margin: '0 auto 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0,0,0,0.30)', borderRadius: '16px', padding: '12px 16px', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }}>
+      <div style={{ maxWidth: '800px', margin: '0 auto 6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: tokens.topBarGradient, border: `1px solid ${tokens.cardBorder}`, borderRadius: '16px', padding: '10px 14px', boxShadow: '0 4px 16px rgba(0,105,113,0.2)' }}>
         <button onClick={() => navigate('/customer-home')} style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.15)', color: 'white', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}>
           ← {t('common.back')}
         </button>
@@ -312,10 +312,10 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
 
         {/* Summary banner — later_pay */}
         {isLaterPay && (totalUnpaid > 0 || totalBorrowedGallons > 0) && (
-          <div style={{ background: tokens.card, borderRadius: '16px', padding: '16px 20px', marginBottom: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.15)', backdropFilter: tokens.cardBlur, WebkitBackdropFilter: tokens.cardBlur }}>
+          <div style={{ background: tokens.card, borderRadius: '16px', padding: '12px 16px', marginBottom: '6px', boxShadow: '0 4px 20px rgba(0,0,0,0.15)', backdropFilter: tokens.cardBlur, WebkitBackdropFilter: tokens.cardBlur }}>
 
             {/* Balance row */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: unpaidOrders.length > 0 ? '14px' : '0' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: unpaidOrders.length > 0 ? '10px' : '0' }}>
               <div style={{ borderLeft: `4px solid ${theme.error}`, paddingLeft: '12px' }}>
                 <p style={{ margin: 0, fontSize: '11px', color: tokens.muted }}>{t('orderHistory.outstandingBalance')}</p>
                 <p style={{ margin: '4px 0 0', fontSize: '18px', fontWeight: 'bold', color: totalUnpaid > 0 ? theme.error : theme.success }}>
@@ -356,8 +356,8 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
 
         {/* Summary banner — pre_pay: per-product voucher breakdown */}
         {!isLaterPay && productVouchers.length > 0 && (
-          <div style={{ background: tokens.card, borderRadius: '16px', padding: '16px 20px', marginBottom: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.15)', backdropFilter: tokens.cardBlur, WebkitBackdropFilter: tokens.cardBlur }}>
-            <p style={{ margin: '0 0 10px 0', fontSize: '11px', color: tokens.muted, fontWeight: '600' }}>🎫 {t('account.voucherBalance')}</p>
+          <div style={{ background: tokens.card, borderRadius: '16px', padding: '12px 16px', marginBottom: '6px', boxShadow: '0 4px 20px rgba(0,0,0,0.15)', backdropFilter: tokens.cardBlur, WebkitBackdropFilter: tokens.cardBlur }}>
+            <p style={{ margin: '0 0 8px 0', fontSize: '11px', color: tokens.muted, fontWeight: '600' }}>🎫 {t('account.voucherBalance')}</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {productVouchers.map(row => (
                 <div key={row.product_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderLeft: `4px solid ${tokens.primary}`, paddingLeft: '12px' }}>
@@ -389,12 +389,12 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
             <button onClick={() => navigate('/place-order')} style={{ padding: '12px 30px', background: tokens.gradientPrimary, color: 'white', border: 'none', borderRadius: '8px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer' }}>🛒 {t('orderHistory.newOrder')}</button>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             {orders.map((order) => (
-              <div key={order.id} style={{ background: tokens.card, borderRadius: '16px', padding: '20px', boxShadow: '0 4px 20px rgba(0,0,0,0.12)', backdropFilter: tokens.cardBlur, WebkitBackdropFilter: tokens.cardBlur }}>
+              <div key={order.id} style={{ background: tokens.card, borderRadius: '16px', padding: '14px', boxShadow: '0 4px 20px rgba(0,0,0,0.12)', backdropFilter: tokens.cardBlur, WebkitBackdropFilter: tokens.cardBlur }}>
 
                 {/* Status + date */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                   <span style={{ background: getStatusColor(order.status), color: 'white', padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: 'bold' }}>
                     {getStatusIcon(order.status)} {getStatusLabel(order.status)}
                   </span>
@@ -402,14 +402,14 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
                 </div>
 
                 {/* Amount + payment status */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                   <span style={{ fontSize: '18px', fontWeight: 'bold', color: tokens.text }}>{formatCurrency(order.total_amount)}</span>
                   <span style={{ fontSize: '13px', fontWeight: '600', color: order.payment_status === 'paid' ? theme.success : theme.error }}>
                     {order.payment_status === 'paid' ? `✅ ${t('orderHistory.paid')}` : `⏳ ${t('orderHistory.unpaid')}`}
                   </span>
                 </div>
 
-                <p style={{ fontSize: '12px', color: tokens.muted, margin: '0 0 12px 0' }}>
+                <p style={{ fontSize: '12px', color: tokens.muted, margin: '0 0 8px 0' }}>
                   Order #{order.id.slice(0, 8)} · {formatDate(order.created_at)}
                 </p>
 

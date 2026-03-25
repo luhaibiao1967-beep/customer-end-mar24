@@ -79,7 +79,7 @@ export const OrderDelivery: React.FC = () => {
   const cardStyle: React.CSSProperties = {
     background: tokens.card,
     borderRadius: '16px',
-    padding: '20px',
+    padding: '14px',
     boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
     backdropFilter: tokens.cardBlur,
     WebkitBackdropFilter: tokens.cardBlur,
@@ -87,7 +87,7 @@ export const OrderDelivery: React.FC = () => {
   };
 
   const sectionTitle: React.CSSProperties = {
-    margin: '0 0 14px 0', fontSize: '15px', fontWeight: 700, color: tokens.text,
+    margin: '0 0 10px 0', fontSize: '15px', fontWeight: 700, color: tokens.text,
   };
 
   const infoRowStyle: React.CSSProperties = {
@@ -185,11 +185,11 @@ export const OrderDelivery: React.FC = () => {
   const isScheduled = order.status === 'scheduled';
 
   return (
-    <div style={{ minHeight: '100vh', background: tokens.pageBg, padding: '20px', paddingBottom: '80px' }}>
+    <div style={{ minHeight: '100vh', background: tokens.pageBg, padding: '14px', paddingBottom: '88px' }}>
       <div style={{ maxWidth: '600px', margin: '0 auto' }}>
 
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '24px', background: 'rgba(0,0,0,0.30)', borderRadius: '16px', padding: '12px 16px', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '6px', background: 'rgba(0,0,0,0.30)', border: `1px solid ${tokens.cardBorder}`, borderRadius: '16px', padding: '10px 14px', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }}>
           <button
             onClick={() => navigate(-1)}
             style={{ background: 'rgba(255,255,255,0.15)', color: 'white', border: '1px solid rgba(255,255,255,0.3)', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: 600 }}
@@ -199,11 +199,11 @@ export const OrderDelivery: React.FC = () => {
           <h1 style={{ color: 'white', fontSize: '22px', margin: 0, fontWeight: 700, textShadow: '0 1px 4px rgba(0,0,0,0.4)' }}>{t('delivery.title')}</h1>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
 
           {/* ── Status Card ── */}
           <div style={cardStyle}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '8px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
               <p style={{ ...sectionTitle, marginBottom: 0 }}>{t('delivery.orderStatus')}</p>
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                 {getStatusBadge(order.status)}

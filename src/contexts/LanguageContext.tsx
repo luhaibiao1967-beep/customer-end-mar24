@@ -47,6 +47,10 @@ const translations: Record<Language, Record<string, string>> = {
     'login.noAccount': "Don't have an account?",
     'login.registerHere': 'Register here',
     'login.tryOtherNumber': 'Try another number',
+    'login.functionsUnreachable':
+      'Cannot reach the server. Check your internet, VPN, or ad blocker. Local dev: run `supabase start` and use VITE_SUPABASE_MODE=local if needed.',
+    'login.functions401':
+      'Server rejected the API key (401). Edge Functions need the Legacy anon JWT (starts with eyJ) in VITE_SUPABASE_ANON_KEY — not the sb_publishable key. Dashboard → Settings → API → Legacy API keys.',
 
     // Register
     'register.title': 'Welcome!',
@@ -364,6 +368,10 @@ const translations: Record<Language, Record<string, string>> = {
     'login.noAccount': 'Belum punya akun?',
     'login.registerHere': 'Daftar di sini',
     'login.tryOtherNumber': 'Coba nomor lain',
+    'login.functionsUnreachable':
+      'Tidak terhubung ke server. Periksa internet, VPN, atau pemblokir iklan. Dev lokal: jalankan `supabase start` dan set VITE_SUPABASE_MODE=local jika perlu.',
+    'login.functions401':
+      'API key ditolak (401). Edge Functions membutuhkan Legacy anon JWT (awalan eyJ) di VITE_SUPABASE_ANON_KEY — bukan kunci sb_publishable. Dashboard → Settings → API → Legacy API keys.',
 
     // Register
     'register.title': 'Selamat Datang!',

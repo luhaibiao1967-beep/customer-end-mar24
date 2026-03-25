@@ -9,6 +9,10 @@ interface VividAquaProductCardProps {
   onBuy: () => void;
   /** Optional promo image from /public (e.g. "10 Pack Indonesia.jpg") */
   packImage?: string;
+  /** ~20% shorter layout for home promo slideshow */
+  compact?: boolean;
+  /** Home slideshow: image fills the frame, no copy or button (whole card tap = onBuy) */
+  imageOnly?: boolean;
 }
 
 export default function VividAquaProductCard({
@@ -18,6 +22,8 @@ export default function VividAquaProductCard({
   badge,
   onBuy,
   packImage,
+  compact = false,
+  imageOnly = false,
 }: VividAquaProductCardProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [imageFailed, setImageFailed] = useState(false);
@@ -29,6 +35,43 @@ export default function VividAquaProductCard({
     []
   );
 
+  if (imageOnly) {
+    return (
+      <motion.div
+        className="relative rounded-3xl p-px shadow-2xl"
+        style={borderGradient}
+        whileTap={{ scale: 0.985 }}
+        transition={{ type: 'spring', stiffness: 400, damping: 28 }}
+      >
+        <button
+          type="button"
+          onClick={onBuy}
+          aria-label={title}
+          className="relative block w-full overflow-hidden rounded-[22px] border-0 bg-[#07234b] p-0 cursor-pointer"
+          style={{ touchAction: 'manipulation' }}
+        >
+          <div className="relative aspect-[5/3] w-full">
+            {packImage && !imageFailed ? (
+              <img
+                src={packImage}
+                alt=""
+                className="absolute inset-0 h-full w-full object-cover"
+                loading="lazy"
+                decoding="async"
+                onError={() => setImageFailed(true)}
+              />
+            ) : (
+              <div
+                className="absolute inset-0"
+                style={{ background: 'linear-gradient(160deg, #031738 0%, #07234b 65%, #0a2e5d 100%)' }}
+              />
+            )}
+          </div>
+        </button>
+      </motion.div>
+    );
+  }
+
   return (
     <motion.div
       className="relative rounded-3xl p-px shadow-2xl"
@@ -39,53 +82,64 @@ export default function VividAquaProductCard({
       transition={{ type: 'spring', stiffness: 210, damping: 20 }}
     >
       <div
-        className="relative overflow-hidden rounded-3xl px-5 py-5 text-white flex flex-col"
+        className={`relative overflow-hidden rounded-3xl text-white flex flex-col ${compact ? 'px-4 py-4' : 'px-5 py-5'}`}
         style={{
           background: 'linear-gradient(160deg, #031738 0%, #07234b 65%, #0a2e5d 100%)',
-          minHeight: packImage && !imageFailed ? '320px' : '280px',
+          minHeight:
+            packImage && !imageFailed
+              ? compact
+                ? '256px'
+                : '320px'
+              : compact
+                ? '224px'
+                : '280px',
         }}
       >
         {packImage && !imageFailed ? (
           <div
-            className="relative z-10 -mx-5 -mt-5 mb-3 flex min-h-[120px] max-h-[160px] items-center justify-center overflow-hidden rounded-t-[22px] bg-black/15"
+            className={`relative z-10 flex items-center justify-center overflow-hidden bg-black/15 ${
+              compact
+                ? '-mx-4 -mt-4 mb-2 min-h-[96px] max-h-[128px] rounded-t-[18px]'
+                : '-mx-5 -mt-5 mb-3 min-h-[120px] max-h-[160px] rounded-t-[22px]'
+            }`}
           >
             <img
               src={packImage}
               alt=""
-              className="max-h-[150px] w-full object-contain object-center"
+              className={`w-full object-contain object-center ${compact ? 'max-h-[120px]' : 'max-h-[150px]'}`}
               loading="lazy"
               decoding="async"
               onError={() => setImageFailed(true)}
             />
           </div>
         ) : null}
-        <div className="relative z-20 mb-4 flex items-start justify-between gap-3 flex-1">
+        <div className={`relative z-20 flex items-start justify-between gap-3 flex-1 ${compact ? 'mb-3' : 'mb-4'}`}>
           <div>
             <span
-              className="inline-block rounded-full px-3 py-1 text-xs font-semibold"
+              className={`inline-block rounded-full font-semibold ${compact ? 'px-2.5 py-0.5 text-[11px]' : 'px-3 py-1 text-xs'}`}
               style={{ background: 'rgba(18, 201, 205, 0.24)', border: '1px solid rgba(18, 201, 205, 0.5)' }}
             >
               {badge}
             </span>
-            <h3 className="mt-3 text-2xl font-extrabold tracking-tight">{title}</h3>
-            <p className="mt-1 text-sm text-cyan-100/90">{subtitle}</p>
+            <h3 className={`font-extrabold tracking-tight ${compact ? 'mt-2 text-xl' : 'mt-3 text-2xl'}`}>{title}</h3>
+            <p className={`text-cyan-100/90 ${compact ? 'mt-0.5 text-[13px]' : 'mt-1 text-sm'}`}>{subtitle}</p>
           </div>
           <div className="text-right">
-            <p className="text-4xl font-black leading-none text-cyan-300">{ticketCount}</p>
+            <p className={`font-black leading-none text-cyan-300 ${compact ? 'text-3xl' : 'text-4xl'}`}>{ticketCount}</p>
             <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-cyan-100">Water Tickets</p>
           </div>
         </div>
 
         <motion.div
           className="relative z-20"
-          style={{ marginTop: 'auto', paddingTop: 24 }}
+          style={{ marginTop: 'auto', paddingTop: compact ? 16 : 24 }}
           animate={{ boxShadow: ['0 0 0 rgba(18, 201, 205, 0.18)', '0 0 22px rgba(18, 201, 205, 0.42)', '0 0 0 rgba(18, 201, 205, 0.18)'] }}
           transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
         >
           <button
             type="button"
             onClick={onBuy}
-            className="w-full rounded-xl px-4 py-3 text-sm font-bold text-slate-900"
+            className={`w-full rounded-xl px-4 font-bold text-slate-900 ${compact ? 'py-2 text-[13px]' : 'py-3 text-sm'}`}
             style={{
               background: '#12c9cd',
               border: '1px solid rgba(255, 255, 255, 0.55)',

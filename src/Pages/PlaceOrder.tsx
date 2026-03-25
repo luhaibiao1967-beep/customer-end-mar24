@@ -8,6 +8,7 @@ import { formatCurrency } from '../utils/format';
 import toast from 'react-hot-toast';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useColorTokens } from '../contexts/ColorTokensContext';
+import { Package2 } from 'lucide-react';
 
 interface Customer {
   id: string;
@@ -503,10 +504,10 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: tokens.pageBg, padding: '20px', paddingBottom: '100px' }}>
+    <div style={{ minHeight: '100vh', background: tokens.pageBg, padding: '14px', paddingBottom: '88px' }}>
 
       {/* Header */}
-      <div style={{ maxWidth: '800px', margin: '0 auto 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0,0,0,0.30)', borderRadius: '16px', padding: '12px 16px', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }}>
+      <div style={{ maxWidth: '800px', margin: '0 auto 6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: tokens.topBarGradient, border: `1px solid ${tokens.cardBorder}`, borderRadius: '16px', padding: '10px 14px', boxShadow: '0 4px 16px rgba(0,105,113,0.2)' }}>
         <button
           onClick={() => navigate('/customer-home')}
           style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.15)', color: 'white', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}
@@ -519,7 +520,7 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
         <div style={{ width: '80px' }} />
       </div>
 
-      <div style={{ maxWidth: '800px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <div style={{ maxWidth: '800px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '6px' }}>
 
         {/* Unpaid orders block — daily later_pay */}
         {blockedByUnpaid && (
@@ -631,7 +632,10 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
                     onClick={() => setShowAccessories(v => !v)}
                     style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: '10px 14px', background: tokens.primaryBg, border: `1px dashed ${tokens.primary}`, borderRadius: '10px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: tokens.primary }}
                   >
-                    <span>🔧 {t('placeOrder.accessories')}</span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                      <Package2 size={18} strokeWidth={2.25} aria-hidden />
+                      {t('placeOrder.accessories')}
+                    </span>
                     <span>{showAccessories ? t('placeOrder.hideAccessories') : t('placeOrder.showAccessories')} {showAccessories ? '▲' : '▼'}</span>
                   </button>
 
@@ -822,7 +826,7 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
             <p style={{ fontSize: '14px', color: '#555', margin: '0 0 24px 0', lineHeight: '1.5' }}>
               {t('placeOrder.outstandingDesc')}
             </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <button
                 onClick={() => { setShowUnpaidModal(false); navigate('/orders'); }}
                 style={{ width: '100%', padding: '13px', background: tokens.gradientPrimary, color: 'white', border: 'none', borderRadius: '10px', fontSize: '15px', fontWeight: 'bold', cursor: 'pointer' }}

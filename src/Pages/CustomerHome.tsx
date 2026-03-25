@@ -233,7 +233,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
         />
       </div>
 
-      <div style={{ maxWidth: 430, margin: '0 auto', padding: '70px 16px 100px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ maxWidth: 430, margin: '0 auto', padding: '60px 14px 88px', display: 'flex', flexDirection: 'column', gap: 6 }}>
 
         {/* ── 1. Promo Slideshow ── */}
         <div style={{
@@ -243,16 +243,22 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
           borderRadius: 20,
           boxShadow: isDark ? '0 16px 36px rgba(2,15,40,0.38)' : '0 8px 24px rgba(0,0,0,0.12)',
           overflow: 'hidden',
-          border: isDark ? 'none' : '1px solid rgba(255,255,255,0.35)',
+          border: `1px solid ${C.cardBorder}`,
           backdropFilter: isDark ? 'none' : 'blur(8px)',
         }}>
-          <div style={{ padding: '12px 20px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <p style={{ margin: 0, fontSize: 12, opacity: 0.95, letterSpacing: '0.03em', fontWeight: 700, color: 'white' }}>
+          <div style={{ padding: '10px 16px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <p style={{
+              margin: 0, fontSize: 12, letterSpacing: '0.03em', fontWeight: 700,
+              background: C.gradientPrimary, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
+            }}>
               VIVIDAQUA PROMO PACKAGES
             </p>
-            <span style={{ fontSize: 11, opacity: 0.8, color: 'white' }}>Swipe / Auto Slide</span>
+            <span style={{
+              fontSize: 11, fontWeight: 600,
+              background: C.gradientPrimary, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
+            }}>Swipe / Auto Slide</span>
           </div>
-          <div style={{ overflow: 'hidden', padding: '6px 8px 0' }}>
+          <div style={{ overflow: 'hidden', padding: '4px 8px 0' }}>
             <div style={{
               display: 'flex',
               width: `${voucherSlides.length * 100}%`,
@@ -260,20 +266,21 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
               transition: 'transform 420ms ease',
             }}>
               {voucherSlides.map(slide => (
-                <div key={slide.id} style={{ width: `${100 / voucherSlides.length}%`, padding: '6px 4px 10px', boxSizing: 'border-box' }}>
+                <div key={slide.id} style={{ width: `${100 / voucherSlides.length}%`, padding: '4px 4px 8px', boxSizing: 'border-box' }}>
                   <VividAquaProductCard
                     title={slide.title}
                     ticketCount={slide.tickets}
                     subtitle={slide.subtitle}
                     badge={slide.badge}
                     packImage={slide.packImage}
+                    imageOnly
                     onBuy={() => navigate('/buy-vouchers')}
                   />
                 </div>
               ))}
             </div>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: 8, padding: '2px 0 14px' }}>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: 8, padding: '0 0 11px' }}>
             {voucherSlides.map((slide, idx) => (
               <button
                 key={slide.id}
@@ -291,12 +298,12 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
         </div>
 
         {/* ── 2. Quick Actions ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
           {/* Buy Vouchers */}
           <button
               onClick={() => navigate('/buy-vouchers')}
               style={{
-                padding: 16, borderRadius: 16,
+                padding: 12, borderRadius: 14,
                 background: C.card, border: `1px solid ${C.cardBorder}`,
                 backdropFilter: C.cardBlur, WebkitBackdropFilter: C.cardBlur,
                 boxShadow: C.cardShadow,
@@ -322,7 +329,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
           <button
             onClick={() => canOrder && navigate('/place-order')}
             style={{
-              padding: 16, borderRadius: 16,
+              padding: 12, borderRadius: 14,
               background: C.card, border: `1px solid ${canOrder ? C.cardBorder : C.divider}`,
               backdropFilter: C.cardBlur, WebkitBackdropFilter: C.cardBlur,
               boxShadow: C.cardShadow,
@@ -348,8 +355,8 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
         </div>
 
         {/* ── 3. My Account Overview ── */}
-        <div style={{ background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 16, padding: 16, backdropFilter: C.cardBlur, WebkitBackdropFilter: C.cardBlur, boxShadow: C.cardShadow }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <div style={{ background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 16, padding: 12, backdropFilter: C.cardBlur, WebkitBackdropFilter: C.cardBlur, boxShadow: C.cardShadow }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
             <p style={{ color: C.text, fontWeight: 600, fontSize: 15, margin: 0 }}>My Account</p>
             <button
               onClick={() => navigate('/account')}
@@ -403,20 +410,20 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
         {pendingOrders.length > 0 && (
           <div style={{
             background: C.card, border: `1px solid ${C.cardBorder}`,
-            borderRadius: 14, padding: 16,
+            borderRadius: 14, padding: 12,
             backdropFilter: C.cardBlur, WebkitBackdropFilter: C.cardBlur,
           }}>
-            <p style={{ color: C.text, fontWeight: 700, fontSize: 15, margin: '0 0 12px' }}>
+            <p style={{ color: C.text, fontWeight: 700, fontSize: 15, margin: '0 0 8px' }}>
               {t('home.pendingOrders')}
             </p>
             {pendingOrders.map(order => (
               <div key={order.id} style={{
                 background: C.card,
                 border: `1px solid ${getStatusColor(order.status)}`,
-                borderRadius: 14, padding: 16, marginBottom: 10,
+                borderRadius: 14, padding: 12, marginBottom: 6,
                 backdropFilter: C.cardBlur, WebkitBackdropFilter: C.cardBlur,
               }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: 8 }}>
                   <div>
                     <span style={{
                       display: 'inline-block',
@@ -449,11 +456,11 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
           <div style={{
             background: unpaidAmount > 0 ? 'rgba(234,88,12,0.12)' : C.primaryBg,
             border: `1px solid ${unpaidAmount > 0 ? 'rgba(251,146,60,0.4)' : C.primaryBorder}`,
-            borderRadius: 14, padding: 16,
+            borderRadius: 14, padding: 12,
           }}>
             {/* Credit limit bar */}
             {creditLimit !== null && (
-              <div style={{ marginBottom: unpaidAmount > 0 ? 12 : 0 }}>
+              <div style={{ marginBottom: unpaidAmount > 0 ? 8 : 0 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                   <p style={{ color: C.muted, fontSize: 12, margin: 0 }}>{t('home.creditUsed')}</p>
                   <p style={{ color: C.text, fontSize: 12, fontWeight: 700, margin: 0 }}>
@@ -489,21 +496,24 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
           </div>
         )}
 
-        {/* ── 6. Product Gallery ── */}
-        <div style={{ marginBottom: 20 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <p style={{ color: 'white', fontWeight: 600, fontSize: 15, margin: 0 }}>Product Gallery</p>
+        {/* ── 6. Product Gallery (inside card panel for contrast on busy background) ── */}
+        <div style={{
+          background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 16, padding: 12,
+          backdropFilter: C.cardBlur, WebkitBackdropFilter: C.cardBlur, boxShadow: C.cardShadow,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <p style={{ color: C.text, fontWeight: 600, fontSize: 15, margin: 0 }}>Product Gallery</p>
             <span style={{ color: C.muted, fontSize: 11 }}>Swipe to see more</span>
           </div>
-          <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 8, scrollbarWidth: 'none' }}>
+          <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 2, scrollbarWidth: 'none' }}>
             {galleryItems.map((item, i) => (
               <button
                 key={i}
                 onClick={() => navigate(item.count ? '/buy-vouchers' : '/place-order')}
                 style={{
                   flexShrink: 0, width: 120,
-                  background: C.card, border: `1px solid ${C.cardBorder}`,
-                  backdropFilter: C.cardBlur, WebkitBackdropFilter: C.cardBlur,
+                  background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.85)',
+                  border: `1px solid ${C.cardBorder}`,
                   borderRadius: 14, overflow: 'hidden', cursor: 'pointer', textAlign: 'left',
                 }}
               >
@@ -516,8 +526,8 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
                       <Ticket size={28} color={C.primary} style={{ opacity: 0.7 }} />
                       <p style={{
                         fontSize: 22, fontWeight: 800, margin: '4px 0 0',
-                        background: 'linear-gradient(135deg, #00A0E9, #00CED1)',
-                        WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+                        background: C.gradientPrimary,
+                        WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
                       }}>{item.count}</p>
                     </div>
                   ) : (
@@ -538,16 +548,16 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
         </div>
 
         {/* ── 7. Share App / QR ── */}
-        <div style={{ background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 16, padding: 20, textAlign: 'center', backdropFilter: C.cardBlur, WebkitBackdropFilter: C.cardBlur, boxShadow: C.cardShadow }}>
-          <p style={{ color: C.text, fontWeight: 600, fontSize: 15, margin: '0 0 4px' }}>{t('home.shareApp')}</p>
-          <p style={{ color: C.muted, fontSize: 12, margin: '0 0 16px' }}>{t('home.scanShare')}</p>
-          <div style={{ display: 'inline-block', padding: 12, background: isDark ? 'rgba(255,255,255,0.06)' : '#f5f5f5', border: `1px solid ${C.cardBorder}`, borderRadius: 12, marginBottom: 14 }}>
+        <div style={{ background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 16, padding: 14, textAlign: 'center', backdropFilter: C.cardBlur, WebkitBackdropFilter: C.cardBlur, boxShadow: C.cardShadow }}>
+          <p style={{ color: C.text, fontWeight: 600, fontSize: 15, margin: '0 0 2px' }}>{t('home.shareApp')}</p>
+          <p style={{ color: C.muted, fontSize: 12, margin: '0 0 10px' }}>{t('home.scanShare')}</p>
+          <div style={{ display: 'inline-block', padding: 10, background: isDark ? 'rgba(255,255,255,0.06)' : '#f5f5f5', border: `1px solid ${C.cardBorder}`, borderRadius: 12, marginBottom: 10 }}>
             <QRCodeCanvas value={APP_URL} size={140} level="H" bgColor={isDark ? 'transparent' : '#f5f5f5'} fgColor={isDark ? 'white' : '#333333'}
               imageSettings={{ src: `${import.meta.env.BASE_URL}shortcut.png`, width: 40, height: 40, excavate: true }}
             />
           </div>
-          <p style={{ color: C.muted, fontSize: 11, margin: '0 0 14px', wordBreak: 'break-all' }}>{APP_URL}</p>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <p style={{ color: C.muted, fontSize: 11, margin: '0 0 10px', wordBreak: 'break-all' }}>{APP_URL}</p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             <button
               onClick={async () => {
                 try {

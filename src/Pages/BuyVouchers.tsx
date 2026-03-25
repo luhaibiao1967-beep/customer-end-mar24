@@ -283,20 +283,20 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
   const otherProducts = products.filter(p => !productIdsWithPackages.has(p.id));
 
   return (
-    <div style={{ minHeight: '100vh', background: tokens.pageBg, padding: '20px', paddingBottom: '80px' }}>
+    <div style={{ minHeight: '100vh', background: tokens.pageBg, padding: '14px', paddingBottom: '88px' }}>
 
       {/* Header */}
-      <div style={{ maxWidth: '800px', margin: '0 auto 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0,0,0,0.30)', borderRadius: '16px', padding: '12px 16px', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }}>
+      <div style={{ maxWidth: '800px', margin: '0 auto 6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: tokens.topBarGradient, border: `1px solid ${tokens.cardBorder}`, borderRadius: '16px', padding: '10px 14px', boxShadow: '0 4px 16px rgba(0,105,113,0.2)' }}>
         <button onClick={() => navigate('/customer-home')} style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.15)', color: 'white', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}>← {t('common.back')}</button>
         <h1 style={{ color: 'white', fontSize: '20px', margin: 0, textShadow: '0 1px 4px rgba(0,0,0,0.4)' }}>🛒 {t('vouchers.title')}</h1>
         <div style={{ width: '80px' }} />
       </div>
 
-      <div style={{ maxWidth: '800px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <div style={{ maxWidth: '800px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '6px' }}>
 
         {/* Current voucher balances */}
         {currentVouchers.size > 0 && (
-          <div style={{ background: tokens.card, borderRadius: '16px', padding: '16px 20px', boxShadow: tokens.cardShadow, backdropFilter: tokens.cardBlur, WebkitBackdropFilter: tokens.cardBlur, border: `1px solid ${tokens.cardBorder}` }}>
+          <div style={{ background: tokens.card, borderRadius: '16px', padding: '12px 16px', boxShadow: tokens.cardShadow, backdropFilter: tokens.cardBlur, WebkitBackdropFilter: tokens.cardBlur, border: `1px solid ${tokens.cardBorder}` }}>
             <p style={{ margin: '0 0 10px 0', fontSize: '12px', color: tokens.muted, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{t('vouchers.currentBalance')}</p>
             {Array.from(currentVouchers.entries()).map(([productId, balance]) => (
               <div key={productId} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0' }}>
@@ -325,11 +325,11 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
                   const hasInfo = !!(singlePkg.description || singlePkg.image_url);
                   const expanded = expandedPanels.has(singlePkg.id);
                   return (
-                    <div style={{ background: tokens.card, borderRadius: '16px', padding: '20px', boxShadow: tokens.cardShadow, backdropFilter: tokens.cardBlur, WebkitBackdropFilter: tokens.cardBlur, border: `1px solid ${tokens.cardBorder}` }}>
+                    <div style={{ background: tokens.card, borderRadius: '16px', padding: '14px', boxShadow: tokens.cardShadow, backdropFilter: tokens.cardBlur, WebkitBackdropFilter: tokens.cardBlur, border: `1px solid ${tokens.cardBorder}` }}>
                       <p style={{ margin: '0 0 14px', fontSize: '12px', color: tokens.primary, fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                         💧 {t('vouchers.refillPackages')}
                       </p>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
                         <div style={{ flex: 1 }}>
                           <p style={{ margin: 0, fontSize: '16px', fontWeight: 'bold', color: tokens.text }}>{singlePkg.products?.name} — {t('vouchers.perVoucher')}</p>
                           <p style={{ margin: '4px 0 0', fontSize: '12px', color: tokens.muted }}>{formatCurrency(singlePkg.price)} {t('vouchers.perVoucherPrice')}</p>
@@ -361,13 +361,13 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
                 })()}
 
                 {/* Multi-qty: two-column grid */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                   {multiPackages.map((pkg, idx) => {
                     const hasInfo = !!(pkg.description || pkg.image_url);
                     const expanded = expandedPanels.has(pkg.id);
                     const isHot = idx === 0;
                     return (
-                      <div key={pkg.id} style={{ position: 'relative', background: tokens.card, borderRadius: '16px', padding: '16px', boxShadow: tokens.cardShadow, backdropFilter: tokens.cardBlur, WebkitBackdropFilter: tokens.cardBlur, border: `1px solid ${isHot ? tokens.primaryBorder : tokens.cardBorder}` }}>
+                      <div key={pkg.id} style={{ position: 'relative', background: tokens.card, borderRadius: '16px', padding: '12px', boxShadow: tokens.cardShadow, backdropFilter: tokens.cardBlur, WebkitBackdropFilter: tokens.cardBlur, border: `1px solid ${isHot ? tokens.primaryBorder : tokens.cardBorder}` }}>
                         {/* Badge */}
                         {pkg.label && (
                           <span style={{
@@ -415,13 +415,13 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
                   const hasInfo = !!(product.description || product.image_url);
                   const expanded = expandedPanels.has(product.id);
                   return (
-                    <div key={product.id} style={{ background: tokens.card, borderRadius: '16px', padding: '20px', boxShadow: tokens.cardShadow, backdropFilter: tokens.cardBlur, WebkitBackdropFilter: tokens.cardBlur, border: `1px solid ${tokens.cardBorder}` }}>
+                    <div key={product.id} style={{ background: tokens.card, borderRadius: '16px', padding: '14px', boxShadow: tokens.cardShadow, backdropFilter: tokens.cardBlur, WebkitBackdropFilter: tokens.cardBlur, border: `1px solid ${tokens.cardBorder}` }}>
                       {index === 0 && (
                         <p style={{ margin: '0 0 14px', fontSize: '12px', color: tokens.primary, fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                           🛍️ {t('vouchers.otherProducts')}
                         </p>
                       )}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
                         <div style={{ flex: 1 }}>
                           <p style={{ margin: 0, fontSize: '16px', fontWeight: 'bold', color: tokens.text }}>{product.name}</p>
                           <p style={{ margin: '4px 0 0', fontSize: '12px', color: tokens.muted }}>{formatCurrency(product.price)} / {product.unit}</p>

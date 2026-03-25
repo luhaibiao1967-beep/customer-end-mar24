@@ -183,10 +183,10 @@ export default function BranchSelection({ customer, mode = 'setup' }: Props) {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: tokens.pageBg, paddingBottom: '32px' }}>
+    <div style={{ minHeight: '100vh', background: tokens.pageBg, paddingBottom: '88px' }}>
 
       {/* Header */}
-      <div style={{ padding: '20px 16px 12px', background: 'rgba(0,0,0,0.30)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }}>
+      <div style={{ padding: '20px 16px 12px', background: 'rgba(0,0,0,0.30)', borderBottom: `1px solid ${tokens.cardBorder}`, backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }}>
         {mode === 'edit' && (
           <button
             onClick={() => navigate(-1)}
@@ -217,7 +217,7 @@ export default function BranchSelection({ customer, mode = 'setup' }: Props) {
       </div>
 
       {/* Address Search Box */}
-      <div style={{ padding: '0 16px 12px' }}>
+      <div style={{ padding: '0 16px 8px' }}>
         <Autocomplete
           onLoad={(ac) => setAutocomplete(ac)}
           onPlaceChanged={onPlaceChanged}
@@ -247,7 +247,7 @@ export default function BranchSelection({ customer, mode = 'setup' }: Props) {
       </div>
 
       {/* Map */}
-      <div style={{ margin: '0 16px 14px', borderRadius: '16px', overflow: 'hidden' }}>
+      <div style={{ margin: '0 16px 8px', borderRadius: '16px', overflow: 'hidden' }}>
         <GoogleMap
           mapContainerStyle={MAP_CONTAINER_STYLE}
           center={mapCenter}
@@ -295,7 +295,7 @@ export default function BranchSelection({ customer, mode = 'setup' }: Props) {
             : `${t('branch.nearbyBranches')} (${displayBranches.length})`}
         </p>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
           {displayBranches.map((branch) => {
             const isSelected = selectedBranch?.id === branch.id;
             return (
@@ -353,7 +353,7 @@ export default function BranchSelection({ customer, mode = 'setup' }: Props) {
           onClick={handleConfirm}
           disabled={!selectedBranch || saving}
           style={{
-            width: '100%', marginTop: '16px', padding: '16px', border: 'none',
+            width: '100%', marginTop: '6px', padding: '14px', border: 'none',
             borderRadius: '14px', fontSize: '16px', fontWeight: '700', color: 'white',
             background: selectedBranch ? tokens.gradientPrimary : tokens.divider,
             cursor: selectedBranch && !saving ? 'pointer' : 'not-allowed',
