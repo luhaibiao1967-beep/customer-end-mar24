@@ -22,6 +22,7 @@ export interface ColorTokens {
 }
 
 export const lightTokens: ColorTokens = {
+  /** Full-page fill; global #bg-layer is cyan gradient in light mode */
   pageBg: 'transparent',
   card: 'rgba(255,255,255,0.85)',
   // Cyan/teal outline so panels read clearly on busy backgrounds

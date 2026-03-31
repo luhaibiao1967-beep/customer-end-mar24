@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.38.0'
+import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.38.0'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -32,6 +33,84 @@ interface RequestBody {
   product_deductions?: ProductDeduction[]
   vouchers_to_deduct?: number
   edit_order_id?: string
+}
+
+type PricingBasis = 'purchase_weighted_avg' | 'package_fallback' | 'zero_unknown'
+
+async function resolveVoucherUnitAmount(
+  supabase: SupabaseClient,
+  customerId: string,
+  productId: string,
+): Promise<{ unit_amount: number; pricing_basis: PricingBasis }> {
+  const { data: purchases } = await supabase
+    .from('voucher_purchase_requests')
+    .select('amount_paid, qty')
+    .eq('customer_id', customerId)
+    .eq('product_id', productId)
+    .eq('status', 'confirmed')
+
+  let totalPaid = 0
+  let totalQty = 0
+  for (const r of purchases || []) {
+    totalPaid += r.amount_paid ?? 0
+    totalQty += r.qty ?? 0
+  }
+  if (totalQty > 0) {
+    return {
+      unit_amount: Math.floor(totalPaid / totalQty),
+      pricing_basis: 'purchase_weighted_avg',
+    }
+  }
+
+  const { data: pkgs } = await supabase
+    .from('voucher_packages')
+    .select('price, qty')
+    .eq('product_id', productId)
+    .eq('is_active', true)
+    .order('sort_order', { ascending: true })
+
+  if (pkgs && pkgs.length > 0) {
+    const p = pkgs[0]
+    const q = p.qty > 0 ? p.qty : 1
+    return {
+      unit_amount: Math.floor((p.price ?? 0) / q),
+      pricing_basis: 'package_fallback',
+    }
+  }
+
+  return { unit_amount: 0, pricing_basis: 'zero_unknown' }
+}
+
+async function insertVoucherUsageLines(
+  supabase: SupabaseClient,
+  params: {
+    orderId: string
+    customerId: string
+    branch: string
+    deductions: { product_id: string; quantity: number }[]
+  },
+): Promise<void> {
+  const { orderId, customerId, branch, deductions } = params
+  for (const d of deductions) {
+    if (!d.quantity || d.quantity <= 0) continue
+    const { unit_amount, pricing_basis } = await resolveVoucherUnitAmount(
+      supabase,
+      customerId,
+      d.product_id,
+    )
+    const line_amount = d.quantity * unit_amount
+    const { error } = await supabase.from('voucher_usage_ledger').insert({
+      order_id: orderId,
+      customer_id: customerId,
+      branch,
+      product_id: d.product_id,
+      voucher_qty: d.quantity,
+      unit_amount,
+      line_amount,
+      pricing_basis,
+    })
+    if (error) throw new Error('voucher_usage_ledger insert: ' + error.message)
+  }
 }
 
 serve(async (req) => {
@@ -190,6 +269,15 @@ serve(async (req) => {
 
           if (deductErr) throw new Error('Failed to deduct vouchers: ' + deductErr.message)
         }
+      }
+
+      if (product_deductions && product_deductions.length > 0) {
+        await insertVoucherUsageLines(supabase, {
+          orderId: newOrder.id,
+          customerId: customer.id,
+          branch: customer.branch ?? '',
+          deductions: product_deductions.map(d => ({ product_id: d.product_id, quantity: d.quantity })),
+        })
       }
     }
 

@@ -1,9 +1,38 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.38.0'
+import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.38.0'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+async function insertVoucherReversalsForOrder(
+  supabase: SupabaseClient,
+  orderId: string,
+): Promise<void> {
+  const { data: rows, error: selErr } = await supabase
+    .from('voucher_usage_ledger')
+    .select('customer_id, branch, product_id, voucher_qty, unit_amount, line_amount, pricing_basis')
+    .eq('order_id', orderId)
+    .gt('voucher_qty', 0)
+
+  if (selErr) throw new Error('voucher_usage_ledger select reversal: ' + selErr.message)
+  if (!rows?.length) return
+
+  for (const r of rows) {
+    const { error } = await supabase.from('voucher_usage_ledger').insert({
+      order_id: orderId,
+      customer_id: r.customer_id,
+      branch: r.branch,
+      product_id: r.product_id,
+      voucher_qty: -r.voucher_qty,
+      unit_amount: r.unit_amount,
+      line_amount: -r.line_amount,
+      pricing_basis: r.pricing_basis,
+    })
+    if (error) throw new Error('voucher_usage_ledger reversal insert: ' + error.message)
+  }
 }
 
 serve(async (req) => {
@@ -40,6 +69,8 @@ serve(async (req) => {
     if (orderError || !order) throw new Error('Order not found')
     if (order.status !== 'pending') throw new Error('Only pending orders can be cancelled')
 
+    await insertVoucherReversalsForOrder(supabase, order_id)
+
     // For pre_pay: refund vouchers back to customer
     if (customer.customer_type === 'pre_pay') {
       const { data: items } = await supabase
@@ -50,7 +81,6 @@ serve(async (req) => {
       for (const item of items || []) {
         if (!item.product || !item.quantity) continue
 
-        // Look up product_id by name
         const { data: product } = await supabase
           .from('products')
           .select('id')

@@ -24,6 +24,10 @@ export function ColorTokensProvider({ children }: { children: React.ReactNode })
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', mode);
     localStorage.setItem('theme', mode);
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) {
+      meta.setAttribute('content', mode === 'dark' ? '#0d1b2a' : '#7ec8d4');
+    }
   }, [mode]);
 
   const toggleTheme = () => setMode(prev => prev === 'light' ? 'dark' : 'light');

@@ -47,7 +47,6 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [initialBorrowedGallons, setInitialBorrowedGallons] = useState(0);
   const [productVouchers, setProductVouchers] = useState<{ product_id: string; balance: number; products: { name: string } | null }[]>([]);
 
@@ -101,25 +100,6 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
       setError(err.message);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleCancel = async (orderId: string) => {
-    if (!confirm(t('orderHistory.cancelConfirm'))) return;
-    setCancellingId(orderId);
-    try {
-      const token = sessionStorage.getItem('auth_token');
-      if (!token) throw new Error('Session expired');
-      const { data, error } = await supabase.functions.invoke('cancel-order', {
-        body: { token, order_id: orderId },
-      });
-      if (error) throw new Error(error.message);
-      if (!data?.success) throw new Error(data?.error || 'Failed to cancel');
-      setOrders(prev => prev.filter(o => o.id !== orderId));
-    } catch (err: any) {
-      toast.error(t('orderHistory.cancelFailed') + ' ' + err.message);
-    } finally {
-      setCancellingId(null);
     }
   };
 
@@ -436,18 +416,11 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
                         </button>
                       </div>
                     ) : (
-                      // later_pay: edit/cancel + QRIS if unpaid
+                      // later_pay: edit + QRIS; cancellation is done in the staff app only
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        <div style={{ display: 'grid', gridTemplateColumns: order.payment_status === 'paid' ? '1fr' : '1fr 1fr', gap: '8px' }}>
-                          <button onClick={() => navigate(`/place-order?edit=${order.id}`)} style={{ padding: '10px', background: theme.info, color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}>
-                            {t('home.edit')}
-                          </button>
-                          {order.payment_status !== 'paid' && (
-                            <button onClick={() => handleCancel(order.id)} disabled={cancellingId === order.id} style={{ padding: '10px', background: cancellingId === order.id ? '#ccc' : theme.error, color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: cancellingId === order.id ? 'not-allowed' : 'pointer' }}>
-                              {cancellingId === order.id ? '...' : t('common.cancel')}
-                            </button>
-                          )}
-                        </div>
+                        <button onClick={() => navigate(`/place-order?edit=${order.id}`)} style={{ padding: '10px', background: theme.info, color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}>
+                          {t('home.edit')}
+                        </button>
                         {order.payment_status === 'unpaid' && (
                           <button
                             onClick={() => handlePayWithQris([order.id])}

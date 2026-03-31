@@ -1,6 +1,16 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem('theme');
+          document.documentElement.setAttribute('data-theme', t === 'dark' ? 'dark' : 'light');
+        } catch (e) {
+          document.documentElement.setAttribute('data-theme', 'light');
+        }
+      })();
+    </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>VividAqua</title>
@@ -15,10 +25,13 @@
       }
       body {
         font-family: 'Manrope', sans-serif;
-        background-color: #060d1a;
+        background-color: #e3f4f7;
         min-height: 100%;
         min-height: 100dvh;
         min-height: -webkit-fill-available;
+      }
+      html[data-theme="dark"] body {
+        background-color: #060d1a;
       }
       /* Fills the real mobile viewport (avoids 100vh + iOS toolbar quirks) */
       #root {
@@ -26,7 +39,7 @@
         min-height: 100dvh;
         min-height: -webkit-fill-available;
       }
-      /* Sharp fixed background — full bleed edge-to-edge */
+      /* Light: clean cyan wash (matches app primary #00A8B5 family). Dark: photo. */
       #bg-layer {
         position: fixed;
         inset: 0;
@@ -34,8 +47,17 @@
         height: 100%;
         min-height: 100dvh;
         min-height: -webkit-fill-available;
-        background: url('/background.png') no-repeat center/cover;
         z-index: -2;
+        background: linear-gradient(
+          165deg,
+          #ecf8fa 0%,
+          #d8eef3 38%,
+          #c2e5eb 72%,
+          #aad9e3 100%
+        );
+      }
+      html[data-theme="dark"] #bg-layer {
+        background: url('/background.png') no-repeat center/cover;
         image-rendering: crisp-edges;
       }
       #bg-overlay {
@@ -46,7 +68,7 @@
     <link rel="icon" type="image/png" href="%BASE_URL%192-192.png" />
     <link rel="manifest" href="%BASE_URL%manifest.json" />
     <link rel="apple-touch-icon" href="%BASE_URL%180-180.png" />
-    <meta name="theme-color" content="#3b82f6" />
+    <meta name="theme-color" content="#7ec8d4" />
     <meta property="og:title" content="VividAqua" />
     <meta property="og:description" content="Water delivery customer portal" />
     <meta property="og:image" content="https://vividaqua.online/512-512.png" />
