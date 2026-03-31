@@ -123,7 +123,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
       tickets: 50,
       subtitle: 'Untuk keluarga besar atau kebutuhan usaha',
       badge: 'Bulk Save',
-      packImage: `${base}${encodeURIComponent('50 Pack Indonesia.jpg')}`,
+      packImage: `${base}${encodeURIComponent('50 Pack Indonesia.png')}`,
     },
   ];
 
