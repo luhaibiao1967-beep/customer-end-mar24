@@ -21,10 +21,15 @@ serve(async (req) => {
     // Validate token and get customer
     const { data: customer } = await supabase
       .from('customers')
-      .select('id')
+      .select('id, customer_type')
       .eq('auth_token', token)
       .single()
     if (!customer) throw new Error('Invalid token')
+
+    const ct = (customer.customer_type || '').toLowerCase()
+    if (ct === 'later_pay' || ct === 'later_paid') {
+      throw new Error('LATER_PAY_BRANCH_LOCKED')
+    }
 
     // Update branch
     const { error } = await supabase

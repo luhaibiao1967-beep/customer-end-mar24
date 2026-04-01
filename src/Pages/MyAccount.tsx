@@ -73,6 +73,8 @@ export default function MyAccount({ customer }: MyAccountProps) {
     marginBottom: 8, paddingLeft: 4,
   };
 
+  const isPrePay = (customer.customer_type || '').toLowerCase() === 'pre_pay';
+
   const [editingAddress, setEditingAddress] = useState(false);
   const [addressInput, setAddressInput] = useState(customer.address);
   const [savingAddress, setSavingAddress] = useState(false);
@@ -399,17 +401,32 @@ export default function MyAccount({ customer }: MyAccountProps) {
                 )}
               </div>
 
-              {/* Service Branch */}
-              <button onClick={() => navigate('/select-branch')} style={menuRow}>
-                <div style={iconBox}><Building2 size={18} color={COLOR.primary} /></div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ color: COLOR.text, fontWeight: 500, fontSize: 15, margin: 0 }}>Service Branch</p>
-                  <p style={{ color: COLOR.muted, fontSize: 12, margin: '3px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {customer.branch === 'Pending' ? t('account.pendingSetup') : customer.branch || t('account.notAssigned')}
-                  </p>
+              {/* Service Branch — pre_pay can change in app; later_pay is read-only */}
+              {isPrePay ? (
+                <button onClick={() => navigate('/select-branch')} style={menuRow}>
+                  <div style={iconBox}><Building2 size={18} color={COLOR.primary} /></div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ color: COLOR.text, fontWeight: 500, fontSize: 15, margin: 0 }}>Service Branch</p>
+                    <p style={{ color: COLOR.muted, fontSize: 12, margin: '3px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {customer.branch === 'Pending' ? t('account.pendingSetup') : customer.branch || t('account.notAssigned')}
+                    </p>
+                  </div>
+                  <ChevronRight size={18} color={COLOR.muted} />
+                </button>
+              ) : (
+                <div style={{ ...menuRow, cursor: 'default' }}>
+                  <div style={iconBox}><Building2 size={18} color={COLOR.primary} /></div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ color: COLOR.text, fontWeight: 500, fontSize: 15, margin: 0 }}>Service Branch</p>
+                    <p style={{ color: COLOR.muted, fontSize: 12, margin: '3px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {customer.branch === 'Pending' ? t('account.pendingSetup') : customer.branch || t('account.notAssigned')}
+                    </p>
+                    <p style={{ color: COLOR.muted, fontSize: 11, margin: '6px 0 0', lineHeight: 1.35 }}>
+                      {t('account.branchManagedBySales')}
+                    </p>
+                  </div>
                 </div>
-                <ChevronRight size={18} color={COLOR.muted} />
-              </button>
+              )}
             </div>
           </div>
 

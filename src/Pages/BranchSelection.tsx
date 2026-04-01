@@ -37,7 +37,7 @@ interface BranchWithDistance extends Branch {
 }
 
 interface Props {
-  customer: { id: string; name: string; address: string };
+  customer: { id: string; name: string; address: string; customer_type?: string | null };
   mode?: 'setup' | 'edit';
 }
 
@@ -78,6 +78,20 @@ export default function BranchSelection({ customer, mode = 'setup' }: Props) {
   const [loadingBranches, setLoadingBranches] = useState(true);
 
   const [autocomplete, setAutocomplete] = useState<google.maps.places.Autocomplete | null>(null);
+
+  const customerTypeNorm = (customer.customer_type || '').toLowerCase();
+  const isLaterPayLocked =
+    customerTypeNorm === 'later_pay' || customerTypeNorm === 'later_paid';
+
+  useEffect(() => {
+    if (!isLaterPayLocked) return;
+    if (mode === 'edit') {
+      toast.error(t('branch.laterPayCannotChange'));
+    } else {
+      toast.error(t('branch.laterPaySetupAnomaly'));
+    }
+    navigate('/account', { replace: true });
+  }, [isLaterPayLocked, mode, navigate, t]);
 
   // ─── Fetch branches on mount ────────────────────────────────────────────
   useEffect(() => {
@@ -161,6 +175,24 @@ export default function BranchSelection({ customer, mode = 'setup' }: Props) {
       navigate(-1);
     }
   };
+
+  if (isLaterPayLocked) {
+    return (
+      <div style={{
+        minHeight: '100vh', background: tokens.pageBg,
+        display: 'flex', flexDirection: 'column', alignItems: 'center',
+        justifyContent: 'center', color: tokens.text, gap: '16px',
+      }}>
+        <div style={{
+          width: '48px', height: '48px',
+          border: `4px solid ${tokens.primaryBorder}`,
+          borderTop: `4px solid ${tokens.primary}`, borderRadius: '50%',
+          animation: 'spin 1s linear infinite',
+        }} />
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
 
   // ─── Loading state ──────────────────────────────────────────────────────
   if (!isLoaded || loadingBranches) {
