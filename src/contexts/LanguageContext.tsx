@@ -147,6 +147,7 @@ const translations: Record<Language, Record<string, string>> = {
     'branch.saving': 'Saving...',
     'branch.sessionExpired': 'Session expired. Please log in again.',
     'branch.saveFailed': 'Failed to save. Please try again.',
+    'branch.demoForbidden': 'This branch is for internal testing only.',
     'branch.loading': 'Loading...',
 
     // Vouchers / Top Up
@@ -214,6 +215,7 @@ const translations: Record<Language, Record<string, string>> = {
     'placeOrder.currentVouchers': 'Current Vouchers',
     'placeOrder.paymentBreakdown': 'Payment Breakdown',
     'placeOrder.voucherCovered': 'covered by vouchers',
+    'placeOrder.giftTicket': 'free',
     'placeOrder.payViaQris': 'Pay via QRIS',
     'placeOrder.onCredit': 'On Credit',
     'placeOrder.remaining': 'remaining',
@@ -234,7 +236,29 @@ const translations: Record<Language, Record<string, string>> = {
     'placeOrder.accessories': 'Accessories',
     'placeOrder.showAccessories': 'Show Accessories',
     'placeOrder.hideAccessories': 'Hide Accessories',
+    'placeOrder.deliveryScheduleTitle': 'Delivery schedule',
+    'placeOrder.deliveryCutoffLine':
+      'Daily cutoff is {hour}:00 (WIB). Orders placed after that time are scheduled for the next delivery day.',
+    'placeOrder.deliveryRestDaysLine': 'No delivery on: {days} (weekly rest days for your branch).',
+    'placeOrder.deliveryRestDaysNone': 'Your branch is set to deliver every day of the week.',
+    'placeOrder.dismissNotice': 'Got it',
+    'placeOrder.deliveryDateTooSoon': 'Please choose the earliest available delivery date.',
+    'placeOrder.deliveryDateBranchClosed': 'That day is closed for delivery. Date moved to the next available day.',
+    'placeOrder.deliveryDateTooSoonTitle': 'Delivery date too soon',
+    'placeOrder.deliveryDateTooSoonDesc':
+      'Orders must be for today (before cutoff) or later. After the daily cutoff, the earliest day is tomorrow.',
+    'placeOrder.deliveryDateClosedTitle': 'Rest day',
+    'placeOrder.deliveryDateClosedDesc': 'Your branch does not deliver on that weekday. Please pick another date.',
     'placeOrder.disc': 'disc.',
+    'placeOrder.failedLoadProducts': 'Failed to load products: ',
+    'placeOrder.failedLoadOrder': 'Failed to load order: ',
+    'placeOrder.selectProductError': 'Please select at least one product.',
+    'placeOrder.selectDateError': 'Please select a delivery date.',
+    'placeOrder.paymentPendingToast':
+      'Payment submitted — your order will be confirmed once payment settles.',
+    'placeOrder.paymentNotCompletedToast':
+      'Payment not completed. Your order is saved — you can pay from Order History.',
+    'placeOrder.paymentFailedPrefix': 'Payment failed: ',
     'placeOrder.failedSubmit': 'Failed to submit: ',
     'placeOrder.sessionExpired': 'Session expired, please login again',
 
@@ -471,6 +495,7 @@ const translations: Record<Language, Record<string, string>> = {
     'branch.saving': 'Menyimpan...',
     'branch.sessionExpired': 'Sesi berakhir. Silakan login kembali.',
     'branch.saveFailed': 'Gagal menyimpan. Silakan coba lagi.',
+    'branch.demoForbidden': 'Cabang ini hanya untuk pengujian internal.',
     'branch.loading': 'Memuat...',
 
     // Vouchers / Top Up
@@ -538,6 +563,7 @@ const translations: Record<Language, Record<string, string>> = {
     'placeOrder.currentVouchers': 'Voucher Saat Ini',
     'placeOrder.paymentBreakdown': 'Rincian Pembayaran',
     'placeOrder.voucherCovered': 'ditanggung voucher',
+    'placeOrder.giftTicket': 'gratis',
     'placeOrder.payViaQris': 'Bayar via QRIS',
     'placeOrder.onCredit': 'Kredit',
     'placeOrder.remaining': 'tersisa',
@@ -558,7 +584,29 @@ const translations: Record<Language, Record<string, string>> = {
     'placeOrder.accessories': 'Aksesori',
     'placeOrder.showAccessories': 'Tampilkan Aksesori',
     'placeOrder.hideAccessories': 'Sembunyikan Aksesori',
+    'placeOrder.deliveryScheduleTitle': 'Jadwal pengiriman',
+    'placeOrder.deliveryCutoffLine':
+      'Batas pesanan harian pukul {hour}:00 WIB. Pesanan setelah itu dijadwalkan untuk hari pengiriman berikutnya.',
+    'placeOrder.deliveryRestDaysLine': 'Tidak kirim pada: {days} (hari libur mingguan cabang Anda).',
+    'placeOrder.deliveryRestDaysNone': 'Cabang Anda diatur kirim setiap hari.',
+    'placeOrder.dismissNotice': 'Mengerti',
+    'placeOrder.deliveryDateTooSoon': 'Pilih tanggal pengiriman terawal yang tersedia.',
+    'placeOrder.deliveryDateBranchClosed': 'Hari itu libur kirim. Tanggal dipindah ke hari berikutnya yang tersedia.',
+    'placeOrder.deliveryDateTooSoonTitle': 'Tanggal terlalu awal',
+    'placeOrder.deliveryDateTooSoonDesc':
+      'Pesanan harus untuk hari ini (sebelum batas waktu) atau setelahnya. Setelah batas harian, hari terawal adalah besok.',
+    'placeOrder.deliveryDateClosedTitle': 'Hari libur kirim',
+    'placeOrder.deliveryDateClosedDesc': 'Cabang Anda tidak kirim di hari itu. Silakan pilih tanggal lain.',
     'placeOrder.disc': 'disk.',
+    'placeOrder.failedLoadProducts': 'Gagal memuat produk: ',
+    'placeOrder.failedLoadOrder': 'Gagal memuat pesanan: ',
+    'placeOrder.selectProductError': 'Pilih minimal satu produk.',
+    'placeOrder.selectDateError': 'Pilih tanggal pengiriman.',
+    'placeOrder.paymentPendingToast':
+      'Pembayaran dikirim — pesanan akan dikonfirmasi setelah pembayaran selesai.',
+    'placeOrder.paymentNotCompletedToast':
+      'Pembayaran belum selesai. Pesanan tersimpan — Anda bisa bayar dari Riwayat Pesanan.',
+    'placeOrder.paymentFailedPrefix': 'Pembayaran gagal: ',
     'placeOrder.failedSubmit': 'Gagal mengirim: ',
     'placeOrder.sessionExpired': 'Sesi berakhir, silakan login kembali',
 

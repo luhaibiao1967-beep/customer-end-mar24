@@ -63,6 +63,7 @@ serve(async (req) => {
               voucher_balance: customer.voucher_balance,
               branch: customer.branch,
               discount: customer.discount,
+              service_branch: customer.service_branch ?? null,
             },
             auth_token: customer.auth_token,
           }),

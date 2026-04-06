@@ -27,7 +27,7 @@ serve(async (req) => {
     // Validate token
     const { data: customer } = await supabase
       .from('customers')
-      .select('id, name, whatsapp')
+      .select('id, name, whatsapp, customer_type')
       .eq('auth_token', token)
       .single()
     if (!customer) throw new Error('Invalid token')
@@ -99,6 +99,9 @@ serve(async (req) => {
       if (insertError) throw new Error('Failed to save purchase request: ' + insertError.message)
 
     } else if (type === 'order') {
+      if (customer.customer_type === 'pre_pay') {
+        throw new Error('Pre-pay customers must pay when placing an order; use prepay Snap flow')
+      }
       if (!order_ids || order_ids.length === 0) throw new Error('order_ids required')
 
       const { data: orders } = await supabase
@@ -146,6 +149,7 @@ serve(async (req) => {
           first_name: customer.name,
           phone: customer.whatsapp,
         },
+        notification_url: `${supabaseUrl}/functions/v1/midtrans-webhook`,
         gopay: {
           enable_callback: false,
         },

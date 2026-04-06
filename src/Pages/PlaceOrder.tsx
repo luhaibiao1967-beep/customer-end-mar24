@@ -9,6 +9,12 @@ import toast from 'react-hot-toast';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useColorTokens } from '../contexts/ColorTokensContext';
 import { Package2 } from 'lucide-react';
+import LanguageSwitcher from '../Components/LanguageSwitcher';
+import {
+  getMinimumDeliveryDate,
+  isWeekdayClosed,
+  snapToNextOpenDay,
+} from '../utils/deliverySchedule';
 
 interface Customer {
   id: string;
@@ -48,27 +54,23 @@ const isAccessory = (p: Product) => {
   return lower.includes('pump') || lower.includes('rack');
 };
 
-function getJakartaDateString(date: Date = new Date()): string {
-  return date.toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' }); // returns YYYY-MM-DD
-}
-
-function getDefaultDeliveryDate(): string {
-  const now = new Date();
-  const hour = parseInt(now.toLocaleString('en-US', { timeZone: 'Asia/Jakarta', hour: 'numeric', hour12: false }), 10);
-  const date = hour >= 15 ? new Date(now.getTime() + 86400000) : now;
-  return getJakartaDateString(date);
-}
-
 export default function PlaceOrder({ customer }: PlaceOrderProps) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const { tokens, isDark } = useColorTokens();
   const editOrderId = searchParams.get('edit');
 
   const [products, setProducts] = useState<Product[]>([]);
   const [cart, setCart] = useState<Map<string, number>>(new Map());
-  const [deliveryDate, setDeliveryDate] = useState(getDefaultDeliveryDate());
+  const [deliveryDate, setDeliveryDate] = useState(() =>
+    getMinimumDeliveryDate(new Date(), 16, []),
+  );
+  const [branchSchedule, setBranchSchedule] = useState<{
+    order_cutoff_hour: number;
+    closed_weekdays: number[];
+  } | null>(null);
+  const [showScheduleNotice, setShowScheduleNotice] = useState(true);
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -86,8 +88,9 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
   const [creditLimit, setCreditLimit] = useState<number | null>(null);
   const [unpaidCredit, setUnpaidCredit] = useState<number>(0);
 
-  // Per-product voucher balances: productId → balance
+  // Per-product voucher balances: productId → balance (gift_balance is free welcome tickets, consumed first)
   const [productVouchers, setProductVouchers] = useState<Map<string, number>>(new Map());
+  const [productVouchersGift, setProductVouchersGift] = useState<Map<string, number>>(new Map());
 
   // Accessories section collapsed by default
   const [showAccessories, setShowAccessories] = useState(false);
@@ -123,16 +126,68 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
     .filter(p => (cart.get(p.id) || 0) > 0)
     .map(p => ({ product: p, quantity: cart.get(p.id)! }));
 
-  const totalAmount = cartItems.reduce((sum, item) =>
+  const grossCartTotal = cartItems.reduce((sum, item) =>
     sum + getUnitPrice(item.product) * item.quantity, 0);
 
-  // Per-product breakdown of voucher coverage vs remaining (QRIS for pre_pay / credit for later_pay)
+  /** Gift vouchers used first, then paid voucher balance, then cash/QRIS. */
   const voucherBreakdown = cartItems.map(item => {
     const available = productVouchers.get(item.product.id) ?? 0;
+    const giftAvailable = productVouchersGift.get(item.product.id) ?? 0;
     const byVoucher = Math.min(item.quantity, available);
+    const byGift = Math.min(byVoucher, giftAvailable);
+    const byPaidVoucher = byVoucher - byGift;
     const byPayment = item.quantity - byVoucher;
-    return { item, byVoucher, byPayment };
+    return { item, byVoucher, byGift, byPaidVoucher, byPayment };
   });
+
+  const buildOrderItemsPayload = () =>
+    voucherBreakdown.flatMap(vb => {
+      const p = vb.item.product;
+      const disc = p.is_refill && !isPrePay ? (freshDiscount || 0) : 0;
+      const up = getUnitPrice(p);
+      const rows: {
+        product: string;
+        is_refill: boolean;
+        quantity: number;
+        unit_price: number;
+        discount: number;
+      }[] = [];
+      if (vb.byGift > 0) {
+        rows.push({
+          product: p.name,
+          is_refill: p.is_refill,
+          quantity: vb.byGift,
+          unit_price: 0,
+          discount: 0,
+        });
+      }
+      if (vb.byPaidVoucher > 0) {
+        rows.push({
+          product: p.name,
+          is_refill: p.is_refill,
+          quantity: vb.byPaidVoucher,
+          unit_price: up,
+          discount: disc,
+        });
+      }
+      if (vb.byPayment > 0) {
+        rows.push({
+          product: p.name,
+          is_refill: p.is_refill,
+          quantity: vb.byPayment,
+          unit_price: up,
+          discount: disc,
+        });
+      }
+      return rows;
+    });
+
+  const computeOrderTotalFromRows = (
+    rows: { quantity: number; unit_price: number; discount: number }[],
+  ) => rows.reduce((s, r) => s + r.quantity * (r.unit_price - r.discount), 0);
+
+  const orderTotalAmount = computeOrderTotalFromRows(buildOrderItemsPayload());
+
   const payableAmount = voucherBreakdown.reduce(
     (sum, { item, byPayment }) => sum + byPayment * getUnitPrice(item.product), 0
   );
@@ -144,6 +199,28 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
     checkUnpaidBlock();
     fetchUnpaidCredit();
   }, []);
+
+  useEffect(() => {
+    if (!customer.branch || customer.branch === 'Pending') {
+      setBranchSchedule({ order_cutoff_hour: 16, closed_weekdays: [] });
+      return;
+    }
+    supabase
+      .from('branches')
+      .select('order_cutoff_hour, closed_weekdays')
+      .eq('name', customer.branch)
+      .maybeSingle()
+      .then(({ data }) => {
+        const sch = {
+          order_cutoff_hour: data?.order_cutoff_hour ?? 16,
+          closed_weekdays: Array.isArray(data?.closed_weekdays) ? [...(data!.closed_weekdays as number[])] : [],
+        };
+        setBranchSchedule(sch);
+        if (!editOrderId) {
+          setDeliveryDate(getMinimumDeliveryDate(new Date(), sch.order_cutoff_hour, sch.closed_weekdays));
+        }
+      });
+  }, [customer.branch, editOrderId]);
 
   const checkUnpaidBlock = async () => {
     if (customer.customer_type === 'pre_pay' || editOrderId) return;
@@ -206,14 +283,17 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
     try {
       const { data } = await supabase
         .from('customer_product_vouchers')
-        .select('product_id, balance')
+        .select('product_id, balance, gift_balance')
         .eq('customer_id', customer.id);
 
       const map = new Map<string, number>();
+      const giftMap = new Map<string, number>();
       for (const row of data || []) {
         map.set(row.product_id, row.balance);
+        giftMap.set(row.product_id, row.gift_balance ?? 0);
       }
       setProductVouchers(map);
+      setProductVouchersGift(giftMap);
     } catch {
       // silently fall back — no vouchers = empty map
     }
@@ -253,7 +333,7 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
 
       setProducts(filtered);
     } catch (err: any) {
-      setError('Failed to load products: ' + err.message);
+      setError(t('placeOrder.failedLoadProducts') + err.message);
     } finally {
       setLoading(false);
       // Fetch vouchers after products loaded
@@ -280,11 +360,14 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
       const newCart = new Map<string, number>();
       for (const item of order.order_items || []) {
         const matched = products.find(p => p.name === item.product);
-        if (matched) newCart.set(matched.id, item.quantity);
+        if (matched) {
+          const prev = newCart.get(matched.id) || 0;
+          newCart.set(matched.id, prev + item.quantity);
+        }
       }
       setCart(newCart);
     } catch (err: any) {
-      setError('Failed to load order: ' + err.message);
+      setError(t('placeOrder.failedLoadOrder') + err.message);
     }
   };
 
@@ -303,14 +386,52 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
   };
 
 
+  const handleDeliveryDateChange = (value: string) => {
+    if (!branchSchedule) {
+      setDeliveryDate(value);
+      return;
+    }
+    const min = getMinimumDeliveryDate(
+      new Date(),
+      branchSchedule.order_cutoff_hour,
+      branchSchedule.closed_weekdays,
+    );
+    if (value < min) {
+      toast.error(t('placeOrder.deliveryDateTooSoon'));
+      setDeliveryDate(min);
+      return;
+    }
+    if (isWeekdayClosed(value, branchSchedule.closed_weekdays)) {
+      toast.error(t('placeOrder.deliveryDateBranchClosed'));
+      setDeliveryDate(snapToNextOpenDay(value, branchSchedule.closed_weekdays));
+      return;
+    }
+    setDeliveryDate(value);
+  };
+
   const handleSubmit = async () => {
     if (cartItems.length === 0) {
-      setError('Please select at least one product.');
+      setError(t('placeOrder.selectProductError'));
       return;
     }
     if (!deliveryDate) {
-      setError('Please select a delivery date.');
+      setError(t('placeOrder.selectDateError'));
       return;
+    }
+    if (branchSchedule) {
+      const min = getMinimumDeliveryDate(
+        new Date(),
+        branchSchedule.order_cutoff_hour,
+        branchSchedule.closed_weekdays,
+      );
+      if (deliveryDate < min) {
+        setError('DELIVERY_DATE_TOO_SOON');
+        return;
+      }
+      if (isWeekdayClosed(deliveryDate, branchSchedule.closed_weekdays)) {
+        setError('DELIVERY_DATE_BRANCH_CLOSED');
+        return;
+      }
     }
 
     setSubmitting(true);
@@ -320,13 +441,8 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
       const token = sessionStorage.getItem('auth_token');
       if (!token) throw new Error('Session expired, please login again');
 
-      const orderItems = cartItems.map(item => ({
-        product: item.product.name,
-        is_refill: item.product.is_refill,
-        quantity: item.quantity,
-        unit_price: getUnitPrice(item.product),
-        discount: item.product.is_refill ? (freshDiscount || 0) : 0,
-      }));
+      const orderItems = buildOrderItemsPayload();
+      const orderTotalAmount = computeOrderTotalFromRows(orderItems);
 
       // Credit limit check for later_pay (frontend guard)
       if (!isPrePay && !editOrderId && creditLimit !== null) {
@@ -348,7 +464,7 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
           order: {
             delivery_date: deliveryDate,
             note: notes || null,
-            total_amount: totalAmount,
+            total_amount: orderTotalAmount,
             payment_status: payableAmount === 0 ? 'paid' : 'unpaid',
           },
           items: orderItems,
@@ -367,20 +483,18 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
           setError('CREDIT_LIMIT_EXCEEDED');
           return;
         }
+        if (data?.error === 'DELIVERY_DATE_TOO_SOON') {
+          setError('DELIVERY_DATE_TOO_SOON');
+          return;
+        }
+        if (data?.error === 'DELIVERY_DATE_BRANCH_CLOSED') {
+          setError('DELIVERY_DATE_BRANCH_CLOSED');
+          return;
+        }
         throw new Error(data?.error || 'Unknown error');
       }
 
-      // Refresh local voucher map optimistically
-      if (!editOrderId) {
-        setProductVouchers(prev => {
-          const next = new Map(prev);
-          for (const item of cartItems) {
-            const old = next.get(item.product.id) ?? 0;
-            next.set(item.product.id, Math.max(0, old - item.quantity));
-          }
-          return next;
-        });
-      }
+      if (!editOrderId) await fetchProductVouchers();
 
       setShowSuccess(true);
     } catch (err: any) {
@@ -391,8 +505,23 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
   };
 
   const handlePayWithQris = async () => {
-    if (cartItems.length === 0) { setError('Please select at least one product.'); return; }
-    if (!deliveryDate) { setError('Please select a delivery date.'); return; }
+    if (cartItems.length === 0) { setError(t('placeOrder.selectProductError')); return; }
+    if (!deliveryDate) { setError(t('placeOrder.selectDateError')); return; }
+    if (branchSchedule) {
+      const min = getMinimumDeliveryDate(
+        new Date(),
+        branchSchedule.order_cutoff_hour,
+        branchSchedule.closed_weekdays,
+      );
+      if (deliveryDate < min) {
+        setError('DELIVERY_DATE_TOO_SOON');
+        return;
+      }
+      if (isWeekdayClosed(deliveryDate, branchSchedule.closed_weekdays)) {
+        setError('DELIVERY_DATE_BRANCH_CLOSED');
+        return;
+      }
+    }
 
     setSubmitting(true);
     setError('');
@@ -400,13 +529,8 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
       const token = sessionStorage.getItem('auth_token');
       if (!token) throw new Error('Session expired, please login again');
 
-      const orderItems = cartItems.map(item => ({
-        product: item.product.name,
-        is_refill: item.product.is_refill,
-        quantity: item.quantity,
-        unit_price: getUnitPrice(item.product),
-        discount: 0,
-      }));
+      const orderItems = buildOrderItemsPayload();
+      const orderTotalAmount = computeOrderTotalFromRows(orderItems);
 
       const product_deductions = voucherBreakdown
         .filter(({ byVoucher }) => byVoucher > 0)
@@ -415,7 +539,7 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
       const { data, error } = await supabase.functions.invoke('submit-prepay-order', {
         body: {
           token,
-          order: { delivery_date: deliveryDate, note: notes || null, total_amount: totalAmount },
+          order: { delivery_date: deliveryDate, note: notes || null, total_amount: orderTotalAmount },
           items: orderItems,
           payment_amount: payableAmount,
           product_deductions,
@@ -423,7 +547,19 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
       });
 
       if (error) throw new Error(error.message);
-      if (!data?.success) throw new Error(data?.error || 'Failed to create payment');
+      if (!data?.success) {
+        if (data?.error === 'DELIVERY_DATE_TOO_SOON') {
+          setError('DELIVERY_DATE_TOO_SOON');
+          setSubmitting(false);
+          return;
+        }
+        if (data?.error === 'DELIVERY_DATE_BRANCH_CLOSED') {
+          setError('DELIVERY_DATE_BRANCH_CLOSED');
+          setSubmitting(false);
+          return;
+        }
+        throw new Error(data?.error || 'Failed to create payment');
+      }
 
       await loadSnapScript(data.client_key, data.snap_js_url);
 
@@ -443,18 +579,18 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
         onPending: () => {
           paymentCompleted = true;
           setSubmitting(false);
-          toast('Payment submitted — order will be confirmed once payment settles.', { duration: 6000 });
+          toast(t('placeOrder.paymentPendingToast'), { duration: 6000 });
           navigate('/customer-home');
         },
         onError: (result: any) => {
           paymentCompleted = true;
           setSubmitting(false);
-          setError('Payment failed: ' + (result?.status_message || 'Unknown error'));
+          setError(`${t('placeOrder.paymentFailedPrefix')}${result?.status_message || t('common.error')}`);
         },
         onClose: () => {
           setSubmitting(false);
           if (!paymentCompleted) {
-            toast('Payment not completed. Your order is saved — you can pay from Order History.', { duration: 6000 });
+            toast(t('placeOrder.paymentNotCompletedToast'), { duration: 6000 });
             navigate('/orders');
           }
         },
@@ -465,7 +601,18 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
     }
   };
 
-  const today = getJakartaDateString();
+  const minDeliveryYmd = branchSchedule
+    ? getMinimumDeliveryDate(new Date(), branchSchedule.order_cutoff_hour, branchSchedule.closed_weekdays)
+    : getMinimumDeliveryDate(new Date(), 16, []);
+
+  const wdShort =
+    language === 'en'
+      ? ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+      : ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+  const closedDayLabels =
+    branchSchedule && branchSchedule.closed_weekdays.length > 0
+      ? [...branchSchedule.closed_weekdays].sort((a, b) => a - b).map((w) => wdShort[w]).join(', ')
+      : '';
 
   if (loading) {
     return (
@@ -517,7 +664,9 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
         <h1 style={{ color: 'white', fontSize: '20px', margin: 0, textShadow: '0 1px 4px rgba(0,0,0,0.4)' }}>
           {editOrderId ? `✏️ ${t('placeOrder.editOrder')}` : `🛒 ${t('placeOrder.newDelivery')}`}
         </h1>
-        <div style={{ width: '80px' }} />
+        <div style={{ width: '80px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
+          <LanguageSwitcher />
+        </div>
       </div>
 
       <div style={{ maxWidth: '800px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -557,6 +706,52 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
           </div>
         )}
 
+        {/* Delivery schedule notice */}
+        {showScheduleNotice && branchSchedule && (
+          <div
+            style={{
+              background: isDark ? 'rgba(255,193,7,0.12)' : '#fff8e1',
+              border: `2px solid ${theme.warning}`,
+              borderRadius: '16px',
+              padding: '16px 18px',
+              fontSize: '13px',
+              color: tokens.text,
+              lineHeight: 1.55,
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
+              <div>
+                <p style={{ margin: '0 0 8px 0', fontWeight: '700', fontSize: '14px' }}>ℹ️ {t('placeOrder.deliveryScheduleTitle')}</p>
+                <p style={{ margin: '0 0 6px 0' }}>
+                  {t('placeOrder.deliveryCutoffLine').replace('{hour}', String(branchSchedule.order_cutoff_hour))}
+                </p>
+                <p style={{ margin: 0 }}>
+                  {branchSchedule.closed_weekdays.length > 0
+                    ? t('placeOrder.deliveryRestDaysLine').replace('{days}', closedDayLabels)
+                    : t('placeOrder.deliveryRestDaysNone')}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowScheduleNotice(false)}
+                style={{
+                  flexShrink: 0,
+                  padding: '6px 12px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  border: `1px solid ${tokens.primary}`,
+                  borderRadius: '8px',
+                  background: 'transparent',
+                  color: tokens.primary,
+                  cursor: 'pointer',
+                }}
+              >
+                {t('placeOrder.dismissNotice')}
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Delivery Date */}
         <div style={{ background: tokens.card, borderRadius: '16px', padding: '20px', boxShadow: '0 4px 20px rgba(0,0,0,0.15)', backdropFilter: tokens.cardBlur, WebkitBackdropFilter: tokens.cardBlur, border: `1px solid ${tokens.primaryBorder}` }}>
           <label style={{ fontSize: '14px', fontWeight: '600', color: tokens.text, display: 'block', marginBottom: '10px' }}>
@@ -565,8 +760,8 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
           <input
             type="date"
             value={deliveryDate}
-            min={today}
-            onChange={e => setDeliveryDate(e.target.value)}
+            min={minDeliveryYmd}
+            onChange={e => handleDeliveryDateChange(e.target.value)}
             style={{ width: '100%', padding: '12px', fontSize: '16px', border: `2px solid ${tokens.primary}`, borderRadius: '8px', outline: 'none', boxSizing: 'border-box', background: tokens.inputBg, color: tokens.text, colorScheme: isDark ? 'dark' : 'light' }}
           />
         </div>
@@ -703,15 +898,25 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
         {cartItems.length > 0 && (
           <div style={{ background: tokens.card, borderRadius: '16px', padding: '20px', boxShadow: '0 4px 20px rgba(0,0,0,0.15)', backdropFilter: tokens.cardBlur, WebkitBackdropFilter: tokens.cardBlur, border: `1px solid ${tokens.primaryBorder}` }}>
             <p style={{ fontSize: '14px', fontWeight: '600', color: tokens.text, margin: '0 0 12px 0' }}>📋 {t('placeOrder.orderSummary')}</p>
-            {cartItems.map(item => (
-              <div key={item.product.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: tokens.muted, marginBottom: '6px' }}>
-                <span>{item.product.name} × {item.quantity}</span>
-                <span>{formatCurrency(getUnitPrice(item.product) * item.quantity)}</span>
-              </div>
-            ))}
+            {cartItems.map((item, idx) => {
+              const vb = voucherBreakdown[idx];
+              const pricedQty = vb ? vb.byPaidVoucher + vb.byPayment : item.quantity;
+              const lineOrderValue = pricedQty * getUnitPrice(item.product);
+              return (
+                <div key={item.product.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: tokens.muted, marginBottom: '6px' }}>
+                  <span>
+                    {item.product.name} × {item.quantity}
+                    {vb && vb.byGift > 0 ? (
+                      <span style={{ fontSize: '11px', opacity: 0.85 }}> ({vb.byGift} {t('placeOrder.giftTicket')})</span>
+                    ) : null}
+                  </span>
+                  <span>{formatCurrency(lineOrderValue)}</span>
+                </div>
+              );
+            })}
             <div style={{ borderTop: '1px solid #eee', marginTop: '10px', paddingTop: '10px', display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '16px' }}>
               <span>{t('common.total')}</span>
-              <span style={{ color: tokens.primary }}>{formatCurrency(totalAmount)}</span>
+              <span style={{ color: tokens.primary }}>{formatCurrency(orderTotalAmount)}</span>
             </div>
           </div>
         )}
@@ -740,9 +945,9 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
               <span>{isPrePay ? t('placeOrder.payViaQris') : t('placeOrder.onCredit')}</span>
               <span style={{ color: tokens.primary }}>{formatCurrency(payableAmount)}</span>
             </div>
-            {payableAmount < totalAmount && (
+            {payableAmount < grossCartTotal && (
               <p style={{ margin: '6px 0 0', fontSize: '12px', color: tokens.muted }}>
-                {formatCurrency(totalAmount - payableAmount)} {t('placeOrder.voucherCovered')}
+                {formatCurrency(grossCartTotal - payableAmount)} {t('placeOrder.voucherCovered')}
               </p>
             )}
             {!isPrePay && creditLimit !== null && (
@@ -783,8 +988,22 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
           </div>
         )}
 
+        {error === 'DELIVERY_DATE_TOO_SOON' && (
+          <div style={{ background: '#fdecea', border: `2px solid ${theme.error}`, borderRadius: '12px', padding: '16px' }}>
+            <p style={{ margin: 0, fontWeight: '700', color: theme.error, fontSize: '14px' }}>🚫 {t('placeOrder.deliveryDateTooSoonTitle')}</p>
+            <p style={{ margin: '8px 0 0', fontSize: '13px', color: theme.error }}>{t('placeOrder.deliveryDateTooSoonDesc')}</p>
+          </div>
+        )}
+
+        {error === 'DELIVERY_DATE_BRANCH_CLOSED' && (
+          <div style={{ background: '#fdecea', border: `2px solid ${theme.error}`, borderRadius: '12px', padding: '16px' }}>
+            <p style={{ margin: 0, fontWeight: '700', color: theme.error, fontSize: '14px' }}>🚫 {t('placeOrder.deliveryDateClosedTitle')}</p>
+            <p style={{ margin: '8px 0 0', fontSize: '13px', color: theme.error }}>{t('placeOrder.deliveryDateClosedDesc')}</p>
+          </div>
+        )}
+
         {/* Error */}
-        {error && error !== 'UNPAID_ORDERS' && error !== 'CREDIT_LIMIT_EXCEEDED' && (
+        {error && error !== 'UNPAID_ORDERS' && error !== 'CREDIT_LIMIT_EXCEEDED' && error !== 'DELIVERY_DATE_TOO_SOON' && error !== 'DELIVERY_DATE_BRANCH_CLOSED' && (
           <div style={{ background: '#fdecea', border: `2px solid ${theme.error}`, borderRadius: '12px', padding: '14px 16px', color: theme.error, fontSize: '14px' }}>
             ⚠️ {error}
           </div>

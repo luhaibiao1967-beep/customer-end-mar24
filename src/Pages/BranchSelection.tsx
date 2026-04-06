@@ -30,6 +30,7 @@ interface Branch {
   latitude: number;
   longitude: number;
   service_radius_km: number;
+  internal_demo?: boolean;
 }
 
 interface BranchWithDistance extends Branch {
@@ -37,7 +38,15 @@ interface BranchWithDistance extends Branch {
 }
 
 interface Props {
-  customer: { id: string; name: string; address: string; customer_type?: string | null };
+  customer: {
+    id: string;
+    name: string;
+    address: string;
+    customer_type?: string | null;
+    branch?: string | null;
+    /** Admin sets to `demo` for test accounts — may see internal_demo branches */
+    service_branch?: string | null;
+  };
   mode?: 'setup' | 'edit';
 }
 
@@ -83,6 +92,10 @@ export default function BranchSelection({ customer, mode = 'setup' }: Props) {
   const isLaterPayLocked =
     customerTypeNorm === 'later_pay' || customerTypeNorm === 'later_paid';
 
+  const isDemoViewer =
+    (customer.service_branch || '').trim().toLowerCase() === 'demo' ||
+    (customer.branch || '').trim().toLowerCase() === 'demo';
+
   useEffect(() => {
     if (!isLaterPayLocked) return;
     if (mode === 'edit') {
@@ -97,18 +110,19 @@ export default function BranchSelection({ customer, mode = 'setup' }: Props) {
   useEffect(() => {
     supabase
       .from('branches')
-      .select('id, name, address, phone, latitude, longitude, service_radius_km')
+      .select('id, name, address, phone, latitude, longitude, service_radius_km, internal_demo')
       .eq('status', 'active')
       .then(({ data }) => {
         const valid = (data || []).filter(
           (b) => b.latitude != null && b.longitude != null
         ) as Branch[];
-        setBranches(valid.map((b) => ({ ...b, service_radius_km: b.service_radius_km ?? 10, distance: 0 })));
+        const visible = valid.filter((b) => !b.internal_demo || isDemoViewer);
+        setBranches(visible.map((b) => ({ ...b, service_radius_km: b.service_radius_km ?? 10, distance: 0 })));
         // Center map on first branch
-        if (valid.length > 0) setMapCenter({ lat: valid[0].latitude, lng: valid[0].longitude });
+        if (visible.length > 0) setMapCenter({ lat: visible[0].latitude, lng: visible[0].longitude });
         setLoadingBranches(false);
       });
-  }, []);
+  }, [customer.service_branch, customer.branch]);
 
   // ─── Recalculate distances when customer location is set ────────────────
   const applyCoords = (coords: { lat: number; lng: number }) => {
@@ -157,7 +171,10 @@ export default function BranchSelection({ customer, mode = 'setup' }: Props) {
     });
 
     if (error || !data?.success) {
-      toast.error(t('branch.saveFailed'));
+      const err = (data as { error?: string } | null)?.error;
+      toast.error(
+        err === 'DEMO_BRANCH_FORBIDDEN' ? t('branch.demoForbidden') : t('branch.saveFailed')
+      );
       setSaving(false);
       return;
     }

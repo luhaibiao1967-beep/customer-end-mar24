@@ -71,12 +71,14 @@ serve(async (req) => {
 
     await insertVoucherReversalsForOrder(supabase, order_id)
 
-    // For pre_pay: refund vouchers back to customer
+    // For pre_pay: refund vouchers back to customer (gift rows unit_price=0 → gift_balance)
     if (customer.customer_type === 'pre_pay') {
       const { data: items } = await supabase
         .from('order_items')
-        .select('product, quantity')
+        .select('product, quantity, unit_price')
         .eq('order_id', order_id)
+
+      const refundByProduct = new Map<string, { total: number; gift: number }>()
 
       for (const item of items || []) {
         if (!item.product || !item.quantity) continue
@@ -89,21 +91,30 @@ serve(async (req) => {
 
         if (!product) continue
 
+        const prev = refundByProduct.get(product.id) ?? { total: 0, gift: 0 }
+        prev.total += item.quantity
+        if ((item.unit_price ?? 0) === 0) prev.gift += item.quantity
+        refundByProduct.set(product.id, prev)
+      }
+
+      for (const [productId, { total, gift }] of refundByProduct) {
         const { data: row } = await supabase
           .from('customer_product_vouchers')
-          .select('balance')
+          .select('balance, gift_balance')
           .eq('customer_id', customer.id)
-          .eq('product_id', product.id)
+          .eq('product_id', productId)
           .single()
 
         const current = row?.balance ?? 0
+        const currentGift = row?.gift_balance ?? 0
 
         await supabase
           .from('customer_product_vouchers')
           .upsert({
             customer_id: customer.id,
-            product_id: product.id,
-            balance: current + item.quantity,
+            product_id: productId,
+            balance: current + total,
+            gift_balance: currentGift + gift,
           })
       }
     }

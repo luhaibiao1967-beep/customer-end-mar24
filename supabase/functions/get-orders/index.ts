@@ -22,11 +22,13 @@ serve(async (req) => {
     // Validate token
     const { data: customer, error: customerError } = await supabase
       .from('customers')
-      .select('id, initial_borrowed_gallons')
+      .select('id, initial_borrowed_gallons, customer_type')
       .eq('auth_token', token)
       .single()
 
     if (customerError || !customer) throw new Error('Invalid or expired token')
+
+    const isPrePay = customer.customer_type === 'pre_pay'
 
     // Fetch single order or all orders
     if (order_id) {
@@ -39,6 +41,11 @@ serve(async (req) => {
 
       if (orderError) throw new Error('Failed to fetch order: ' + orderError.message)
 
+      // pre_pay: unpaid orders are abandoned checkout (QRIS not completed) — not visible to customer
+      if (isPrePay && order.payment_status === 'unpaid') {
+        throw new Error('Order not found')
+      }
+
       return new Response(
         JSON.stringify({ success: true, order }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
@@ -46,11 +53,17 @@ serve(async (req) => {
     }
 
     // Fetch all orders (no order_items for list view - loaded on demand in detail view)
-    const { data: orders, error: ordersError } = await supabase
+    // later_pay: may list unpaid (pay on delivery / later QRIS). pre_pay: only paid rows.
+    let listQuery = supabase
       .from('orders')
       .select('id, customer_id, customer_name, customer_address, delivery_date, status, payment_status, total_amount, created_at, delivery_evidence, payment_evidence, borrowed_gallons')
       .eq('customer_id', customer.id)
-      .order('created_at', { ascending: false })
+
+    if (isPrePay) {
+      listQuery = listQuery.eq('payment_status', 'paid')
+    }
+
+    const { data: orders, error: ordersError } = await listQuery.order('created_at', { ascending: false })
 
     if (ordersError) throw new Error('Failed to fetch orders: ' + ordersError.message)
 

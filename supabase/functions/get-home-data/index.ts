@@ -50,13 +50,18 @@ serve(async (req) => {
             .eq('payment_status', 'unpaid')
         : Promise.resolve({ data: [] }),
 
-      // Pending/scheduled orders
-      supabase
-        .from('orders')
-        .select('id, delivery_date, status, total_amount, created_at')
-        .eq('customer_id', customer.id)
-        .in('status', ['pending', 'scheduled'])
-        .order('created_at', { ascending: false }),
+      // Pending/scheduled orders (pre_pay: only after QRIS settled — hide unpaid ghosts)
+      (() => {
+        let q = supabase
+          .from('orders')
+          .select('id, delivery_date, status, total_amount, created_at, payment_status')
+          .eq('customer_id', customer.id)
+          .in('status', ['pending', 'scheduled'])
+        if (customer.customer_type === 'pre_pay') {
+          q = q.eq('payment_status', 'paid')
+        }
+        return q.order('created_at', { ascending: false })
+      })(),
     ])
 
     const unpaidAmount = (unpaidResult.data || []).reduce(

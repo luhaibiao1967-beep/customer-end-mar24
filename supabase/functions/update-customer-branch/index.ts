@@ -21,7 +21,7 @@ serve(async (req) => {
     // Validate token and get customer
     const { data: customer } = await supabase
       .from('customers')
-      .select('id, customer_type')
+      .select('id, customer_type, service_branch, branch')
       .eq('auth_token', token)
       .single()
     if (!customer) throw new Error('Invalid token')
@@ -29,6 +29,20 @@ serve(async (req) => {
     const ct = (customer.customer_type || '').toLowerCase()
     if (ct === 'later_pay' || ct === 'later_paid') {
       throw new Error('LATER_PAY_BRANCH_LOCKED')
+    }
+
+    const { data: branchRow } = await supabase
+      .from('branches')
+      .select('internal_demo')
+      .eq('name', branch_name)
+      .eq('status', 'active')
+      .maybeSingle()
+
+    if (branchRow?.internal_demo) {
+      const onDemoBranch = (customer.branch || '').trim().toLowerCase() === 'demo'
+      const isDemoService =
+        (customer.service_branch || '').trim().toLowerCase() === 'demo'
+      if (!isDemoService && !onDemoBranch) throw new Error('DEMO_BRANCH_FORBIDDEN')
     }
 
     // Update branch

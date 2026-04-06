@@ -2,9 +2,72 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.38.0'
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.38.0'
 
+/** Inlined: Supabase deploy bundles one function folder — ../_shared is not uploaded. */
+async function getProductVoucherRow(
+  supabase: SupabaseClient,
+  customerId: string,
+  productId: string,
+): Promise<{ balance: number; gift_balance: number }> {
+  const { data } = await supabase
+    .from('customer_product_vouchers')
+    .select('balance, gift_balance')
+    .eq('customer_id', customerId)
+    .eq('product_id', productId)
+    .single()
+  return {
+    balance: data?.balance ?? 0,
+    gift_balance: data?.gift_balance ?? 0,
+  }
+}
+
+function splitGiftAndPaidVoucherQty(
+  quantity: number,
+  giftBalance: number,
+): { from_gift: number; from_paid: number } {
+  const from_gift = Math.min(quantity, Math.max(0, giftBalance))
+  return { from_gift, from_paid: quantity - from_gift }
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+function jakartaWeekdayFromYmd(ymd: string): number {
+  return new Date(`${ymd}T12:00:00+07:00`).getUTCDay()
+}
+
+function addDaysYmd(ymd: string, days: number): string {
+  const [y, m, d] = ymd.split('-').map(Number)
+  const dt = new Date(Date.UTC(y, m - 1, d + days, 12, 0, 0))
+  return dt.toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' })
+}
+
+function computeMinDeliveryYmd(now: Date, cutoffHour: number, closed: number[]): string {
+  const ymd = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' })
+  const hour = parseInt(
+    new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Jakarta', hour: 'numeric', hour12: false }).format(now),
+    10,
+  )
+  let c = hour >= cutoffHour ? addDaysYmd(ymd, 1) : ymd
+  let g = 0
+  while (closed.includes(jakartaWeekdayFromYmd(c)) && g < 14) {
+    c = addDaysYmd(c, 1)
+    g += 1
+  }
+  return c
+}
+
+function validateDeliveryDate(
+  deliveryYmd: string,
+  cutoffHour: number,
+  closedWeekdays: number[],
+): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(deliveryYmd)) return 'Invalid delivery date'
+  const min = computeMinDeliveryYmd(new Date(), cutoffHour, closedWeekdays)
+  if (deliveryYmd < min) return 'DELIVERY_DATE_TOO_SOON'
+  if (closedWeekdays.includes(jakartaWeekdayFromYmd(deliveryYmd))) return 'DELIVERY_DATE_BRANCH_CLOSED'
+  return null
 }
 
 interface OrderItem {
@@ -35,7 +98,7 @@ interface RequestBody {
   edit_order_id?: string
 }
 
-type PricingBasis = 'purchase_weighted_avg' | 'package_fallback' | 'zero_unknown'
+type PricingBasis = 'purchase_weighted_avg' | 'package_fallback' | 'zero_unknown' | 'gift_zero'
 
 async function resolveVoucherUnitAmount(
   supabase: SupabaseClient,
@@ -87,29 +150,43 @@ async function insertVoucherUsageLines(
     orderId: string
     customerId: string
     branch: string
-    deductions: { product_id: string; quantity: number }[]
+    splits: { product_id: string; from_gift: number; from_paid: number }[]
   },
 ): Promise<void> {
-  const { orderId, customerId, branch, deductions } = params
-  for (const d of deductions) {
-    if (!d.quantity || d.quantity <= 0) continue
-    const { unit_amount, pricing_basis } = await resolveVoucherUnitAmount(
-      supabase,
-      customerId,
-      d.product_id,
-    )
-    const line_amount = d.quantity * unit_amount
-    const { error } = await supabase.from('voucher_usage_ledger').insert({
-      order_id: orderId,
-      customer_id: customerId,
-      branch,
-      product_id: d.product_id,
-      voucher_qty: d.quantity,
-      unit_amount,
-      line_amount,
-      pricing_basis,
-    })
-    if (error) throw new Error('voucher_usage_ledger insert: ' + error.message)
+  const { orderId, customerId, branch, splits } = params
+  for (const s of splits) {
+    if (s.from_gift > 0) {
+      const { error } = await supabase.from('voucher_usage_ledger').insert({
+        order_id: orderId,
+        customer_id: customerId,
+        branch,
+        product_id: s.product_id,
+        voucher_qty: s.from_gift,
+        unit_amount: 0,
+        line_amount: 0,
+        pricing_basis: 'gift_zero',
+      })
+      if (error) throw new Error('voucher_usage_ledger insert: ' + error.message)
+    }
+    if (s.from_paid > 0) {
+      const { unit_amount, pricing_basis } = await resolveVoucherUnitAmount(
+        supabase,
+        customerId,
+        s.product_id,
+      )
+      const line_amount = s.from_paid * unit_amount
+      const { error } = await supabase.from('voucher_usage_ledger').insert({
+        order_id: orderId,
+        customer_id: customerId,
+        branch,
+        product_id: s.product_id,
+        voucher_qty: s.from_paid,
+        unit_amount,
+        line_amount,
+        pricing_basis,
+      })
+      if (error) throw new Error('voucher_usage_ledger insert: ' + error.message)
+    }
   }
 }
 
@@ -140,6 +217,16 @@ serve(async (req) => {
       throw new Error('Invalid or expired token')
     }
 
+    const { data: branchRow } = await supabase
+      .from('branches')
+      .select('order_cutoff_hour, closed_weekdays')
+      .eq('name', customer.branch)
+      .maybeSingle()
+    const cutoffHour = branchRow?.order_cutoff_hour ?? 16
+    const closedW = Array.isArray(branchRow?.closed_weekdays) ? (branchRow!.closed_weekdays as number[]) : []
+    const dErr = validateDeliveryDate(order.delivery_date, cutoffHour, closedW)
+    if (dErr) throw new Error(dErr)
+
     const isPrePay = customer.customer_type === 'pre_pay'
 
     // Validate per-product voucher balances (all customer types)
@@ -147,14 +234,8 @@ serve(async (req) => {
       for (const deduction of product_deductions) {
         if (deduction.quantity <= 0) continue
 
-        const { data: row } = await supabase
-          .from('customer_product_vouchers')
-          .select('balance')
-          .eq('customer_id', customer.id)
-          .eq('product_id', deduction.product_id)
-          .single()
-
-        const available = row?.balance ?? 0
+        const row = await getProductVoucherRow(supabase, customer.id, deduction.product_id)
+        const available = row.balance
         if (available < deduction.quantity) {
           throw new Error(`Insufficient vouchers for product (need ${deduction.quantity}, have ${available})`)
         }
@@ -244,20 +325,21 @@ serve(async (req) => {
       )
       if (itemsError) throw new Error('Failed to create order items: ' + itemsError.message)
 
-      // Deduct per-product vouchers (all customer types)
+      // Deduct per-product vouchers (gift balance consumed first) + ledger
+      const splitRows: { product_id: string; from_gift: number; from_paid: number }[] = []
       if (product_deductions && product_deductions.length > 0) {
         for (const deduction of product_deductions) {
           if (deduction.quantity <= 0) continue
 
-          const { data: row } = await supabase
-            .from('customer_product_vouchers')
-            .select('balance')
-            .eq('customer_id', customer.id)
-            .eq('product_id', deduction.product_id)
-            .single()
-
-          const current = row?.balance ?? 0
-          const newBalance = Math.max(0, current - deduction.quantity)
+          const row = await getProductVoucherRow(supabase, customer.id, deduction.product_id)
+          if (row.balance < deduction.quantity) {
+            throw new Error(
+              `Insufficient vouchers for product (need ${deduction.quantity}, have ${row.balance})`,
+            )
+          }
+          const { from_gift, from_paid } = splitGiftAndPaidVoucherQty(deduction.quantity, row.gift_balance)
+          const newBalance = row.balance - deduction.quantity
+          const newGiftBalance = row.gift_balance - from_gift
 
           const { error: deductErr } = await supabase
             .from('customer_product_vouchers')
@@ -265,18 +347,20 @@ serve(async (req) => {
               customer_id: customer.id,
               product_id: deduction.product_id,
               balance: newBalance,
+              gift_balance: newGiftBalance,
             })
 
           if (deductErr) throw new Error('Failed to deduct vouchers: ' + deductErr.message)
+          splitRows.push({ product_id: deduction.product_id, from_gift, from_paid })
         }
       }
 
-      if (product_deductions && product_deductions.length > 0) {
+      if (splitRows.length > 0) {
         await insertVoucherUsageLines(supabase, {
           orderId: newOrder.id,
           customerId: customer.id,
           branch: customer.branch ?? '',
-          deductions: product_deductions.map(d => ({ product_id: d.product_id, quantity: d.quantity })),
+          splits: splitRows,
         })
       }
     }

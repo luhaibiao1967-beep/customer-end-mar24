@@ -197,6 +197,7 @@ serve(async (req) => {
           customer_id: customer.id,
           product_id: welcomeProductId,
           balance: welcomeQty,
+          gift_balance: welcomeQty,
         })
       }
 
@@ -254,6 +255,7 @@ serve(async (req) => {
           voucher_balance: customer.voucher_balance,
           branch: customer.branch,
           discount: customer.discount,
+          service_branch: customer.service_branch ?? null,
         },
         magic_link: magicLink,
         auth_token: customer.auth_token,

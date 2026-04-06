@@ -12,6 +12,7 @@ interface Customer {
   voucher_balance: number;
   discount: number;
   branch: string;
+  service_branch?: string | null;
 }
 
 export default function TokenAuth() {
@@ -56,6 +57,7 @@ export default function TokenAuth() {
         voucher_balance: data.customer.voucher_balance,
         discount: data.customer.discount,
         branch: data.customer.branch,
+        service_branch: data.customer.service_branch ?? null,
       };
 
       setCustomer(customerData);

@@ -28,13 +28,16 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseKey)
 
-    // Validate token
+    // Validate token — later_pay only (pre_pay uses submit-prepay-order + pop_*)
     const { data: customer } = await supabase
       .from('customers')
-      .select('id, name, whatsapp')
+      .select('id, name, whatsapp, customer_type')
       .eq('auth_token', token)
       .single()
     if (!customer) throw new Error('Invalid token')
+    if (customer.customer_type === 'pre_pay') {
+      throw new Error('Pre-pay customers must pay when placing an order (pre_pay flow), not batch order payment')
+    }
 
     // Load orders — must belong to customer and be unpaid
     const { data: orders } = await supabase
