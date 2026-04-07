@@ -49,10 +49,21 @@ interface PlaceOrderProps {
 // Base price for refill gallon — update here if price changes
 const REFILL_BASE_PRICE = 15000;
 
+/** DB: featured first = `Gallon Refill 19 liter`; Accessories include `Electric Pump` (name contains `pump` or `rack`). */
+const CANONICAL_GALLON_REFILL_19_LITER = 'gallon refill 19 liter';
+
+function normalizeProductName(name: string): string {
+  return name.toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
 const isAccessory = (p: Product) => {
-  const lower = p.name.toLowerCase();
-  return lower.includes('pump') || lower.includes('rack');
+  const n = normalizeProductName(p.name);
+  return n.includes('pump') || n.includes('rack');
 };
+
+/** Main list: pin "Gallon Refill 19 liter" first (exact name from products table). */
+const isFeaturedRefill19Liter = (p: Product): boolean =>
+  normalizeProductName(p.name) === CANONICAL_GALLON_REFILL_19_LITER;
 
 /** Customer can order empty gallon products; hide collection/recovery SKUs (operator enters those). */
 const isCustomerHiddenProduct = (nameLower: string): boolean => {
@@ -342,9 +353,15 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
         return true;
       });
 
-      filtered.sort((a, b) =>
-        getProductSortOrder(a.name, a.is_refill) - getProductSortOrder(b.name, b.is_refill)
-      );
+      filtered.sort((a, b) => {
+        const fa = isFeaturedRefill19Liter(a) ? 0 : 1;
+        const fb = isFeaturedRefill19Liter(b) ? 0 : 1;
+        if (fa !== fb) return fa - fb;
+        const o =
+          getProductSortOrder(a.name, a.is_refill) - getProductSortOrder(b.name, b.is_refill);
+        if (o !== 0) return o;
+        return a.name.localeCompare(b.name);
+      });
 
       setProducts(filtered);
     } catch (err: any) {
