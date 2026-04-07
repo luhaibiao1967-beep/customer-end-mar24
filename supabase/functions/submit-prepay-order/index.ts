@@ -124,6 +124,28 @@ async function resolveVoucherUnitAmount(
   return { unit_amount: 0, pricing_basis: 'zero_unknown' }
 }
 
+function buildItemCashUnits(
+  items: OrderItem[],
+  product_deductions: { product_id: string; quantity: number }[] | undefined,
+): { product_id: string; quantity: number; by_voucher: number; by_qris: number }[] {
+  const remaining = new Map<string, number>()
+  for (const d of product_deductions ?? []) {
+    if (d.quantity > 0) remaining.set(d.product_id, (remaining.get(d.product_id) ?? 0) + d.quantity)
+  }
+  return items.map((it) => {
+    const pid = it.product
+    const r = remaining.get(pid) ?? 0
+    const by_v = Math.min(it.quantity, r)
+    remaining.set(pid, r - by_v)
+    return {
+      product_id: pid,
+      quantity: it.quantity,
+      by_voucher: by_v,
+      by_qris: it.quantity - by_v,
+    }
+  })
+}
+
 async function insertVoucherUsageLines(
   supabase: SupabaseClient,
   params: {
@@ -217,6 +239,9 @@ serve(async (req) => {
     const dErr = validateDeliveryDate(order.delivery_date, cutoffHour, closedW)
     if (dErr) throw new Error(dErr)
 
+    // Must be set before Snap + before any webhook can fire (avoids race: webhook could not find order → missing hq_midtrans_settlements).
+    const midtransOrderId = `pop_${customer.id.slice(0, 8)}_${Date.now()}`
+
     // Create order with payment_status 'unpaid'
     const { data: newOrder, error: orderError } = await supabase
       .from('orders')
@@ -231,6 +256,7 @@ serve(async (req) => {
         total_amount: order.total_amount,
         status: 'pending',
         payment_status: 'unpaid',
+        midtrans_order_id: midtransOrderId,
         note: order.note || null,
         empty_gallons_returned: 0,
         borrowed_gallons: 0,
@@ -278,8 +304,22 @@ serve(async (req) => {
       }
     }
 
+    const prepay_breakdown = {
+      catalog_total_idr: order.total_amount,
+      qris_idr: qrisAmount,
+      voucher_splits: splitRows,
+      item_cash_units: buildItemCashUnits(items, product_deductions),
+    }
+    const { error: breakdownErr } = await supabase
+      .from('orders')
+      .update({
+        qris_charged_idr: qrisAmount,
+        prepay_breakdown,
+      })
+      .eq('id', newOrder.id)
+    if (breakdownErr) throw new Error('Failed to save prepay breakdown: ' + breakdownErr.message)
+
     // Create Midtrans Snap transaction (QRIS only) — charge only the shortfall amount
-    const midtransOrderId = `pop_${customer.id.slice(0, 8)}_${Date.now()}`
     const mtResponse = await fetch(snapUrl, {
       method: 'POST',
       headers: {
@@ -304,13 +344,6 @@ serve(async (req) => {
       if (rbOrderErr) console.error('Rollback failed (orders on Midtrans failure):', rbOrderErr.message)
       throw new Error('Midtrans error: ' + JSON.stringify(mtData))
     }
-
-    // Save midtrans_order_id on the order
-    const { error: updateMtErr } = await supabase
-      .from('orders')
-      .update({ midtrans_order_id: midtransOrderId })
-      .eq('id', newOrder.id)
-    if (updateMtErr) throw new Error('Failed to save midtrans_order_id: ' + updateMtErr.message)
 
     if (splitRows.length > 0) {
       await insertVoucherUsageLines(supabase, {
