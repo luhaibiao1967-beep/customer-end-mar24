@@ -225,6 +225,9 @@ const translations: Record<Language, Record<string, string>> = {
     'placeOrder.creditLimitDesc': 'This order would exceed your available credit limit',
     'placeOrder.outstandingBalance': 'Outstanding Balance',
     'placeOrder.outstandingDesc': 'You have unpaid delivered orders. Please settle your balance before placing a new order.',
+    'placeOrder.prePayRequiresPaymentTitle': 'Payment required',
+    'placeOrder.prePayRequiresPaymentDesc':
+      'Please pay via QRIS before the order is confirmed. Use the Pay with QRIS button when there is an amount due.',
     'placeOrder.viewPayBills': 'View & Pay Bills',
     'placeOrder.backToHome': 'Back to Home',
     'placeOrder.orderPlaced': 'Order Placed!',
@@ -573,6 +576,9 @@ const translations: Record<Language, Record<string, string>> = {
     'placeOrder.creditLimitDesc': 'Pesanan ini akan melebihi batas kredit yang tersedia',
     'placeOrder.outstandingBalance': 'Saldo Tertunggak',
     'placeOrder.outstandingDesc': 'Anda memiliki pesanan terkirim yang belum dibayar. Selesaikan pembayaran sebelum memesan baru.',
+    'placeOrder.prePayRequiresPaymentTitle': 'Pembayaran diperlukan',
+    'placeOrder.prePayRequiresPaymentDesc':
+      'Silakan bayar dengan QRIS sebelum pesanan dikonfirmasi. Gunakan tombol Bayar via QRIS jika ada nominal yang harus dibayar.',
     'placeOrder.viewPayBills': 'Lihat & Bayar Tagihan',
     'placeOrder.backToHome': 'Kembali ke Beranda',
     'placeOrder.orderPlaced': 'Pesanan Dibuat!',

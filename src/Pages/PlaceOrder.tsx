@@ -144,7 +144,13 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
     voucherBreakdown.flatMap(vb => {
       const p = vb.item.product;
       const disc = p.is_refill && !isPrePay ? (freshDiscount || 0) : 0;
-      const up = getUnitPrice(p);
+      // later_pay refill: store list price in unit_price and discount separately — backend totals use (unit_price - discount) per line.
+      // Do not use getUnitPrice() here (it is already net); that would double-apply discount.
+      const up = isPrePay
+        ? getUnitPrice(p)
+        : p.is_refill
+          ? REFILL_BASE_PRICE
+          : p.price;
       const rows: {
         product: string;
         is_refill: boolean;
@@ -444,6 +450,11 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
       const orderItems = buildOrderItemsPayload();
       const orderTotalAmount = computeOrderTotalFromRows(orderItems);
 
+      if (isPrePay && payableAmount > 0) {
+        setError('PRE_PAY_REQUIRES_PAYMENT');
+        return;
+      }
+
       // Credit limit check for later_pay (frontend guard)
       if (!isPrePay && !editOrderId && creditLimit !== null) {
         if (unpaidCredit + payableAmount > creditLimit) {
@@ -477,6 +488,10 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
       if (!data?.success) {
         if (data?.error === 'UNPAID_ORDERS') {
           setError('UNPAID_ORDERS');
+          return;
+        }
+        if (data?.error === 'PRE_PAY_REQUIRES_PAYMENT') {
+          setError('PRE_PAY_REQUIRES_PAYMENT');
           return;
         }
         if (data?.error === 'CREDIT_LIMIT_EXCEEDED') {
@@ -977,6 +992,15 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
         )}
 
         {/* Credit limit exceeded */}
+        {error === 'PRE_PAY_REQUIRES_PAYMENT' && (
+          <div style={{ background: '#fdecea', border: `2px solid ${theme.error}`, borderRadius: '12px', padding: '16px' }}>
+            <p style={{ margin: '0 0 6px 0', fontWeight: '700', color: theme.error, fontSize: '14px' }}>
+              {t('placeOrder.prePayRequiresPaymentTitle')}
+            </p>
+            <p style={{ margin: 0, fontSize: '13px', color: theme.error }}>{t('placeOrder.prePayRequiresPaymentDesc')}</p>
+          </div>
+        )}
+
         {error === 'CREDIT_LIMIT_EXCEEDED' && (
           <div style={{ background: '#fdecea', border: `2px solid ${theme.error}`, borderRadius: '12px', padding: '16px' }}>
             <p style={{ margin: '0 0 6px 0', fontWeight: '700', color: theme.error, fontSize: '14px' }}>
@@ -1003,7 +1027,7 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
         )}
 
         {/* Error */}
-        {error && error !== 'UNPAID_ORDERS' && error !== 'CREDIT_LIMIT_EXCEEDED' && error !== 'DELIVERY_DATE_TOO_SOON' && error !== 'DELIVERY_DATE_BRANCH_CLOSED' && (
+        {error && error !== 'UNPAID_ORDERS' && error !== 'PRE_PAY_REQUIRES_PAYMENT' && error !== 'CREDIT_LIMIT_EXCEEDED' && error !== 'DELIVERY_DATE_TOO_SOON' && error !== 'DELIVERY_DATE_BRANCH_CLOSED' && (
           <div style={{ background: '#fdecea', border: `2px solid ${theme.error}`, borderRadius: '12px', padding: '14px 16px', color: theme.error, fontSize: '14px' }}>
             ⚠️ {error}
           </div>

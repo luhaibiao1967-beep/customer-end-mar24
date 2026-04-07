@@ -229,6 +229,11 @@ serve(async (req) => {
 
     const isPrePay = customer.customer_type === 'pre_pay'
 
+    // pre_pay must not create unpaid orders via this function — unpaid pop_* only comes from submit-prepay-order + Snap.
+    if (isPrePay && !edit_order_id && order.payment_status === 'unpaid') {
+      throw new Error('PRE_PAY_REQUIRES_PAYMENT')
+    }
+
     // Validate per-product voucher balances (all customer types)
     if (product_deductions && product_deductions.length > 0) {
       for (const deduction of product_deductions) {
