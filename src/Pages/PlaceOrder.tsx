@@ -54,6 +54,14 @@ const isAccessory = (p: Product) => {
   return lower.includes('pump') || lower.includes('rack');
 };
 
+/** Customer can order empty gallon products; hide collection/recovery SKUs (operator enters those). */
+const isCustomerHiddenProduct = (nameLower: string): boolean => {
+  if (nameLower.includes('sample')) return true;
+  if (nameLower.includes('empty gallon collection')) return true;
+  if (nameLower.includes('empty') && nameLower.includes('collection')) return true;
+  return false;
+};
+
 export default function PlaceOrder({ customer }: PlaceOrderProps) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -329,8 +337,9 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
 
       const filtered = (data || []).filter(p => {
         const lower = p.name.toLowerCase();
-        return !lower.includes('empty') && !lower.includes('sample')
-          && !(lower.includes('test') && customer.branch !== 'Demo');
+        if (isCustomerHiddenProduct(lower)) return false;
+        if (lower.includes('test') && customer.branch !== 'Demo') return false;
+        return true;
       });
 
       filtered.sort((a, b) =>
