@@ -12,6 +12,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { Ticket, Droplets, ChevronRight } from 'lucide-react';
 import { theme } from '../theme';
 import { useColorTokens } from '../contexts/ColorTokensContext';
+import { markLogoutForPwaPrompt } from '../utils/pwaInstall';
 
 const APP_URL = 'https://vividaqua.online/';
 
@@ -203,6 +204,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
 
   const handleSignOut = () => {
     setLoading(true);
+    markLogoutForPwaPrompt();
     sessionStorage.removeItem('customer');
     sessionStorage.removeItem('auth_token');
     sessionStorage.removeItem('authenticated');

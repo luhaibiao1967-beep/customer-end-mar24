@@ -265,6 +265,17 @@ const translations: Record<Language, Record<string, string>> = {
     'placeOrder.failedSubmit': 'Failed to submit: ',
     'placeOrder.sessionExpired': 'Session expired, please login again',
 
+    'pwaInstall.title': 'Add VividAqua to your home screen?',
+    'pwaInstall.body':
+      'Open it faster next time with an icon on your home screen. Use the button below or follow the steps.',
+    'pwaInstall.installNow': 'Add to home screen',
+    'pwaInstall.later': 'Remind me later',
+    'pwaInstall.never': "Don't ask again",
+    'pwaInstall.iosStep1': 'Tap the Share button at the bottom of Safari (square with arrow).',
+    'pwaInstall.iosStep2': 'Scroll and tap “Add to home screen”, then tap Add.',
+    'pwaInstall.androidManual':
+      'Open your browser menu (⋮) and choose “Add to home screen” or similar.',
+
     // Order History
     'orders.title': 'Order History',
     'orders.empty': 'No Orders Yet',
@@ -615,6 +626,18 @@ const translations: Record<Language, Record<string, string>> = {
     'placeOrder.paymentFailedPrefix': 'Pembayaran gagal: ',
     'placeOrder.failedSubmit': 'Gagal mengirim: ',
     'placeOrder.sessionExpired': 'Sesi berakhir, silakan login kembali',
+
+    'pwaInstall.title': 'Tambahkan VividAqua ke layar utama?',
+    'pwaInstall.body':
+      'Buka lebih cepat lain kali lewat ikon di layar utama. Gunakan tombol di bawah atau ikuti langkah-langkahnya.',
+    'pwaInstall.installNow': 'Tambah ke layar utama',
+    'pwaInstall.later': 'Ingatkan nanti',
+    'pwaInstall.never': 'Jangan tanya lagi',
+    'pwaInstall.iosStep1': 'Ketuk tombol Bagikan di bawah Safari (kotak dengan panah).',
+    'pwaInstall.iosStep2':
+      'Gulir dan ketuk “Tambahkan ke Layar Utama”, lalu ketuk Tambah. (Jika menu bahasa Inggris: “Add to Home Screen”.)',
+    'pwaInstall.androidManual':
+      'Buka menu browser (⋮) dan pilih “Tambahkan ke layar utama” atau opsi serupa.',
 
     // Order History
     'orders.title': 'Riwayat Pesanan',

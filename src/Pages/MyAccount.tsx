@@ -8,6 +8,7 @@ import toast from 'react-hot-toast';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useColorTokens } from '../contexts/ColorTokensContext';
 import { theme } from '../theme';
+import { markLogoutForPwaPrompt } from '../utils/pwaInstall';
 import {
   User,
   MapPin,
@@ -84,6 +85,7 @@ export default function MyAccount({ customer }: MyAccountProps) {
   const [activeOrderCount, setActiveOrderCount] = useState<number | null>(null);
 
   const handleSignOut = () => {
+    markLogoutForPwaPrompt();
     sessionStorage.removeItem('customer');
     sessionStorage.removeItem('auth_token');
     sessionStorage.removeItem('authenticated');

@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useColorTokens } from '../contexts/ColorTokensContext';
 import LanguageSwitcher from './LanguageSwitcher';
+import { markLogoutForPwaPrompt } from '../utils/pwaInstall';
 
 interface TopNavV0Props {
   customerName?: string;
@@ -21,6 +22,7 @@ export default function TopNavV0({ customerName, onSignOut, loading }: TopNavV0P
       onSignOut();
     } else {
       sessionStorage.clear();
+      markLogoutForPwaPrompt();
       window.dispatchEvent(new Event('session-auth-updated'));
       navigate('/', { replace: true });
     }

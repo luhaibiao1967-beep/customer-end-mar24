@@ -8,6 +8,8 @@ import { getOrCreateDeviceId, getStoredDeviceId } from '../lib/deviceId'
 import { theme } from '../theme'
 import { useLanguage } from '../contexts/LanguageContext'
 import { useColorTokens } from '../contexts/ColorTokensContext'
+import InstallAppModal from '../Components/InstallAppModal'
+import { canShowPwaInstallPrompt, consumeLogoutPwaPromptFlag } from '../utils/pwaInstall'
 
 export default function CustomerLogin() {
   const navigate = useNavigate()
@@ -17,6 +19,7 @@ export default function CustomerLogin() {
   const [error, setError] = useState('')
   const [status, setStatus] = useState<'idle' | 'new_customer'>('idle')
   const [deviceId, setDeviceId] = useState<string | null>(() => getStoredDeviceId())
+  const [pwaInstallOpen, setPwaInstallOpen] = useState(false)
   const { language, setLanguage, t } = useLanguage()
   const { tokens } = useColorTokens()
 
@@ -27,6 +30,12 @@ export default function CustomerLogin() {
 
   useEffect(() => {
     if (!deviceId) getOrCreateDeviceId().then(setDeviceId)
+  }, [])
+
+  useEffect(() => {
+    if (consumeLogoutPwaPromptFlag() && canShowPwaInstallPrompt()) {
+      setPwaInstallOpen(true)
+    }
   }, [])
 
   const formatPhoneNumber = (phone: string): string => {
@@ -307,6 +316,8 @@ export default function CustomerLogin() {
 
         {/* 调试：当前连接的 Supabase 项目 */}
       </div>
+
+      <InstallAppModal open={pwaInstallOpen} onClose={() => setPwaInstallOpen(false)} />
     </div>
   )
 }
