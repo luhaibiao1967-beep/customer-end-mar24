@@ -43,9 +43,6 @@ interface MyAccountProps {
   customer: Customer;
 }
 
-const ACTIVE_STATUSES = ['pending', 'processing', 'confirmed', 'on_delivery'];
-
-
 export default function MyAccount({ customer }: MyAccountProps) {
   const navigate = useNavigate();
   const { t } = useLanguage();
@@ -105,13 +102,10 @@ export default function MyAccount({ customer }: MyAccountProps) {
     const token = sessionStorage.getItem('auth_token');
     if (token) {
       supabase.functions
-        .invoke('get-orders', { body: { token } })
+        .invoke('get-orders', { body: { token, active_order_count_only: true } })
         .then(({ data }) => {
-          if (data?.success && Array.isArray(data.orders)) {
-            const active = data.orders.filter((o: any) =>
-              ACTIVE_STATUSES.includes(o.status)
-            );
-            setActiveOrderCount(active.length);
+          if (data?.success && typeof data.active_order_count === 'number') {
+            setActiveOrderCount(data.active_order_count);
           }
         });
     }

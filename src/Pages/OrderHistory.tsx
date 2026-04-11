@@ -45,7 +45,7 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
   const { t } = useLanguage();
   const { tokens } = useColorTokens();
   const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [ordersLoading, setOrdersLoading] = useState(true);
   const [error, setError] = useState('');
   const [initialBorrowedGallons, setInitialBorrowedGallons] = useState(0);
   const [productVouchers, setProductVouchers] = useState<{ product_id: string; balance: number; products: { name: string } | null }[]>([]);
@@ -66,29 +66,21 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
 
   useEffect(() => {
     fetchOrders();
-    if (customer.customer_type === 'pre_pay') fetchProductVoucherTotal();
   }, [customer.id]);
-
-  const fetchProductVoucherTotal = async () => {
-    try {
-      const { data } = await supabase
-        .from('customer_product_vouchers')
-        .select('product_id, balance, products(name)')
-        .eq('customer_id', customer.id);
-      setProductVouchers((data as any) || []);
-    } catch {
-      // silently fail
-    }
-  };
 
   const fetchOrders = async () => {
     try {
-      setLoading(true);
+      setOrdersLoading(true);
+      setError('');
       const token = sessionStorage.getItem('auth_token');
       if (!token) throw new Error('Session expired, please login again');
 
       const { data, error } = await supabase.functions.invoke('get-orders', {
-        body: { token },
+        body: {
+          token,
+          limit: 80,
+          include_product_vouchers: customer.customer_type === 'pre_pay',
+        },
       });
 
       if (error) throw new Error(error.message);
@@ -96,10 +88,13 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
 
       setOrders(data.orders || []);
       setInitialBorrowedGallons(data.initial_borrowed_gallons || 0);
+      if (Array.isArray(data.product_vouchers)) {
+        setProductVouchers(data.product_vouchers as { product_id: string; balance: number; products: { name: string } | null }[]);
+      }
     } catch (err: any) {
       setError(err.message);
     } finally {
-      setLoading(false);
+      setOrdersLoading(false);
     }
   };
 
@@ -350,7 +345,7 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
         )}
 
         {/* Order list */}
-        {loading ? (
+        {ordersLoading ? (
           <div style={{ background: tokens.card, borderRadius: '20px', padding: '60px', textAlign: 'center', backdropFilter: tokens.cardBlur, WebkitBackdropFilter: tokens.cardBlur }}>
             <div style={{ width: '50px', height: '50px', border: '4px solid #f3f3f3', borderTop: `4px solid ${tokens.primary}`, borderRadius: '50%', margin: '0 auto 20px', animation: 'spin 1s linear infinite' }} />
             <p style={{ color: '#666' }}>{t('orderHistory.loading')}</p>

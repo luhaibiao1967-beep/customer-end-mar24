@@ -218,6 +218,11 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
   );
   const hasEnoughVouchers = isPrePay ? payableAmount === 0 : true;
 
+  const hasRefillInCart = cartItems.some(({ product }) => product.is_refill);
+  const hasRefillGiftVoucherUse = voucherBreakdown.some(
+    ({ item, byGift }) => item.product.is_refill && byGift > 0,
+  );
+
   useEffect(() => {
     loadProducts();
     fetchFreshCustomerData();
@@ -934,6 +939,39 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
             style={{ width: '100%', padding: '12px', fontSize: '14px', border: `2px solid ${tokens.primary}`, borderRadius: '8px', outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box', background: tokens.inputBg, color: tokens.text }}
           />
         </div>
+
+        {/* Refill: empty Vividaqua gallon reminder (stronger when free gift vouchers apply to refill) */}
+        {cartItems.length > 0 && hasRefillInCart && (
+          <div
+            style={{
+              background: hasRefillGiftVoucherUse
+                ? isDark
+                  ? 'rgba(255,193,7,0.14)'
+                  : '#fff8e1'
+                : isDark
+                  ? 'rgba(33,150,243,0.12)'
+                  : '#e3f2fd',
+              border: `2px solid ${hasRefillGiftVoucherUse ? theme.warning : theme.info}`,
+              borderRadius: '16px',
+              padding: '16px 18px',
+              fontSize: '13px',
+              color: tokens.text,
+              lineHeight: 1.55,
+            }}
+          >
+            <p style={{ margin: '0 0 8px 0', fontWeight: '700', fontSize: '14px' }}>
+              {hasRefillGiftVoucherUse ? '⚠️' : '💧'}{' '}
+              {hasRefillGiftVoucherUse
+                ? t('placeOrder.refillBarrelNoticeGiftTitle')
+                : t('placeOrder.refillBarrelNoticeTitle')}
+            </p>
+            <p style={{ margin: 0 }}>
+              {hasRefillGiftVoucherUse
+                ? t('placeOrder.refillBarrelNoticeGiftBody')
+                : t('placeOrder.refillBarrelNoticeBody')}
+            </p>
+          </div>
+        )}
 
         {/* Order Summary */}
         {cartItems.length > 0 && (

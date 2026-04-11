@@ -1,5 +1,5 @@
 // src/Pages/BuyVouchers.tsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import BottomNavV0 from '../Components/BottomNavV0';
@@ -40,6 +40,30 @@ interface Product {
   is_refill: boolean;
   description: string | null;
   image_url: string | null;
+}
+
+interface VoucherPurchaseRow {
+  id: string;
+  product_id: string;
+  product_name: string | null;
+  qty: number;
+  amount_paid: number;
+  status: string;
+  created_at: string;
+  expires_at?: string | null;
+  days_to_expiry?: number | null;
+  expiry_warning?: boolean;
+}
+
+interface VoucherUsageRow {
+  id: string;
+  order_id: string;
+  product_id: string;
+  product_name: string | null;
+  voucher_qty: number;
+  pricing_basis: string;
+  created_at: string;
+  delivery_date: string | null;
 }
 
 // ─── Expandable info panel (image + description) ────────────────────────────
@@ -103,7 +127,7 @@ function InfoButton({ expanded, onClick }: { expanded: boolean; onClick: () => v
 }
 
 export default function BuyVouchers({ customer }: BuyVouchersProps) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const { tokens } = useColorTokens();
   const navigate = useNavigate();
   const [packages, setPackages] = useState<VoucherPackage[]>([]);
@@ -114,8 +138,37 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
   const [paying, setPaying] = useState<string | null>(null);
   const [customQtys, setCustomQtys] = useState<Map<string, number>>(new Map());
   const [expandedPanels, setExpandedPanels] = useState<Set<string>>(new Set());
+  const [purchaseHistory, setPurchaseHistory] = useState<VoucherPurchaseRow[]>([]);
+  const [usageHistory, setUsageHistory] = useState<VoucherUsageRow[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState(false);
 
   useEffect(() => { loadData(); }, []);
+
+  const fetchHistory = useCallback(async () => {
+    if (customer.customer_type !== 'pre_pay') return;
+    const token = sessionStorage.getItem('auth_token');
+    if (!token) return;
+    setHistoryLoading(true);
+    setHistoryError(false);
+    try {
+      const { data, error } = await supabase.functions.invoke('get-voucher-activity', {
+        body: { token },
+      });
+      if (error) throw new Error(error.message);
+      if (!data?.success) throw new Error(data?.error || 'Failed');
+      setPurchaseHistory(data.purchases ?? []);
+      setUsageHistory(data.usage ?? []);
+    } catch {
+      setHistoryError(true);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [customer.customer_type, customer.id]);
+
+  useEffect(() => {
+    fetchHistory();
+  }, [fetchHistory]);
 
   const loadData = async () => {
     try {
@@ -225,6 +278,7 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
           });
           toast.success(t('vouchers.paymentSuccess'));
           loadData();
+          fetchHistory();
         },
         onPending: () => { toast(t('vouchers.paymentPending'), { duration: 6000 }); },
         onError: (result: any) => { toast.error(t('vouchers.paymentFailed') + (result?.status_message || 'Unknown error')); },
@@ -265,6 +319,7 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
           });
           toast.success(t('vouchers.paymentSuccess'));
           loadData();
+          fetchHistory();
         },
         onPending: () => { toast(t('vouchers.paymentPending'), { duration: 6000 }); },
         onError: (result: any) => { toast.error(t('vouchers.paymentFailed') + (result?.status_message || 'Unknown error')); },
@@ -281,6 +336,32 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
   const multiPackages = packages.filter(p => p.qty > 1);
   const productIdsWithPackages = new Set(packages.map(p => p.product_id));
   const otherProducts = products.filter(p => !productIdsWithPackages.has(p.id));
+
+  const locale = language === 'id' ? 'id-ID' : 'en-GB';
+  const fmtWhen = (iso: string) => {
+    try {
+      return new Date(iso).toLocaleString(locale, { dateStyle: 'short', timeStyle: 'short' });
+    } catch {
+      return iso;
+    }
+  };
+  const fmtDay = (d: string | null | undefined) => {
+    if (!d) return '';
+    try {
+      return new Date(d).toLocaleDateString(locale);
+    } catch {
+      return d;
+    }
+  };
+  const purchaseStatusLabel = (status: string) => {
+    const s = status.toLowerCase();
+    if (s === 'pending') return t('vouchers.statusPending');
+    if (s === 'confirmed') return t('vouchers.statusConfirmed');
+    if (s === 'rejected') return t('vouchers.statusRejected');
+    if (s === 'invalid') return t('vouchers.statusInvalid');
+    return status;
+  };
+  const expiringSoonCount = purchaseHistory.filter(row => row.expiry_warning === true).length;
 
   return (
     <div style={{ minHeight: '100vh', background: tokens.pageBg, padding: '14px', paddingBottom: '88px' }}>
@@ -460,6 +541,116 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
               </div>
             )}
           </>
+        )}
+
+        {customer.customer_type === 'pre_pay' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {expiringSoonCount > 0 && (
+              <div style={{ background: '#fff7e6', border: '1px solid #ffd591', borderRadius: 16, padding: '12px 14px' }}>
+                <p style={{ margin: 0, fontSize: 13, color: '#ad6800', fontWeight: 600 }}>
+                  ⚠️ {t('vouchers.expiryWarningPrefix')} {expiringSoonCount} {t('vouchers.expiryWarningSuffix')}
+                </p>
+              </div>
+            )}
+            <div style={{ background: tokens.card, borderRadius: 16, padding: '14px 16px', border: `1px solid ${tokens.cardBorder}`, boxShadow: tokens.cardShadow, backdropFilter: tokens.cardBlur, WebkitBackdropFilter: tokens.cardBlur }}>
+              <p style={{ margin: '0 0 10px', fontSize: 12, fontWeight: 700, color: tokens.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                {t('vouchers.historyPurchaseTitle')}
+              </p>
+              {historyLoading ? (
+                <p style={{ margin: 0, fontSize: 13, color: tokens.muted }}>{t('common.loading')}</p>
+              ) : historyError ? (
+                <p style={{ margin: 0, fontSize: 13, color: tokens.muted }}>{t('common.error')}</p>
+              ) : purchaseHistory.length === 0 ? (
+                <p style={{ margin: 0, fontSize: 13, color: tokens.muted }}>{t('vouchers.historyPurchaseEmpty')}</p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {purchaseHistory.map((row, idx) => (
+                    <div
+                      key={row.id}
+                      style={{
+                        paddingBottom: idx < purchaseHistory.length - 1 ? 10 : 0,
+                        borderBottom: idx < purchaseHistory.length - 1 ? `1px solid ${tokens.cardBorder}` : 'none',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                        <div>
+                          <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: tokens.text }}>{row.product_name ?? '—'}</p>
+                          <p style={{ margin: '4px 0 0', fontSize: 12, color: tokens.muted }}>{fmtWhen(row.created_at)}</p>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: tokens.primary }}>{formatCurrency(row.amount_paid)}</p>
+                          <p style={{ margin: '4px 0 0', fontSize: 11, color: tokens.muted }}>{row.qty} {t('vouchers.tickets')}</p>
+                        </div>
+                      </div>
+                      <p style={{ margin: '8px 0 0', fontSize: 12, color: tokens.muted }}>{purchaseStatusLabel(row.status)}</p>
+                      {row.expires_at && (
+                        <p style={{ margin: '6px 0 0', fontSize: 12, color: row.status === 'invalid' ? '#cf1322' : (row.expiry_warning ? '#ad6800' : tokens.muted) }}>
+                          {row.status === 'invalid'
+                            ? `${t('vouchers.expiredOn')} ${fmtWhen(row.expires_at)}`
+                            : `${t('vouchers.expiresOn')} ${fmtWhen(row.expires_at)}`}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p style={{ margin: '12px 0 0', fontSize: 11, lineHeight: 1.5, color: tokens.muted }}>{t('vouchers.historyNote')}</p>
+            </div>
+
+            <div style={{ background: tokens.card, borderRadius: 16, padding: '14px 16px', border: `1px solid ${tokens.cardBorder}`, boxShadow: tokens.cardShadow, backdropFilter: tokens.cardBlur, WebkitBackdropFilter: tokens.cardBlur }}>
+              <p style={{ margin: '0 0 10px', fontSize: 12, fontWeight: 700, color: tokens.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                {t('vouchers.historyUsageTitle')}
+              </p>
+              {historyLoading ? (
+                <p style={{ margin: 0, fontSize: 13, color: tokens.muted }}>{t('common.loading')}</p>
+              ) : historyError ? (
+                <p style={{ margin: 0, fontSize: 13, color: tokens.muted }}>{t('common.error')}</p>
+              ) : usageHistory.length === 0 ? (
+                <p style={{ margin: 0, fontSize: 13, color: tokens.muted }}>{t('vouchers.historyUsageEmpty')}</p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {usageHistory.map((row, idx) => {
+                    const isReturn = row.voucher_qty < 0;
+                    const n = Math.abs(row.voucher_qty);
+                    const isGift = row.pricing_basis === 'gift_zero';
+                    return (
+                      <div
+                        key={row.id}
+                        style={{
+                          paddingBottom: idx < usageHistory.length - 1 ? 10 : 0,
+                          borderBottom: idx < usageHistory.length - 1 ? `1px solid ${tokens.cardBorder}` : 'none',
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                          <div>
+                            <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: tokens.text }}>{row.product_name ?? '—'}</p>
+                            <p style={{ margin: '4px 0 0', fontSize: 12, color: tokens.muted }}>{fmtWhen(row.created_at)}</p>
+                          </div>
+                          <div style={{ textAlign: 'right' }}>
+                            <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: isReturn ? tokens.muted : tokens.primary }}>
+                              {isReturn ? '−' : ''}{n} {t('vouchers.tickets')}
+                            </p>
+                            <p style={{ margin: '4px 0 0', fontSize: 11, color: tokens.muted }}>
+                              {isReturn ? t('vouchers.usageReturned') : t('vouchers.usageUsed')}
+                              {isGift && !isReturn ? ` · ${t('vouchers.giftVoucher')}` : ''}
+                            </p>
+                          </div>
+                        </div>
+                        {isReturn && (
+                          <p style={{ margin: '6px 0 0', fontSize: 11, color: tokens.muted }}>{t('vouchers.usageReturnedHint')}</p>
+                        )}
+                        {row.delivery_date && (
+                          <p style={{ margin: '6px 0 0', fontSize: 12, color: tokens.muted }}>
+                            {t('vouchers.delivery')}: {fmtDay(row.delivery_date)}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
         )}
 
         <div style={{ background: tokens.primaryBg, borderRadius: '12px', padding: '14px 16px', fontSize: '12px', color: tokens.muted }}>

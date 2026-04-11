@@ -169,6 +169,26 @@ const translations: Record<Language, Record<string, string>> = {
     'vouchers.paymentError': 'Payment error: ',
     'vouchers.backToHome': '← Back to Home',
     'vouchers.loadingPayment': 'Loading...',
+    'vouchers.historyPurchaseTitle': 'Purchase history',
+    'vouchers.historyUsageTitle': 'Voucher usage',
+    'vouchers.historyPurchaseEmpty': 'No purchase records yet.',
+    'vouchers.historyUsageEmpty': 'No usage yet.',
+    'vouchers.historyNote':
+      'Shows online (Midtrans) purchases only. Welcome credits or manual adjustments are not listed.',
+    'vouchers.statusPending': 'Payment pending',
+    'vouchers.statusConfirmed': 'Completed',
+    'vouchers.statusRejected': 'Rejected',
+    'vouchers.statusInvalid': 'Invalid (expired)',
+    'vouchers.expiresOn': 'Expires on:',
+    'vouchers.expiredOn': 'Expired on:',
+    'vouchers.expiryWarningPrefix': 'Reminder:',
+    'vouchers.expiryWarningSuffix': 'voucher purchase(s) will expire within 1 month.',
+    'vouchers.usageUsed': 'Used',
+    'vouchers.usageReturned': 'Returned',
+    'vouchers.usageReturnedHint': 'Order cancelled — vouchers restored.',
+    'vouchers.tickets': 'tickets',
+    'vouchers.giftVoucher': 'Welcome / gift',
+    'vouchers.delivery': 'Delivery',
 
     // Account
     'account.title': 'My Account',
@@ -264,6 +284,12 @@ const translations: Record<Language, Record<string, string>> = {
     'placeOrder.paymentFailedPrefix': 'Payment failed: ',
     'placeOrder.failedSubmit': 'Failed to submit: ',
     'placeOrder.sessionExpired': 'Session expired, please login again',
+    'placeOrder.refillBarrelNoticeTitle': 'Refill: empty Vividaqua gallon required',
+    'placeOrder.refillBarrelNoticeBody':
+      'For each refill delivery, please have a Vividaqua empty 19L gallon ready for exchange. Without an empty Vividaqua gallon, our staff may not be able to complete delivery.',
+    'placeOrder.refillBarrelNoticeGiftTitle': 'Using a free voucher for refill?',
+    'placeOrder.refillBarrelNoticeGiftBody':
+      'Free welcome vouchers cover the refill service only — they do not include a bottle. You must still provide a Vividaqua empty gallon for exchange. Without it, delivery may not be completed.',
 
     'pwaInstall.title': 'Add VividAqua to your home screen?',
     'pwaInstall.body':
@@ -531,6 +557,26 @@ const translations: Record<Language, Record<string, string>> = {
     'vouchers.paymentError': 'Error pembayaran: ',
     'vouchers.backToHome': '← Kembali ke Beranda',
     'vouchers.loadingPayment': 'Memuat...',
+    'vouchers.historyPurchaseTitle': 'Riwayat pembelian',
+    'vouchers.historyUsageTitle': 'Penggunaan voucher',
+    'vouchers.historyPurchaseEmpty': 'Belum ada riwayat pembelian.',
+    'vouchers.historyUsageEmpty': 'Belum ada penggunaan.',
+    'vouchers.historyNote':
+      'Hanya menampilkan pembelian online (Midtrans). Kredit sambutan atau penyesuaian manual tidak tercantum.',
+    'vouchers.statusPending': 'Menunggu pembayaran',
+    'vouchers.statusConfirmed': 'Selesai',
+    'vouchers.statusRejected': 'Ditolak',
+    'vouchers.statusInvalid': 'Invalid (kedaluwarsa)',
+    'vouchers.expiresOn': 'Berlaku sampai:',
+    'vouchers.expiredOn': 'Kedaluwarsa pada:',
+    'vouchers.expiryWarningPrefix': 'Pengingat:',
+    'vouchers.expiryWarningSuffix': 'pembelian voucher akan kedaluwarsa dalam waktu kurang dari 1 bulan.',
+    'vouchers.usageUsed': 'Terpakai',
+    'vouchers.usageReturned': 'Dikembalikan',
+    'vouchers.usageReturnedHint': 'Pesanan dibatalkan — voucher dikembalikan.',
+    'vouchers.tickets': 'lembar',
+    'vouchers.giftVoucher': 'Sambutan / hadiah',
+    'vouchers.delivery': 'Pengiriman',
 
     // Account
     'account.title': 'Akun Saya',
@@ -626,6 +672,12 @@ const translations: Record<Language, Record<string, string>> = {
     'placeOrder.paymentFailedPrefix': 'Pembayaran gagal: ',
     'placeOrder.failedSubmit': 'Gagal mengirim: ',
     'placeOrder.sessionExpired': 'Sesi berakhir, silakan login kembali',
+    'placeOrder.refillBarrelNoticeTitle': 'Isi ulang: wajib ada galon Vividaqua kosong',
+    'placeOrder.refillBarrelNoticeBody':
+      'Untuk setiap pengiriman isi ulang, sediakan galon kosong Vividaqua 19L untuk ditukar. Tanpa galon kosong Vividaqua, tim kami mungkin tidak dapat menyelesaikan pengiriman.',
+    'placeOrder.refillBarrelNoticeGiftTitle': 'Memakai voucher gratis untuk isi ulang?',
+    'placeOrder.refillBarrelNoticeGiftBody':
+      'Voucher selamat datang gratis hanya menanggung layanan isi ulang — tidak termasuk botol/galon. Anda tetap harus menyediakan galon kosong Vividaqua untuk ditukar. Tanpa itu, pengiriman mungkin tidak dapat dilakukan.',
 
     'pwaInstall.title': 'Tambahkan VividAqua ke layar utama?',
     'pwaInstall.body':

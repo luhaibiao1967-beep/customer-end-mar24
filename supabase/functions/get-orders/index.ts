@@ -6,13 +6,22 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+/** Matches My Account badge: orders still in progress */
+const ACTIVE_ORDER_STATUSES = ['pending', 'processing', 'confirmed', 'on_delivery']
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    const { token, order_id } = await req.json()
+    const {
+      token,
+      order_id,
+      active_order_count_only,
+      limit,
+      include_product_vouchers,
+    } = await req.json()
     if (!token) throw new Error('Token is required')
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
@@ -29,6 +38,24 @@ serve(async (req) => {
     if (customerError || !customer) throw new Error('Invalid or expired token')
 
     const isPrePay = customer.customer_type === 'pre_pay'
+
+    // Lightweight path: badge count only (no order rows)
+    if (active_order_count_only === true) {
+      let countQuery = supabase
+        .from('orders')
+        .select('*', { count: 'exact', head: true })
+        .eq('customer_id', customer.id)
+        .in('status', ACTIVE_ORDER_STATUSES)
+      if (isPrePay) {
+        countQuery = countQuery.eq('payment_status', 'paid')
+      }
+      const { count, error: countError } = await countQuery
+      if (countError) throw new Error('Failed to count orders: ' + countError.message)
+      return new Response(
+        JSON.stringify({ success: true, active_order_count: count ?? 0 }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 },
+      )
+    }
 
     // Fetch single order or all orders
     if (order_id) {
@@ -48,7 +75,7 @@ serve(async (req) => {
 
       return new Response(
         JSON.stringify({ success: true, order }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 },
       )
     }
 
@@ -63,22 +90,44 @@ serve(async (req) => {
       listQuery = listQuery.eq('payment_status', 'paid')
     }
 
-    const { data: orders, error: ordersError } = await listQuery.order('created_at', { ascending: false })
+    listQuery = listQuery.order('created_at', { ascending: false })
+
+    /** Hard cap: keep list payloads small for mobile */
+    const ORDER_LIST_MAX = 80
+    if (typeof limit === 'number' && limit > 0) {
+      listQuery = listQuery.limit(Math.min(Math.floor(limit), ORDER_LIST_MAX))
+    }
+
+    const { data: orders, error: ordersError } = await listQuery
 
     if (ordersError) throw new Error('Failed to fetch orders: ' + ordersError.message)
+
+    let product_vouchers: unknown[] | undefined
+    if (include_product_vouchers === true && isPrePay) {
+      const { data: pv, error: pvError } = await supabase
+        .from('customer_product_vouchers')
+        .select('product_id, balance, products(name)')
+        .eq('customer_id', customer.id)
+      if (pvError) {
+        console.error('get-orders: product_vouchers', pvError.message)
+      } else {
+        product_vouchers = pv ?? []
+      }
+    }
 
     return new Response(
       JSON.stringify({
         success: true,
         orders: orders || [],
         initial_borrowed_gallons: customer.initial_borrowed_gallons || 0,
+        ...(product_vouchers !== undefined ? { product_vouchers } : {}),
       }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 },
     )
   } catch (error: any) {
     return new Response(
       JSON.stringify({ success: false, error: error.message }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 },
     )
   }
 })
