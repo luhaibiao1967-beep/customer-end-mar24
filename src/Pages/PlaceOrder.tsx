@@ -73,6 +73,67 @@ const isCustomerHiddenProduct = (nameLower: string): boolean => {
   return false;
 };
 
+function weekdayFromYmd(ymd: string): number {
+  return new Date(`${ymd}T12:00:00+07:00`).getUTCDay();
+}
+
+function addDaysYmd(ymd: string, days: number): string {
+  const [y, m, d] = ymd.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + days, 12, 0, 0));
+  return dt.toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' });
+}
+
+function jakartaTodayYmd(now = new Date()): string {
+  return now.toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' });
+}
+
+function monthlyCutoffYmd(ymd: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return ymd;
+  const [y, m] = ymd.split('-');
+  return `${y}-${m}-20`;
+}
+
+function weeklyCutoffYmd(ymd: string): string {
+  const day = weekdayFromYmd(ymd); // 0=Sun..6=Sat
+  const iso = day === 0 ? 7 : day; // 1=Mon..7=Sun
+  return addDaysYmd(ymd, 7 - iso);
+}
+
+function quarterlyCutoffYmd(ymd: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return ymd;
+  const [ys, ms] = ymd.split('-');
+  let y = Number(ys);
+  let m = Number(ms) + 1;
+  if (m > 12) {
+    m = 1;
+    y += 1;
+  }
+  return `${y}-${String(m).padStart(2, '0')}-20`;
+}
+
+function graceUntilByTerm(termRaw: unknown, orderYmd: string): string {
+  const term = typeof termRaw === 'string' ? termRaw.toLowerCase() : '';
+  if (term === 'daily') return orderYmd;
+  if (term === 'weekly') return weeklyCutoffYmd(orderYmd);
+  if (term === 'monthly') return monthlyCutoffYmd(orderYmd);
+  if (term === 'quarterly') return quarterlyCutoffYmd(orderYmd);
+  return orderYmd;
+}
+
+function shouldBlockOutstanding(
+  termRaw: unknown,
+  orders: { payment_status?: string; status?: string; delivery_date?: string }[],
+): boolean {
+  const todayYmd = jakartaTodayYmd();
+  return orders.some((o) => {
+    if (o.payment_status !== 'unpaid') return false;
+    if (o.status !== 'delivered') return false;
+    if (!o.delivery_date) return false;
+    const grace = graceUntilByTerm(termRaw, o.delivery_date);
+    return todayYmd > grace;
+  });
+}
+
 export default function PlaceOrder({ customer }: PlaceOrderProps) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -99,7 +160,7 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
   // Fresh customer data
   const [freshDiscount, setFreshDiscount] = useState<number>(customer.discount || 0);
 
-  // Unpaid orders block (daily later_pay)
+  // Unpaid orders block (later_pay by payment_term rules)
   const [blockedByUnpaid, setBlockedByUnpaid] = useState(false);
   const [showUnpaidModal, setShowUnpaidModal] = useState(false);
 
@@ -261,16 +322,13 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
         .select('payment_term')
         .eq('id', customer.id)
         .single();
-      if (cust?.payment_term !== 'daily') return;
 
       const token = sessionStorage.getItem('auth_token');
       if (!token) return;
 
       const { data } = await supabase.functions.invoke('get-orders', { body: { token } });
       if (data?.success) {
-        const hasUnpaid = (data.orders || []).some(
-          (o: any) => o.payment_status === 'unpaid' && o.status === 'delivered'
-        );
+        const hasUnpaid = shouldBlockOutstanding(cust?.payment_term, data.orders || []);
         if (hasUnpaid) setBlockedByUnpaid(true);
       }
     } catch {
@@ -517,7 +575,7 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
 
       if (error) throw new Error(error.message);
       if (!data?.success) {
-        if (data?.error === 'UNPAID_ORDERS') {
+        if (data?.error === 'UNPAID_ORDERS' || data?.error === 'OUTSTANDING_PAYMENT_BLOCKED') {
           setError('UNPAID_ORDERS');
           return;
         }

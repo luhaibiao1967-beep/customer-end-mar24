@@ -43,6 +43,63 @@ function addDaysYmd(ymd: string, days: number): string {
   return dt.toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' })
 }
 
+function jakartaTodayYmd(now = new Date()): string {
+  return now.toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' })
+}
+
+function parseYmdParts(ymd: string): { y: number; m: number; d: number } | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return null
+  const [y, m, d] = ymd.split('-').map(Number)
+  return { y, m, d }
+}
+
+function endOfWeekYmd(ymd: string): string {
+  const day = jakartaWeekdayFromYmd(ymd) // 0=Sun..6=Sat
+  const iso = day === 0 ? 7 : day // 1=Mon..7=Sun
+  return addDaysYmd(ymd, 7 - iso) // up to Sunday
+}
+
+function monthlyCutoffYmd(ymd: string): string {
+  const p = parseYmdParts(ymd)
+  if (!p) return ymd
+  return `${p.y}-${String(p.m).padStart(2, '0')}-20`
+}
+
+function nextMonth20Ymd(ymd: string): string {
+  const p = parseYmdParts(ymd)
+  if (!p) return ymd
+  let y = p.y
+  let m = p.m + 1
+  if (m > 12) {
+    m = 1
+    y += 1
+  }
+  return `${y}-${String(m).padStart(2, '0')}-20`
+}
+
+function graceUntilYmdByTerm(paymentTermRaw: unknown, orderYmd: string): string {
+  const term = typeof paymentTermRaw === 'string' ? paymentTermRaw.toLowerCase() : ''
+  if (term === 'daily') return orderYmd
+  if (term === 'weekly') return endOfWeekYmd(orderYmd)
+  if (term === 'monthly') return monthlyCutoffYmd(orderYmd)
+  if (term === 'quarterly') return nextMonth20Ymd(orderYmd)
+  // Default to strictest behavior for unknown term
+  return orderYmd
+}
+
+function hasOutstandingBlock(
+  paymentTermRaw: unknown,
+  unpaidDeliveredOrders: { delivery_date: string | null }[],
+  todayYmd: string,
+): boolean {
+  for (const o of unpaidDeliveredOrders) {
+    if (!o.delivery_date) continue
+    const grace = graceUntilYmdByTerm(paymentTermRaw, o.delivery_date)
+    if (todayYmd > grace) return true
+  }
+  return false
+}
+
 function computeMinDeliveryYmd(now: Date, cutoffHour: number, closed: number[]): string {
   const ymd = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' })
   const hour = parseInt(
@@ -261,18 +318,19 @@ serve(async (req) => {
       }
     }
 
-    // For later_pay daily: block new orders if there are unpaid delivered orders
-    if (!isPrePay && customer.payment_term === 'daily' && !edit_order_id) {
-      const { data: unpaidOrders } = await supabase
+    // For later_pay: block by payment_term overdue rules when unpaid delivered orders pass their grace window.
+    if (!isPrePay && !edit_order_id) {
+      const { data: unpaidDeliveredOrders } = await supabase
         .from('orders')
-        .select('id')
+        .select('delivery_date')
         .eq('customer_id', customer.id)
         .eq('payment_status', 'unpaid')
         .eq('status', 'delivered')
-        .limit(1)
+        .limit(200)
 
-      if (unpaidOrders && unpaidOrders.length > 0) {
-        throw new Error('UNPAID_ORDERS')
+      const todayYmd = jakartaTodayYmd()
+      if (hasOutstandingBlock(customer.payment_term, unpaidDeliveredOrders || [], todayYmd)) {
+        throw new Error('OUTSTANDING_PAYMENT_BLOCKED')
       }
     }
 
