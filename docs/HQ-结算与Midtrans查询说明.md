@@ -96,6 +96,29 @@ WHERE settlement_created_at >= $1 AND settlement_created_at < $2
 GROUP BY order_branch;
 ```
 
+### 3.5 按 Midtrans **成功结算日**对账（含 `scheduled` / 历史 `delivery_date` 订单）
+
+当你要和 Midtrans Dashboard 的 `Settlement` 明细按天对齐时，不应按 `orders.delivery_date` 过滤。  
+请改按 `settled_at`（JKT）过滤，并使用视图 `hq_vw_order_payment_settled_daily`：
+
+```sql
+SELECT
+  settled_date_jkt AS date,
+  customer_name,
+  voucher_qty,
+  voucher_rp,
+  qris_idr,
+  order_total_idr,
+  midtrans_order_id
+FROM hq_vw_order_payment_settled_daily
+WHERE settled_date_jkt = DATE '2026-04-17'
+ORDER BY settled_at DESC;
+```
+
+> 这样会包含：  
+> - 当天结算但订单仍 `scheduled` 的 `pop_*`；  
+> - 当天结算、但订单 `delivery_date` 不在当天的 `op_*`。
+
 ---
 
 ## 4. HQ 应用接入建议
