@@ -140,6 +140,15 @@ interface ProductDeduction {
   quantity: number
 }
 
+interface VoucherSplitPlan {
+  product_id: string
+  quantity: number
+  from_gift: number
+  from_paid: number
+  new_balance: number
+  new_gift_balance: number
+}
+
 interface RequestBody {
   token: string
   order: {
@@ -247,6 +256,71 @@ async function insertVoucherUsageLines(
   }
 }
 
+async function buildVoucherSplitPlans(
+  supabase: SupabaseClient,
+  customerId: string,
+  product_deductions: ProductDeduction[] | undefined,
+): Promise<VoucherSplitPlan[]> {
+  const plans: VoucherSplitPlan[] = []
+  for (const deduction of product_deductions || []) {
+    if (deduction.quantity <= 0) continue
+    const row = await getProductVoucherRow(supabase, customerId, deduction.product_id)
+    if (row.balance < deduction.quantity) {
+      throw new Error(`Insufficient vouchers for product (need ${deduction.quantity}, have ${row.balance})`)
+    }
+    const { from_gift, from_paid } = splitGiftAndPaidVoucherQty(deduction.quantity, row.gift_balance)
+    plans.push({
+      product_id: deduction.product_id,
+      quantity: deduction.quantity,
+      from_gift,
+      from_paid,
+      new_balance: row.balance - deduction.quantity,
+      new_gift_balance: row.gift_balance - from_gift,
+    })
+  }
+  return plans
+}
+
+async function validateGiftRowsMatchRealtimeSplits(
+  supabase: SupabaseClient,
+  items: OrderItem[],
+  plans: VoucherSplitPlan[],
+): Promise<void> {
+  if (!plans.length) return
+  const productIds = plans.map((p) => p.product_id)
+  const { data: products } = await supabase
+    .from('products')
+    .select('id, name')
+    .in('id', productIds)
+  const byId = new Map<string, string>()
+  for (const p of products || []) byId.set(p.id, (p.name || '').trim().toLowerCase())
+
+  const observedGiftByProduct = new Map<string, number>()
+  for (const p of plans) observedGiftByProduct.set(p.product_id, 0)
+  for (const item of items) {
+    if ((item.quantity ?? 0) <= 0) continue
+    if ((item.unit_price ?? 0) !== 0) continue
+    const key = String(item.product || '').trim().toLowerCase()
+    if (!key) continue
+    for (const p of plans) {
+      const pname = byId.get(p.product_id) || ''
+      if (key === p.product_id.toLowerCase() || (pname && key === pname)) {
+        observedGiftByProduct.set(
+          p.product_id,
+          (observedGiftByProduct.get(p.product_id) ?? 0) + item.quantity,
+        )
+      }
+    }
+  }
+
+  for (const p of plans) {
+    const observed = observedGiftByProduct.get(p.product_id) ?? 0
+    if (observed !== p.from_gift) {
+      throw new Error('VOUCHER_GIFT_SPLIT_MISMATCH')
+    }
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -291,18 +365,8 @@ serve(async (req) => {
       throw new Error('PRE_PAY_REQUIRES_PAYMENT')
     }
 
-    // Validate per-product voucher balances (all customer types)
-    if (product_deductions && product_deductions.length > 0) {
-      for (const deduction of product_deductions) {
-        if (deduction.quantity <= 0) continue
-
-        const row = await getProductVoucherRow(supabase, customer.id, deduction.product_id)
-        const available = row.balance
-        if (available < deduction.quantity) {
-          throw new Error(`Insufficient vouchers for product (need ${deduction.quantity}, have ${available})`)
-        }
-      }
-    }
+    const splitPlans = await buildVoucherSplitPlans(supabase, customer.id, product_deductions)
+    await validateGiftRowsMatchRealtimeSplits(supabase, items, splitPlans)
 
     // Credit limit check for later_pay
     if (!isPrePay && customer.credit_limit != null && !edit_order_id) {
@@ -388,42 +452,27 @@ serve(async (req) => {
       )
       if (itemsError) throw new Error('Failed to create order items: ' + itemsError.message)
 
-      // Deduct per-product vouchers (gift balance consumed first) + ledger
-      const splitRows: { product_id: string; from_gift: number; from_paid: number }[] = []
-      if (product_deductions && product_deductions.length > 0) {
-        for (const deduction of product_deductions) {
-          if (deduction.quantity <= 0) continue
-
-          const row = await getProductVoucherRow(supabase, customer.id, deduction.product_id)
-          if (row.balance < deduction.quantity) {
-            throw new Error(
-              `Insufficient vouchers for product (need ${deduction.quantity}, have ${row.balance})`,
-            )
-          }
-          const { from_gift, from_paid } = splitGiftAndPaidVoucherQty(deduction.quantity, row.gift_balance)
-          const newBalance = row.balance - deduction.quantity
-          const newGiftBalance = row.gift_balance - from_gift
-
+      if (splitPlans.length > 0) {
+        for (const plan of splitPlans) {
           const { error: deductErr } = await supabase
             .from('customer_product_vouchers')
             .upsert({
               customer_id: customer.id,
-              product_id: deduction.product_id,
-              balance: newBalance,
-              gift_balance: newGiftBalance,
+              product_id: plan.product_id,
+              balance: plan.new_balance,
+              gift_balance: plan.new_gift_balance,
             })
-
           if (deductErr) throw new Error('Failed to deduct vouchers: ' + deductErr.message)
-          splitRows.push({ product_id: deduction.product_id, from_gift, from_paid })
         }
-      }
-
-      if (splitRows.length > 0) {
         await insertVoucherUsageLines(supabase, {
           orderId: newOrder.id,
           customerId: customer.id,
           branch: customer.branch ?? '',
-          splits: splitRows,
+          splits: splitPlans.map((p) => ({
+            product_id: p.product_id,
+            from_gift: p.from_gift,
+            from_paid: p.from_paid,
+          })),
         })
       }
     }
