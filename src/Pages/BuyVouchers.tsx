@@ -142,11 +142,15 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
   const [usageHistory, setUsageHistory] = useState<VoucherUsageRow[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState(false);
+  const isPrePay = customer.customer_type === 'pre_pay';
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    if (!isPrePay) return;
+    loadData();
+  }, [isPrePay]);
 
   const fetchHistory = useCallback(async () => {
-    if (customer.customer_type !== 'pre_pay') return;
+    if (!isPrePay) return;
     const token = sessionStorage.getItem('auth_token');
     if (!token) return;
     setHistoryLoading(true);
@@ -164,7 +168,7 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
     } finally {
       setHistoryLoading(false);
     }
-  }, [customer.customer_type, customer.id]);
+  }, [isPrePay, customer.id]);
 
   useEffect(() => {
     fetchHistory();
@@ -194,7 +198,7 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
       const isDemo = customer.branch === 'Demo';
       const isTestProduct = (name: string) => name.toLowerCase().includes('test');
 
-      const pkgs = ((pkgRes.data as VoucherPackage[]) || []).filter(pkg =>
+      const pkgs = ((pkgRes.data as unknown as VoucherPackage[]) || []).filter(pkg =>
         isDemo || !isTestProduct(pkg.products?.name ?? '')
       );
       const prods = ((prodRes.data as Product[]) || []).filter(p =>
@@ -374,7 +378,20 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
       </div>
 
       <div style={{ maxWidth: '800px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-
+        {!isPrePay && (
+          <div style={{ background: tokens.card, borderRadius: '16px', padding: '24px', boxShadow: tokens.cardShadow, backdropFilter: tokens.cardBlur, WebkitBackdropFilter: tokens.cardBlur, border: `1px solid ${tokens.cardBorder}`, textAlign: 'center' }}>
+            <h2 style={{ margin: '0 0 10px', color: tokens.text, fontSize: '18px' }}>{t('vouchers.notAvailable')}</h2>
+            <p style={{ margin: '0 0 16px', color: tokens.muted, whiteSpace: 'pre-line' }}>{t('vouchers.postpaidMsg')}</p>
+            <button
+              onClick={() => navigate('/customer-home')}
+              style={{ padding: '10px 14px', background: tokens.primaryBg, color: tokens.primary, border: `1px solid ${tokens.primaryBorder}`, borderRadius: '10px', fontSize: '14px', fontWeight: 700, cursor: 'pointer' }}
+            >
+              {t('vouchers.backToHome')}
+            </button>
+          </div>
+        )}
+        {isPrePay && (
+          <>
         {/* Current voucher balances */}
         {currentVouchers.size > 0 && (
           <div style={{ background: tokens.card, borderRadius: '16px', padding: '12px 16px', boxShadow: tokens.cardShadow, backdropFilter: tokens.cardBlur, WebkitBackdropFilter: tokens.cardBlur, border: `1px solid ${tokens.cardBorder}` }}>
@@ -656,6 +673,8 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
         <div style={{ background: tokens.primaryBg, borderRadius: '12px', padding: '14px 16px', fontSize: '12px', color: tokens.muted }}>
           ℹ️ {t('vouchers.autoAdd')}
         </div>
+          </>
+        )}
       </div>
 
       <BottomNavV0 customer={customer} />

@@ -323,7 +323,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
         .from('customer_product_vouchers')
         .select('product_id, balance, products(name)')
         .eq('customer_id', customer.id);
-      setProductVouchers((data as ProductVoucherRow[]) || []);
+      setProductVouchers((data as unknown as ProductVoucherRow[]) || []);
     } catch { }
   };
 

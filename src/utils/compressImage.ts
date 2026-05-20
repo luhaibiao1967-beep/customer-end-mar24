@@ -1,4 +1,6 @@
-export const compressImage = async (file, maxSizeKB = 300) => {
+export type CompressedImageResult = { file: File; preview: string };
+
+export const compressImage = async (file: File, maxSizeKB = 300): Promise<CompressedImageResult> => {
   return new Promise((resolve, reject) => {
     // Validate file type
     if (!file.type.startsWith('image/')) {
@@ -12,7 +14,12 @@ export const compressImage = async (file, maxSizeKB = 300) => {
       reject(new Error('Failed to read the image file.'));
     };
 
-    reader.onload = (event) => {
+    reader.onload = (event: ProgressEvent<FileReader>) => {
+      const result = event.target?.result;
+      if (typeof result !== 'string') {
+        reject(new Error('Failed to read file as data URL.'));
+        return;
+      }
       const img = new Image();
 
       img.onerror = () => {
@@ -65,19 +72,20 @@ export const compressImage = async (file, maxSizeKB = 300) => {
           });
 
           resolve({ file: compressedFile, preview: compressedDataUrl });
-        } catch (err) {
-          reject(new Error('Compression failed: ' + err.message));
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          reject(new Error('Compression failed: ' + msg));
         }
       };
 
-      img.src = event.target.result;
+      img.src = result;
     };
 
     reader.readAsDataURL(file);
   });
 };
 
-const dataURLtoBlob = (dataURL) => {
+const dataURLtoBlob = (dataURL: string) => {
   const parts = dataURL.split(',');
   const mime = parts[0].match(/:(.*?);/)[1];
   const binaryData = atob(parts[1]);
