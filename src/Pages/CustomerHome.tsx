@@ -13,8 +13,17 @@ import { Ticket, Droplets, ChevronRight } from 'lucide-react';
 import { theme } from '../theme';
 import { useColorTokens } from '../contexts/ColorTokensContext';
 import { markLogoutForPwaPrompt } from '../utils/pwaInstall';
+import { filterAndSortOrderableProducts } from '../utils/orderableProducts';
 
 const APP_URL = 'https://vividaqua.online/';
+
+/** Bump when replacing `/public` pack JPGs so browsers/CDNs fetch new bytes (same filename). */
+const VOUCHER_PACK_IMAGE_V = '2';
+
+function publicPackAssetUrl(base: string, filename: string): string {
+  const root = base.endsWith('/') ? base : `${base}/`;
+  return `${root}${encodeURIComponent(filename)}?v=${VOUCHER_PACK_IMAGE_V}`;
+}
 
 const loadImage = (src: string): Promise<HTMLImageElement> =>
   new Promise((resolve, reject) => {
@@ -84,6 +93,87 @@ interface VoucherSlide {
   packImage: string;
 }
 
+interface OrderGalleryProduct {
+  id: string;
+  name: string;
+  price: number;
+  unit: string;
+  is_refill: boolean;
+  image_url: string | null;
+}
+
+function weekdayFromYmd(ymd: string): number {
+  return new Date(`${ymd}T12:00:00+07:00`).getUTCDay();
+}
+
+function addDaysYmd(ymd: string, days: number): string {
+  const [y, m, d] = ymd.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + days, 12, 0, 0));
+  return dt.toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' });
+}
+
+function jakartaTodayYmd(now = new Date()): string {
+  return now.toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' });
+}
+
+function graceUntilByTerm(termRaw: unknown, orderYmd: string): string {
+  const term = typeof termRaw === 'string' ? termRaw.toLowerCase() : '';
+  if (term === 'daily') return orderYmd;
+  if (term === 'weekly') {
+    const day = weekdayFromYmd(orderYmd);
+    const iso = day === 0 ? 7 : day;
+    return addDaysYmd(orderYmd, 14 - iso);
+  }
+  if (term === 'monthly') {
+    const [y, m] = orderYmd.split('-');
+    return `${y}-${m}-20`;
+  }
+  if (term === 'quarterly') {
+    const [ys, ms] = orderYmd.split('-');
+    const year = Number(ys);
+    const month = Number(ms);
+    const quarterStartMonth = Math.floor((month - 1) / 3) * 3 + 1;
+    let targetYear = year;
+    let targetMonth = quarterStartMonth + 4;
+    if (targetMonth > 12) {
+      targetMonth -= 12;
+      targetYear += 1;
+    }
+    const firstOfFollowing = new Date(Date.UTC(targetYear, targetMonth, 1, 12, 0, 0));
+    firstOfFollowing.setUTCDate(firstOfFollowing.getUTCDate() - 1);
+    return firstOfFollowing.toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' });
+  }
+  return orderYmd;
+}
+
+function getOutstandingBlockCode(
+  termRaw: unknown,
+  orders: { payment_status?: string; status?: string; delivery_date?: string }[],
+): string | null {
+  const term = typeof termRaw === 'string' ? termRaw.toLowerCase() : '';
+  const todayYmd = jakartaTodayYmd();
+  const blocked = orders.some((o) => {
+    if (o.payment_status !== 'unpaid') return false;
+    if (o.status !== 'delivered') return false;
+    if (!o.delivery_date) return false;
+    return todayYmd > graceUntilByTerm(termRaw, o.delivery_date);
+  });
+  if (!blocked) return null;
+  if (term === 'daily') return 'OUTSTANDING_PAYMENT_BLOCKED_DAILY';
+  if (term === 'weekly') return 'OUTSTANDING_PAYMENT_BLOCKED_WEEKLY';
+  if (term === 'monthly') return 'OUTSTANDING_PAYMENT_BLOCKED_MONTHLY';
+  if (term === 'quarterly') return 'OUTSTANDING_PAYMENT_BLOCKED_QUARTERLY';
+  return 'OUTSTANDING_PAYMENT_BLOCKED';
+}
+
+function outstandingMessageKey(errorCode: string | null): string {
+  if (errorCode === 'OUTSTANDING_PAYMENT_BLOCKED_DAILY') return 'placeOrder.outstandingDescDaily';
+  if (errorCode === 'OUTSTANDING_PAYMENT_BLOCKED_WEEKLY') return 'placeOrder.outstandingDescWeekly';
+  if (errorCode === 'OUTSTANDING_PAYMENT_BLOCKED_MONTHLY') return 'placeOrder.outstandingDescMonthly';
+  if (errorCode === 'OUTSTANDING_PAYMENT_BLOCKED_QUARTERLY') return 'placeOrder.outstandingDescQuarterly';
+  return 'placeOrder.outstandingDesc';
+}
+
 
 export default function CustomerHome({ customer }: CustomerHomeProps) {
   const navigate = useNavigate();
@@ -97,8 +187,12 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
   const [creditLimit, setCreditLimit] = useState<number | null>(null);
   const [lastDeliveryDate, setLastDeliveryDate] = useState<string | null>(null);
   const [paymentTerm, setPaymentTerm] = useState<string>('');
+  const [outstandingBlockCode, setOutstandingBlockCode] = useState<string | null>(null);
+  const [orderGalleryProducts, setOrderGalleryProducts] = useState<OrderGalleryProduct[]>([]);
+  const [orderGalleryLoading, setOrderGalleryLoading] = useState(false);
   const qrRef = useRef<HTMLCanvasElement>(null);
   const canOrder = customer.branch && customer.branch !== 'Pending';
+  const isPrePay = customer.customer_type === 'pre_pay';
 
   const base = import.meta.env.BASE_URL;
   const voucherSlides: VoucherSlide[] = [
@@ -108,7 +202,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
       tickets: 10,
       subtitle: 'Cocok untuk kebutuhan rumah tangga ringan',
       badge: 'Starter',
-      packImage: `${base}${encodeURIComponent('10 Pack Indonesia.jpg')}`,
+      packImage: publicPackAssetUrl(base, '10 Pack Indonesia.jpg'),
     },
     {
       id: 'voucher-20',
@@ -116,7 +210,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
       tickets: 20,
       subtitle: 'Pilihan paling hemat untuk pemakaian rutin',
       badge: 'Best Value',
-      packImage: `${base}${encodeURIComponent('20 Pack Indonesia.jpg')}`,
+      packImage: publicPackAssetUrl(base, '20 Pack Indonesia.jpg'),
     },
     {
       id: 'voucher-50',
@@ -124,7 +218,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
       tickets: 50,
       subtitle: 'Untuk keluarga besar atau kebutuhan usaha',
       badge: 'Bulk Save',
-      packImage: `${base}${encodeURIComponent('50 Pack Indonesia.png')}`,
+      packImage: publicPackAssetUrl(base, '50 Pack Indonesia.jpg'),
     },
   ];
 
@@ -172,11 +266,36 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
   }, [customer.id]);
 
   useEffect(() => {
+    if (isPrePay) return;
+    let cancelled = false;
+    (async () => {
+      setOrderGalleryLoading(true);
+      try {
+        const { data, error } = await supabase
+          .from('products')
+          .select('id, name, price, unit, is_refill, image_url')
+          .eq('status', 'active');
+        if (error) throw error;
+        const list = filterAndSortOrderableProducts((data ?? []) as OrderGalleryProduct[], customer.branch);
+        if (!cancelled) setOrderGalleryProducts(list);
+      } catch {
+        if (!cancelled) setOrderGalleryProducts([]);
+      } finally {
+        if (!cancelled) setOrderGalleryLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isPrePay, customer.branch]);
+
+  useEffect(() => {
+    if (!isPrePay) return;
     const timer = window.setInterval(() => {
       setActiveVoucherSlide(prev => (prev + 1) % voucherSlides.length);
     }, 4000);
     return () => window.clearInterval(timer);
-  }, [voucherSlides.length]);
+  }, [isPrePay, voucherSlides.length]);
 
   const loadHomeData = async () => {
     try {
@@ -189,6 +308,12 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
       setUnpaidAmount(data.unpaid_amount ?? 0);
       setCreditLimit(data.credit_limit ?? null);
       setPaymentTerm(data.payment_term || 'daily');
+      if (customer.customer_type !== 'pre_pay') {
+        const ordersRes = await supabase.functions.invoke('get-orders', { body: { token, limit: 80 } });
+        if (ordersRes.data?.success) {
+          setOutstandingBlockCode(getOutstandingBlockCode(data.payment_term || 'daily', ordersRes.data.orders || []));
+        }
+      }
     } catch { }
   };
 
@@ -238,6 +363,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
       <div style={{ maxWidth: 430, margin: '0 auto', padding: '60px 14px 88px', display: 'flex', flexDirection: 'column', gap: 6 }}>
 
         {/* ── 1. Promo Slideshow ── */}
+        {isPrePay && (
         <div style={{
           background: isDark
             ? 'linear-gradient(170deg, #020f28 0%, #031739 52%, #062451 100%)'
@@ -298,10 +424,12 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
             ))}
           </div>
         </div>
+        )}
 
         {/* ── 2. Quick Actions ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isPrePay ? '1fr 1fr' : '1fr', gap: 8 }}>
           {/* Buy Vouchers */}
+          {isPrePay && (
           <button
               onClick={() => navigate('/buy-vouchers')}
               style={{
@@ -326,6 +454,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
                 </div>
               </div>
             </button>
+          )}
 
           {/* Order Delivery */}
           <button
@@ -486,6 +615,9 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
                   <p style={{ color: '#ef4444', fontSize: 16, fontWeight: 700, margin: '4px 0 0' }}>
                     {formatCurrency(unpaidAmount)}
                   </p>
+                  <p style={{ color: theme.error, fontSize: 11, margin: '6px 0 0', maxWidth: 220 }}>
+                    {t(outstandingMessageKey(outstandingBlockCode))}
+                  </p>
                 </div>
                 <button
                   onClick={() => navigate('/orders')}
@@ -508,44 +640,88 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
             <span style={{ color: C.muted, fontSize: 11 }}>Swipe to see more</span>
           </div>
           <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 2, scrollbarWidth: 'none' }}>
-            {galleryItems.map((item, i) => (
-              <button
-                key={i}
-                onClick={() => navigate(item.count ? '/buy-vouchers' : '/place-order')}
-                style={{
-                  flexShrink: 0, width: 120,
-                  background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.85)',
-                  border: `1px solid ${C.cardBorder}`,
-                  borderRadius: 14, overflow: 'hidden', cursor: 'pointer', textAlign: 'left',
-                }}
-              >
-                <div style={{
-                  aspectRatio: '1', background: 'linear-gradient(135deg, rgba(77,204,204,0.12), rgba(0,139,139,0.15))',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
-                  {item.count ? (
-                    <div style={{ textAlign: 'center' }}>
-                      <Ticket size={28} color={C.primary} style={{ opacity: 0.7 }} />
-                      <p style={{
-                        fontSize: 22, fontWeight: 800, margin: '4px 0 0',
-                        background: C.gradientPrimary,
-                        WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
-                      }}>{item.count}</p>
-                    </div>
-                  ) : (
-                    <Droplets size={32} color={C.primary} style={{ opacity: 0.6 }} />
-                  )}
-                </div>
-                <div style={{ padding: '10px 12px' }}>
-                  <p style={{ color: C.text, fontWeight: 600, fontSize: 12, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {item.title}
-                  </p>
-                  <p style={{ color: C.muted, fontSize: 11, margin: '3px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {item.subtitle}
-                  </p>
-                </div>
-              </button>
-            ))}
+            {isPrePay ? (
+              galleryItems.map((item, i) => (
+                <button
+                  key={i}
+                  onClick={() => {
+                    const goVouchers = item.count != null;
+                    navigate(goVouchers ? '/buy-vouchers' : '/place-order');
+                  }}
+                  style={{
+                    flexShrink: 0, width: 120,
+                    background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.85)',
+                    border: `1px solid ${C.cardBorder}`,
+                    borderRadius: 14, overflow: 'hidden', cursor: 'pointer', textAlign: 'left',
+                  }}
+                >
+                  <div style={{
+                    aspectRatio: '1', background: 'linear-gradient(135deg, rgba(77,204,204,0.12), rgba(0,139,139,0.15))',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    {item.count ? (
+                      <div style={{ textAlign: 'center' }}>
+                        <Ticket size={28} color={C.primary} style={{ opacity: 0.7 }} />
+                        <p style={{
+                          fontSize: 22, fontWeight: 800, margin: '4px 0 0',
+                          background: C.gradientPrimary,
+                          WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
+                        }}>{item.count}</p>
+                      </div>
+                    ) : (
+                      <Droplets size={32} color={C.primary} style={{ opacity: 0.6 }} />
+                    )}
+                  </div>
+                  <div style={{ padding: '10px 12px' }}>
+                    <p style={{ color: C.text, fontWeight: 600, fontSize: 12, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {item.title}
+                    </p>
+                    <p style={{ color: C.muted, fontSize: 11, margin: '3px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {item.subtitle}
+                    </p>
+                  </div>
+                </button>
+              ))
+            ) : orderGalleryLoading ? (
+              <p style={{ color: C.muted, fontSize: 13, margin: 0, padding: '8px 4px' }}>{t('common.loading')}</p>
+            ) : orderGalleryProducts.length === 0 ? (
+              <p style={{ color: C.muted, fontSize: 13, margin: 0, padding: '8px 4px' }}>{t('home.galleryNoOrderableProducts')}</p>
+            ) : (
+              orderGalleryProducts.map((product) => (
+                <button
+                  key={product.id}
+                  type="button"
+                  onClick={() => navigate('/place-order')}
+                  style={{
+                    flexShrink: 0, width: 120,
+                    background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.85)',
+                    border: `1px solid ${C.cardBorder}`,
+                    borderRadius: 14, overflow: 'hidden', cursor: 'pointer', textAlign: 'left',
+                  }}
+                >
+                  <div style={{
+                    aspectRatio: '1',
+                    background: 'linear-gradient(135deg, rgba(77,204,204,0.12), rgba(0,139,139,0.15))',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    overflow: 'hidden',
+                  }}>
+                    {product.image_url ? (
+                      <img src={product.image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ) : (
+                      <Droplets size={32} color={C.primary} style={{ opacity: 0.6 }} />
+                    )}
+                  </div>
+                  <div style={{ padding: '10px 12px' }}>
+                    <p style={{ color: C.text, fontWeight: 600, fontSize: 12, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {product.name}
+                    </p>
+                    <p style={{ color: C.muted, fontSize: 11, margin: '3px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {formatCurrency(product.price)} · {product.unit}
+                    </p>
+                  </div>
+                </button>
+              ))
+            )}
           </div>
         </div>
 
