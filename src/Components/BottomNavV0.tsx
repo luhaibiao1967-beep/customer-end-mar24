@@ -8,10 +8,11 @@ interface BottomNavV0Props {
 }
 
 const navItems = [
-  { path: '/customer-home', label: 'Home', icon: Home },
-  { path: '/buy-vouchers', label: 'Voucher', icon: Ticket },
-  { path: '/place-order', label: 'Order', icon: Droplets },
-  { path: '/account', label: 'My Account', icon: User },
+  { id: 'home', path: '/customer-home', label: 'Home', icon: Home },
+  { id: 'voucher', path: '/buy-vouchers', label: 'Voucher', icon: Ticket },
+  { id: 'order', path: '/place-order', label: 'Order', icon: Droplets },
+  { id: 'account', path: '/account', label: 'My Account', icon: User },
+  { id: 'voucher-test', path: '/buy-vouchers', label: 'Test', icon: Ticket, showActive: false },
 ];
 
 export default function BottomNavV0({ customer }: BottomNavV0Props) {
@@ -48,11 +49,11 @@ export default function BottomNavV0({ customer }: BottomNavV0Props) {
       >
         {navItems.map((item) => {
           const Icon = item.icon;
-          const active = isActive(item.path);
+          const active = item.showActive !== false && isActive(item.path);
 
           return (
             <button
-              key={item.path}
+              key={item.id}
               onClick={() => navigate(item.path)}
               style={{
                 display: 'flex',
