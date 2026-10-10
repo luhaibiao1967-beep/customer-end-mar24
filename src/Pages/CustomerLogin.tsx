@@ -10,11 +10,20 @@ import { useLanguage } from '../contexts/LanguageContext'
 import { useColorTokens } from '../contexts/ColorTokensContext'
 import InstallAppModal from '../Components/InstallAppModal'
 import { canShowPwaInstallPrompt, consumeLogoutPwaPromptFlag } from '../utils/pwaInstall'
+import {
+  getRememberPreference,
+  getRememberedWhatsApp,
+  getSafeCustomerReturnTo,
+  normalizeWhatsApp,
+  setRememberedLogin,
+  writeCustomerSession,
+} from '../lib/customerSession'
 
 export default function CustomerLogin() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const [phoneNumber, setPhoneNumber] = useState('')
+  const [phoneNumber, setPhoneNumber] = useState(() => getRememberedWhatsApp() ?? '')
+  const [rememberMe, setRememberMe] = useState(() => getRememberPreference())
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [status, setStatus] = useState<'idle' | 'new_customer'>('idle')
@@ -22,6 +31,7 @@ export default function CustomerLogin() {
   const [pwaInstallOpen, setPwaInstallOpen] = useState(false)
   const { language, setLanguage, t } = useLanguage()
   const { tokens } = useColorTokens()
+  const returnTo = getSafeCustomerReturnTo(searchParams.get('returnTo'))
 
   useEffect(() => {
     const wa = searchParams.get('whatsapp') || searchParams.get('wa') || searchParams.get('phone')
@@ -38,12 +48,7 @@ export default function CustomerLogin() {
     }
   }, [])
 
-  const formatPhoneNumber = (phone: string): string => {
-    let cleaned = phone.replace(/\D/g, '')
-    if (cleaned.startsWith('0')) cleaned = '62' + cleaned.substring(1)
-    if (!cleaned.startsWith('62')) cleaned = '62' + cleaned
-    return '+' + cleaned
-  }
+  const formatPhoneNumber = normalizeWhatsApp
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -67,16 +72,22 @@ export default function CustomerLogin() {
       }
 
       if (data.bound && data.customer && data.auth_token) {
-        sessionStorage.setItem('customer', JSON.stringify(data.customer))
-        sessionStorage.setItem('auth_token', data.auth_token)
-        sessionStorage.setItem('authenticated', 'true')
+        writeCustomerSession(data.customer, data.auth_token)
+        setRememberedLogin(formattedPhone, rememberMe)
         window.dispatchEvent(new Event('session-auth-updated'))
-        navigate('/customer-home', { replace: true })
+        navigate(returnTo, { replace: true })
         return
       }
 
       if (data.needs_otp) {
-        navigate(`/reauth?whatsapp=${encodeURIComponent(formattedPhone)}&device_id=${encodeURIComponent(resolvedDeviceId)}`, { replace: true })
+        setRememberedLogin(formattedPhone, rememberMe)
+        const params = new URLSearchParams({
+          whatsapp: formattedPhone,
+          device_id: resolvedDeviceId,
+          remember: rememberMe ? '1' : '0',
+          returnTo,
+        })
+        navigate(`/reauth?${params.toString()}`, { replace: true })
         return
       }
 
@@ -100,7 +111,15 @@ export default function CustomerLogin() {
 
   const handleRegister = async () => {
     const id = deviceId ?? getStoredDeviceId() ?? await getOrCreateDeviceId()
-    navigate(`/register?whatsapp=${encodeURIComponent(phoneNumber)}&device_id=${encodeURIComponent(id)}`)
+    const formattedPhone = formatPhoneNumber(phoneNumber)
+    setRememberedLogin(formattedPhone, rememberMe)
+    const params = new URLSearchParams({
+      whatsapp: formattedPhone,
+      device_id: id,
+      remember: rememberMe ? '1' : '0',
+      returnTo,
+    })
+    navigate(`/register?${params.toString()}`)
   }
 
   return (
@@ -267,6 +286,26 @@ export default function CustomerLogin() {
                   required
                 />
               </div>
+
+              <label style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                margin: '-4px 0 20px',
+                color: tokens.text,
+                fontSize: '14px',
+                cursor: 'pointer',
+              }}>
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(event) => setRememberMe(event.target.checked)}
+                  style={{ width: '18px', height: '18px', accentColor: tokens.primary }}
+                />
+                {language === 'id'
+                  ? 'Ingat nomor saya di perangkat ini'
+                  : 'Remember my number on this device'}
+              </label>
 
               {error && (
                 <div style={{

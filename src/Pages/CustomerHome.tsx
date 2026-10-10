@@ -14,6 +14,8 @@ import { theme } from '../theme';
 import { useColorTokens } from '../contexts/ColorTokensContext';
 import { markLogoutForPwaPrompt } from '../utils/pwaInstall';
 import { filterAndSortOrderableProducts } from '../utils/orderableProducts';
+import { fetchCustomerVouchers } from '../lib/customerVouchers';
+import { clearCustomerSession, clearRememberedLogin } from '../lib/customerSession';
 
 const APP_URL = 'https://vividaqua.online/';
 
@@ -319,20 +321,18 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
 
   const loadProductVouchers = async () => {
     try {
-      const { data } = await supabase
-        .from('customer_product_vouchers')
-        .select('product_id, balance, products(name)')
-        .eq('customer_id', customer.id);
-      setProductVouchers((data as unknown as ProductVoucherRow[]) || []);
+      const token = sessionStorage.getItem('auth_token');
+      if (!token) return;
+      const vouchers = await fetchCustomerVouchers(token);
+      setProductVouchers(vouchers as ProductVoucherRow[]);
     } catch { }
   };
 
   const handleSignOut = () => {
     setLoading(true);
     markLogoutForPwaPrompt();
-    sessionStorage.removeItem('customer');
-    sessionStorage.removeItem('auth_token');
-    sessionStorage.removeItem('authenticated');
+    clearCustomerSession();
+    clearRememberedLogin();
     window.dispatchEvent(new Event('session-auth-updated'));
     navigate('/', { replace: true });
   };

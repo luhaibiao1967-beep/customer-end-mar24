@@ -1,32 +1,9 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.38.0'
 import { buildBodyParams, sendTemplateMessage } from '../_shared/whatsappCloud.ts'
-
-// Fazpass OTP verify - per docs: POST /v1/otp/verify, body: { otp_id, otp }, Bearer merchant_key
-async function validateOTPViaFazpass(phone: string, otp: string, otpId?: string): Promise<{ valid: boolean; debug?: string }> {
-  try {
-    const merchantKey = Deno.env.get('FAZPASS_MERCHANT_KEY')
-    if (!merchantKey) return { valid: false, debug: 'missing_merchant_key' }
-    if (!otpId) return { valid: false, debug: 'missing_otp_id' }
-    const authHeader = merchantKey.startsWith('Bearer ') ? merchantKey : `Bearer ${merchantKey}`
-    const res = await fetch('https://api.fazpass.com/v1/otp/verify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': authHeader },
-      body: JSON.stringify({ otp_id: otpId, otp }),
-    })
-    const data = await res.json()
-    const valid = data?.status === true
-    if (valid) {
-      console.log('Fazpass verify SUCCESS')
-      return { valid: true }
-    }
-    console.log('Fazpass verify:', { status: res.status, message: data?.message, code: data?.code })
-    return { valid: false, debug: data?.message }
-  } catch (e: any) {
-    console.error('Fazpass verify error:', e?.message)
-    return { valid: false, debug: e?.message }
-  }
-}
+import { verifyOTPViaFazpass } from '../_shared/fazpass.ts'
+import { normalizeIndonesianWhatsApp } from '../_shared/phone.ts'
+import { getOtpVerificationMode } from '../_shared/otpPolicy.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -34,6 +11,18 @@ const corsHeaders = {
 }
 
 const DEV_MODE = Deno.env.get('ENVIRONMENT') === 'development'
+
+class OtpVerificationError extends Error {
+  code: string
+  status: number
+
+  constructor(code: string, message: string, status = 400) {
+    super(message)
+    this.name = 'OtpVerificationError'
+    this.code = code
+    this.status = status
+  }
+}
 
 interface RequestBody {
   phone: string
@@ -53,62 +42,93 @@ serve(async (req) => {
     const { phone, otp, device_id, name, address, isRegistration }: RequestBody = await req.json()
 
     if (!phone || !otp) {
-      throw new Error('Phone and OTP are required')
+      throw new OtpVerificationError('OTP_INPUT_REQUIRED', 'Phone and OTP are required')
     }
 
     if (isRegistration && (!name || !address)) {
-      throw new Error('Name and address are required for registration')
+      throw new OtpVerificationError(
+        'REGISTRATION_FIELDS_REQUIRED',
+        'Name and address are required for registration'
+      )
     }
 
-    const formattedPhone = formatPhoneNumber(phone)
+    const formattedPhone = normalizeIndonesianWhatsApp(phone)
+    if (!formattedPhone) {
+      throw new OtpVerificationError('INVALID_PHONE', 'Invalid phone number')
+    }
     const otpTrimmed = String(otp || '').trim()
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseKey)
 
-    // Get otp_id (request_id) from latest OTP - Fazpass verify requires it
-    let otpId: string | undefined
-    const { data: latestRecords, error: reqIdErr } = await supabase
+    // The newest live OTP defines the verification mechanism. Provider-backed
+    // records must be verified by Fazpass and can never fall back to a local
+    // plaintext comparison.
+    const { data: liveOtpRecords, error: otpFetchError } = await supabase
       .from('auth_otps')
-      .select('request_id')
+      .select('id, request_id, otp, created_at')
       .eq('phone', formattedPhone)
       .eq('verified', false)
       .gt('expires_at', new Date().toISOString())
       .order('created_at', { ascending: false })
-      .limit(1)
-    if (!reqIdErr) otpId = latestRecords?.[0]?.request_id
+      .limit(5)
 
-    // Try Fazpass verify first (per docs: otp_id + otp), fallback to our DB
-    const { valid: fazpassValid } = await validateOTPViaFazpass(formattedPhone, otpTrimmed, otpId)
-    let otpRecord: any = null
+    if (otpFetchError) {
+      console.error('auth_otps fetch error:', otpFetchError)
+      throw new OtpVerificationError(
+        'OTP_LOOKUP_FAILED',
+        'Unable to verify the code right now',
+        500
+      )
+    }
 
-    if (fazpassValid) {
-      // Mark the most recent OTP as verified in our DB for consistency
-      const { data: records } = await supabase
-        .from('auth_otps')
-        .select('id')
-        .eq('phone', formattedPhone)
-        .eq('verified', false)
-        .order('created_at', { ascending: false })
-        .limit(1)
-      if (records?.[0]) {
-        await supabase.from('auth_otps').update({ verified: true }).eq('id', records[0].id)
+    const latestOtpRecord = liveOtpRecords?.[0]
+    if (!latestOtpRecord) {
+      throw new OtpVerificationError(
+        'INVALID_OR_EXPIRED_OTP',
+        'Invalid or expired OTP. Please request a new code.'
+      )
+    }
+
+    let otpRecord: any = latestOtpRecord
+
+    const verificationMode = getOtpVerificationMode(DEV_MODE, latestOtpRecord.request_id)
+
+    if (verificationMode === 'provider') {
+      const merchantKey = Deno.env.get('FAZPASS_MERCHANT_KEY')?.trim()
+      if (!merchantKey) {
+        throw new OtpVerificationError(
+          'OTP_PROVIDER_NOT_CONFIGURED',
+          'WhatsApp verification is temporarily unavailable',
+          503
+        )
       }
+
+      const fazpassResult = await verifyOTPViaFazpass(
+        String(latestOtpRecord.request_id),
+        otpTrimmed,
+        merchantKey,
+      )
+
+      if (!fazpassResult.valid) {
+        if (fazpassResult.reason === 'provider_error') {
+          throw new OtpVerificationError(
+            'OTP_PROVIDER_VERIFY_FAILED',
+            'Unable to verify the WhatsApp code right now',
+            502
+          )
+        }
+        throw new OtpVerificationError('INVALID_OR_EXPIRED_OTP', 'Invalid or expired OTP')
+      }
+    } else if (verificationMode === 'reject') {
+      throw new OtpVerificationError(
+        'OTP_PROVIDER_SESSION_MISSING',
+        'Verification session is unavailable. Please request a new code.'
+      )
     } else {
-      // Fetch unverified OTPs for this phone - use flexible OTP matching
-      const { data: records, error: fetchError } = await supabase
-        .from('auth_otps')
-        .select('*')
-        .eq('phone', formattedPhone)
-        .eq('verified', false)
-        .gt('expires_at', new Date().toISOString())
-        .order('created_at', { ascending: false })
-        .limit(5)
+      // Development-only plaintext comparison for locally generated OTPs.
 
-      if (fetchError) {
-        console.error('auth_otps fetch error:', fetchError)
-        throw new Error('Invalid or expired OTP')
-      }
+      const records = liveOtpRecords ?? []
 
       const digitsOnly = (v: string) => String(v || '').replace(/\D/g, '')
       const normalizeOtp = (v: string) => {
@@ -118,6 +138,7 @@ serve(async (req) => {
       }
       const userDigits = digitsOnly(otpTrimmed)
       const record = records?.find((r) => {
+        if (r.request_id) return false
         const storedRaw = String(r.otp ?? '')
         const storedDigits = digitsOnly(storedRaw)
         const storedNorm = normalizeOtp(storedRaw)
@@ -138,28 +159,67 @@ serve(async (req) => {
           storedLen,
           recordsCount: records?.length ?? 0,
         })
-        throw new Error(hasRecords
-          ? 'Invalid or expired OTP'
-          : 'Invalid or expired OTP. Please request a new code.')
+        throw new OtpVerificationError(
+          'INVALID_OR_EXPIRED_OTP',
+          hasRecords
+            ? 'Invalid or expired OTP'
+            : 'Invalid or expired OTP. Please request a new code.'
+        )
       }
       otpRecord = record
-      await supabase.from('auth_otps').update({ verified: true }).eq('id', otpRecord.id)
     }
 
-    const { data: existingCustomer } = await supabase
+    const { data: existingCustomer, error: existingCustomerError } = await supabase
       .from('customers')
       .select('*')
       .eq('whatsapp', formattedPhone)
-      .single()
+      .maybeSingle()
+
+    if (existingCustomerError) {
+      console.error('Customer lookup failed:', existingCustomerError)
+      throw new OtpVerificationError(
+        'CUSTOMER_LOOKUP_FAILED',
+        'Unable to complete verification right now',
+        500
+      )
+    }
 
     let customer
+    let createdCustomer = false
+    const warnings: string[] = []
+
+    const refreshExistingCustomer = async (existing: any) => {
+      const { data: updatedCustomer, error: updateError } = await supabase
+        .from('customers')
+        .update({
+          auth_token: existing.auth_token || crypto.randomUUID(),
+          last_login_at: new Date().toISOString(),
+          token_created_at: new Date().toISOString(),
+        })
+        .eq('id', existing.id)
+        .select()
+        .single()
+
+      if (updateError || !updatedCustomer) {
+        console.error('Customer login refresh failed:', updateError)
+        throw new OtpVerificationError(
+          'CUSTOMER_SESSION_FAILED',
+          'Unable to complete verification right now',
+          500
+        )
+      }
+      return updatedCustomer
+    }
 
     if (isRegistration) {
       if (existingCustomer) {
-        throw new Error('Customer already registered. Please login instead.')
+        // A verified registration retry is an idempotent login. This recovers
+        // attempts where customer creation succeeded before a later write.
+        customer = await refreshExistingCustomer(existingCustomer)
       }
 
-      const { data: newCustomer, error: customerError } = await supabase
+      if (!customer) {
+        const { data: newCustomer, error: customerError } = await supabase
         .from('customers')
         .insert({
           name: name,
@@ -177,59 +237,79 @@ serve(async (req) => {
         .select()
         .single()
 
-      if (customerError) throw customerError
-      customer = newCustomer
+        if (customerError || !newCustomer) {
+          if (customerError?.code === '23505') {
+            const { data: racedCustomer, error: raceLookupError } = await supabase
+              .from('customers')
+              .select('*')
+              .eq('whatsapp', formattedPhone)
+              .maybeSingle()
+            if (!raceLookupError && racedCustomer) {
+              customer = await refreshExistingCustomer(racedCustomer)
+            } else {
+              console.error('Concurrent customer recovery failed:', raceLookupError)
+            }
+          }
+
+          if (!customer) {
+            console.error('Customer registration insert failed:', customerError)
+            throw new OtpVerificationError(
+              'CUSTOMER_REGISTRATION_FAILED',
+              'Unable to create the customer account right now',
+              500
+            )
+          }
+        } else {
+          customer = newCustomer
+          createdCustomer = true
+        }
+      }
 
       // Grant welcome vouchers from app_settings
-      const { data: settings } = await supabase
+      const { data: settings, error: settingsError } = await supabase
         .from('app_settings')
         .select('key, value')
         .in('key', ['welcome_voucher_qty', 'welcome_voucher_product_id'])
 
-      const settingsMap: Record<string, string> = {}
-      for (const row of settings || []) settingsMap[row.key] = row.value
+      if (createdCustomer && settingsError) {
+        console.error('Welcome voucher settings lookup failed:', settingsError)
+        warnings.push('WELCOME_VOUCHER_CONFIGURATION_UNAVAILABLE')
+      } else if (createdCustomer) {
+        const settingsMap: Record<string, string> = {}
+        for (const row of settings || []) settingsMap[row.key] = row.value
 
-      const welcomeQty = parseInt(settingsMap['welcome_voucher_qty'] || '0', 10)
-      const welcomeProductId = settingsMap['welcome_voucher_product_id']
+        const welcomeQty = parseInt(settingsMap['welcome_voucher_qty'] || '0', 10)
+        const welcomeProductId = settingsMap['welcome_voucher_product_id']
 
-      if (welcomeQty > 0 && welcomeProductId) {
-        await supabase.from('customer_product_vouchers').upsert({
-          customer_id: customer.id,
-          product_id: welcomeProductId,
-          balance: welcomeQty,
-          gift_balance: welcomeQty,
-        })
-      }
-
-      if (DEV_MODE) {
-        console.log('🔧 DEV MODE: Skipping welcome WhatsApp message')
-        console.log(`Magic link: ${Deno.env.get('APP_URL')}/home?token=${customer.auth_token}`)
-      } else {
-        await sendWelcomeMessage(customer, supabase)
+        if (welcomeQty > 0 && welcomeProductId) {
+          const { error: welcomeVoucherError } = await supabase
+            .from('customer_product_vouchers')
+            .upsert({
+              customer_id: customer.id,
+              product_id: welcomeProductId,
+              balance: welcomeQty,
+              gift_balance: welcomeQty,
+            })
+          if (welcomeVoucherError) {
+            console.error('Welcome voucher grant failed:', welcomeVoucherError)
+            warnings.push('WELCOME_VOUCHER_GRANT_FAILED')
+          }
+        }
       }
 
     } else {
       if (!existingCustomer) {
-        throw new Error('Customer not found. Please register first.')
+        throw new OtpVerificationError(
+          'CUSTOMER_NOT_FOUND',
+          'Customer not found. Please register first.'
+        )
       }
-
-      const { data: updatedCustomer, error: updateError } = await supabase
-        .from('customers')
-        .update({
-          last_login_at: new Date().toISOString(),
-          token_created_at: new Date().toISOString(),
-        })
-        .eq('id', existingCustomer.id)
-        .select()
-        .single()
-
-      if (updateError) throw updateError
-      customer = updatedCustomer
+      customer = await refreshExistingCustomer(existingCustomer)
     }
 
     // Create device binding after successful verification
     if (device_id && device_id.length >= 8) {
-      await supabase.from('device_whatsapp_bindings').upsert(
+      const { error: bindingError } = await supabase.from('device_whatsapp_bindings').upsert(
         {
           device_id,
           whatsapp: formattedPhone,
@@ -237,6 +317,38 @@ serve(async (req) => {
         },
         { onConflict: 'device_id,whatsapp' }
       )
+      if (bindingError) {
+        console.error('Device binding failed:', bindingError)
+        throw new OtpVerificationError(
+          'DEVICE_BINDING_FAILED',
+          'Verification succeeded, but this device could not be remembered',
+          500
+        )
+      }
+    }
+
+    // Consume the OTP only after customer/session and trusted-device writes
+    // succeed, so transient downstream failures remain retryable.
+    const { error: otpMarkError } = await supabase
+      .from('auth_otps')
+      .update({ verified: true })
+      .eq('id', otpRecord.id)
+    if (otpMarkError) {
+      console.error('OTP consume failed:', otpMarkError)
+      throw new OtpVerificationError(
+        'OTP_CONSUME_FAILED',
+        'Unable to finalize verification right now',
+        500
+      )
+    }
+
+    if (createdCustomer) {
+      if (DEV_MODE) {
+        console.log('🔧 DEV MODE: Skipping welcome WhatsApp message')
+        console.log(`Magic link: ${Deno.env.get('APP_URL')}/home?token=${customer.auth_token}`)
+      } else {
+        await sendWelcomeMessage(customer, supabase)
+      }
     }
 
     const appUrl = Deno.env.get('APP_URL') || 'https://order.waterapp.com'
@@ -252,6 +364,8 @@ serve(async (req) => {
           address: customer.address,
           whatsapp: customer.whatsapp,
           customer_type: customer.customer_type,
+          payment_term: customer.payment_term,
+          credit_limit: customer.credit_limit,
           voucher_balance: customer.voucher_balance,
           branch: customer.branch,
           discount: customer.discount,
@@ -260,6 +374,8 @@ serve(async (req) => {
         magic_link: magicLink,
         auth_token: customer.auth_token,
         dev_mode: DEV_MODE,
+        already_registered: Boolean(isRegistration && !createdCustomer),
+        warnings,
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -267,30 +383,30 @@ serve(async (req) => {
       }
     )
   } catch (error: any) {
-    console.error('Error:', error)
+    const publicError = error instanceof OtpVerificationError
+      ? error
+      : new OtpVerificationError(
+        'OTP_VERIFICATION_FAILED',
+        'Unable to complete verification right now',
+        500
+      )
+    console.error('auth-verify-otp error:', {
+      code: publicError.code,
+      internalMessage: error?.message,
+    })
     return new Response(
       JSON.stringify({
         success: false,
-        error: error.message,
+        code: publicError.code,
+        error: publicError.message,
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 400,
+        status: publicError.status,
       }
     )
   }
 })
-
-function formatPhoneNumber(phone: string): string {
-  let cleaned = phone.replace(/\D/g, '')
-  if (cleaned.startsWith('0')) {
-    cleaned = '62' + cleaned.substring(1)
-  }
-  if (!cleaned.startsWith('62')) {
-    cleaned = '62' + cleaned
-  }
-  return '+' + cleaned
-}
 
 async function sendWelcomeMessage(customer: any, supabase: any) {
   try {

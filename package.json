@@ -52,6 +52,7 @@
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "test:magic-link": "node test-auth.js",
+    "test:customer-auth": "node scripts/test-customer-auth-flow.mjs",
     "diagnostics": "node scripts/run-diagnostics.js",
     "test:hello-world": "node scripts/test-hello-world.js"
   },

@@ -1,10 +1,11 @@
 // src/Pages/PlaceOrder.tsx - Add New Delivery Order
-import { useState, useEffect, Fragment } from 'react';
+import { useState, useEffect, Fragment, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import BottomNavV0 from '../Components/BottomNavV0';
 import { theme } from '../theme';
 import { formatCurrency } from '../utils/format';
+import { getPaymentTermTranslationKey } from '../utils/paymentTerm';
 import toast from 'react-hot-toast';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useColorTokens } from '../contexts/ColorTokensContext';
@@ -15,6 +16,7 @@ import {
   isWeekdayClosed,
   snapToNextOpenDay,
 } from '../utils/deliverySchedule';
+import { fetchCustomerVouchers as loadCustomerVouchers } from '../lib/customerVouchers';
 
 interface Customer {
   id: string;
@@ -23,6 +25,7 @@ interface Customer {
   whatsapp: string;
   customer_type: string;
   payment_term?: string;
+  credit_limit?: number | null;
   voucher_balance: number;
   branch: string;
   discount: number;
@@ -134,6 +137,59 @@ function shouldBlockOutstanding(
   });
 }
 
+interface StoredPrepayCheckout {
+  checkoutKey: string;
+  fingerprint: string;
+  productDeductions: { product_id: string; quantity: number }[];
+}
+
+interface StoredVoucherOnlyOrder {
+  orderKey: string;
+  fingerprint: string;
+  productDeductions: { product_id: string; quantity: number }[];
+}
+
+interface StoredLaterPayOrder {
+  orderKey: string;
+  fingerprint: string;
+  items: {
+    product_id: string;
+    product: string;
+    is_refill: boolean;
+    quantity: number;
+    unit_price: number;
+    discount: number;
+  }[];
+  productDeductions: { product_id: string; quantity: number }[];
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const PREPAY_CHECKOUT_IN_USE_MESSAGE =
+  'Another payment checkout is still unresolved. Finish or retry that same checkout before starting a different order. This order was not submitted.';
+const PREPAY_CHECKOUT_STORAGE_MESSAGE =
+  'Secure payment retry storage is unavailable. Enable browser storage and close other checkout tabs before trying again.';
+const LATER_PAY_ORDER_IN_USE_MESSAGE =
+  'Another order submission is still unresolved. Retry that same order before starting a different one.';
+const LATER_PAY_ORDER_STORAGE_MESSAGE =
+  'Secure order retry storage is unavailable. Enable browser storage and close other order tabs before trying again.';
+
+async function sha256Hex(value: string): Promise<string> {
+  const input = new TextEncoder().encode(value);
+  const digest = await globalThis.crypto.subtle.digest('SHA-256', input);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+function createCheckoutKey(): string {
+  if (typeof globalThis.crypto.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID();
+  }
+  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 export default function PlaceOrder({ customer }: PlaceOrderProps) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -150,15 +206,23 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
     order_cutoff_hour: number;
     closed_weekdays: number[];
   } | null>(null);
+  const [editOrderBranch, setEditOrderBranch] = useState<{
+    orderId: string;
+    branch: string;
+  } | null>(null);
   const [showScheduleNotice, setShowScheduleNotice] = useState(true);
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [showSuccess, setShowSuccess] = useState(false);
+  const inMemoryPrepayCheckout = useRef<StoredPrepayCheckout | null>(null);
+  const inMemoryVoucherOnlyOrder = useRef<StoredVoucherOnlyOrder | null>(null);
+  const inMemoryLaterPayOrder = useRef<StoredLaterPayOrder | null>(null);
 
   // Fresh customer data
   const [freshDiscount, setFreshDiscount] = useState<number>(customer.discount || 0);
+  const [paymentTerm, setPaymentTerm] = useState(customer.payment_term || '');
 
   // Unpaid orders block (later_pay by payment_term rules)
   const [blockedByUnpaid, setBlockedByUnpaid] = useState(false);
@@ -176,6 +240,10 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
   const [showAccessories, setShowAccessories] = useState(false);
 
   const isPrePay = customer.customer_type === 'pre_pay';
+  const paymentTermLabel = t(getPaymentTermTranslationKey(paymentTerm));
+  const serviceBranch = editOrderId && editOrderBranch?.orderId === editOrderId
+    ? editOrderBranch.branch
+    : customer.branch;
 
   const getUnitPrice = (product: Product): number => {
     if (isPrePay) return product.price;
@@ -213,7 +281,10 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
   const voucherBreakdown = cartItems.map(item => {
     const available = productVouchers.get(item.product.id) ?? 0;
     const giftAvailable = productVouchersGift.get(item.product.id) ?? 0;
-    const byVoucher = Math.min(item.quantity, available);
+    // Product vouchers are a pre-pay instrument. Later-pay settlement charges
+    // orders.total_amount, so auto-applying a voucher there would charge the
+    // covered units again when the customer later pays the invoice.
+    const byVoucher = isPrePay ? Math.min(item.quantity, available) : 0;
     const byGift = Math.min(byVoucher, giftAvailable);
     const byPaidVoucher = byVoucher - byGift;
     const byPayment = item.quantity - byVoucher;
@@ -232,6 +303,7 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
           ? REFILL_BASE_PRICE
           : p.price;
       const rows: {
+        product_id: string;
         product: string;
         is_refill: boolean;
         quantity: number;
@@ -240,6 +312,7 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
       }[] = [];
       if (vb.byGift > 0) {
         rows.push({
+          product_id: p.id,
           product: p.name,
           is_refill: p.is_refill,
           quantity: vb.byGift,
@@ -249,6 +322,7 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
       }
       if (vb.byPaidVoucher > 0) {
         rows.push({
+          product_id: p.id,
           product: p.name,
           is_refill: p.is_refill,
           quantity: vb.byPaidVoucher,
@@ -258,6 +332,7 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
       }
       if (vb.byPayment > 0) {
         rows.push({
+          product_id: p.id,
           product: p.name,
           is_refill: p.is_refill,
           quantity: vb.byPayment,
@@ -287,19 +362,17 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
   useEffect(() => {
     loadProducts();
     fetchFreshCustomerData();
-    checkUnpaidBlock();
-    fetchUnpaidCredit();
   }, []);
 
   useEffect(() => {
-    if (!customer.branch || customer.branch === 'Pending') {
+    if (!serviceBranch || serviceBranch === 'Pending') {
       setBranchSchedule({ order_cutoff_hour: 16, closed_weekdays: [] });
       return;
     }
     supabase
       .from('branches')
       .select('order_cutoff_hour, closed_weekdays')
-      .eq('name', customer.branch)
+      .eq('name', serviceBranch)
       .maybeSingle()
       .then(({ data }) => {
         const sch = {
@@ -311,72 +384,62 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
           setDeliveryDate(getMinimumDeliveryDate(new Date(), sch.order_cutoff_hour, sch.closed_weekdays));
         }
       });
-  }, [customer.branch, editOrderId]);
-
-  const checkUnpaidBlock = async () => {
-    if (customer.customer_type === 'pre_pay' || editOrderId) return;
-    try {
-      // Fetch payment_term from DB (may not be in sessionStorage for older sessions)
-      const { data: cust } = await supabase
-        .from('customers')
-        .select('payment_term')
-        .eq('id', customer.id)
-        .single();
-
-      const token = sessionStorage.getItem('auth_token');
-      if (!token) return;
-
-      const { data } = await supabase.functions.invoke('get-orders', { body: { token } });
-      if (data?.success) {
-        const hasUnpaid = shouldBlockOutstanding(cust?.payment_term, data.orders || []);
-        if (hasUnpaid) setBlockedByUnpaid(true);
-      }
-    } catch {
-      // silently fail — don't block ordering on network error
-    }
-  };
+  }, [serviceBranch, editOrderId]);
 
   const fetchFreshCustomerData = async () => {
     try {
-      const { data } = await supabase
-        .from('customers')
-        .select('discount, credit_limit')
-        .eq('id', customer.id)
-        .single();
-      if (data) {
-        setFreshDiscount(data.discount || 0);
-        setCreditLimit(data.credit_limit ?? null);
+      const token = sessionStorage.getItem('auth_token');
+      if (!token) return;
+
+      const [authResult, homeResult, ordersResult] = await Promise.all([
+        supabase.functions.invoke('auth-validate-token', { body: { token } }),
+        isPrePay
+          ? Promise.resolve({ data: null, error: null })
+          : supabase.functions.invoke('get-home-data', { body: { token } }),
+        isPrePay || editOrderId
+          ? Promise.resolve({ data: null, error: null })
+          : supabase.functions.invoke('get-orders', { body: { token } }),
+      ]);
+
+      const { data, error } = authResult;
+      if (error || !data?.success || !data.customer) return;
+
+      const freshCustomer = data.customer as Customer;
+      const homeData = homeResult.data;
+      const currentPaymentTerm = homeData?.success
+        ? homeData.payment_term || freshCustomer.payment_term || customer.payment_term || ''
+        : freshCustomer.payment_term || customer.payment_term || '';
+
+      setFreshDiscount(freshCustomer.discount || 0);
+      setCreditLimit(homeData?.success ? homeData.credit_limit ?? null : freshCustomer.credit_limit ?? null);
+      setPaymentTerm(currentPaymentTerm);
+      setUnpaidCredit(homeData?.success ? homeData.unpaid_amount ?? 0 : 0);
+
+      if (ordersResult.data?.success) {
+        setBlockedByUnpaid(
+          shouldBlockOutstanding(currentPaymentTerm, ordersResult.data.orders || []),
+        );
       }
+
+      sessionStorage.setItem(
+        'customer',
+        JSON.stringify({ ...customer, ...freshCustomer }),
+      );
+      window.dispatchEvent(new Event('session-auth-updated'));
     } catch {
       // silently fall back
     }
   };
 
-  const fetchUnpaidCredit = async () => {
-    if (isPrePay) return;
-    try {
-      const { data } = await supabase
-        .from('orders')
-        .select('total_amount')
-        .eq('customer_id', customer.id)
-        .eq('payment_status', 'unpaid');
-      const sum = (data || []).reduce((s: number, o: any) => s + (o.total_amount || 0), 0);
-      setUnpaidCredit(sum);
-    } catch {
-      // silently fail
-    }
-  };
-
   const fetchProductVouchers = async () => {
     try {
-      const { data } = await supabase
-        .from('customer_product_vouchers')
-        .select('product_id, balance, gift_balance')
-        .eq('customer_id', customer.id);
+      const token = sessionStorage.getItem('auth_token');
+      if (!token) return;
+      const data = await loadCustomerVouchers(token);
 
       const map = new Map<string, number>();
       const giftMap = new Map<string, number>();
-      for (const row of data || []) {
+      for (const row of data) {
         map.set(row.product_id, row.balance);
         giftMap.set(row.product_id, row.gift_balance ?? 0);
       }
@@ -449,12 +512,16 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
       if (!data?.success) throw new Error(data?.error || 'Failed to load order');
 
       const order = data.order;
+      if (typeof order.branch === 'string' && order.branch.trim()) {
+        setEditOrderBranch({ orderId, branch: order.branch });
+      }
       setDeliveryDate(order.delivery_date);
-      setNotes(order.delivery_notes || '');
+      setNotes(order.note ?? order.delivery_notes ?? '');
 
       const newCart = new Map<string, number>();
       for (const item of order.order_items || []) {
-        const matched = products.find(p => p.name === item.product);
+        const matched = products.find(p => p.id === item.product_id)
+          ?? products.find(p => p.name === item.product);
         if (matched) {
           const prev = newCart.get(matched.id) || 0;
           newCart.set(matched.id, prev + item.quantity);
@@ -536,13 +603,8 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
       const token = sessionStorage.getItem('auth_token');
       if (!token) throw new Error('Session expired, please login again');
 
-      const orderItems = buildOrderItemsPayload();
+      let orderItems = buildOrderItemsPayload();
       const orderTotalAmount = computeOrderTotalFromRows(orderItems);
-
-      if (isPrePay && payableAmount > 0) {
-        setError('PRE_PAY_REQUIRES_PAYMENT');
-        return;
-      }
 
       // Credit limit check for later_pay (frontend guard)
       if (!isPrePay && !editOrderId && creditLimit !== null) {
@@ -553,10 +615,259 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
         }
       }
 
-      // Build per-product voucher deductions (all customer types)
-      const product_deductions = voucherBreakdown
+      // Product vouchers are a pre-pay-only checkout instrument.
+      const calculatedProductDeductions = voucherBreakdown
         .filter(({ byVoucher }) => byVoucher > 0)
-        .map(({ item, byVoucher }) => ({ product_id: item.product.id, quantity: byVoucher }));
+        .map(({ item, byVoucher }) => ({ product_id: item.product.id, quantity: byVoucher }))
+        .sort((a, b) => a.product_id.localeCompare(b.product_id));
+
+      let voucherOrderKey: string | undefined;
+      let laterPayOrderKey: string | undefined;
+      let product_deductions = calculatedProductDeductions;
+      let clearVoucherOrderKey: (() => void) | null = null;
+      let clearLaterPayOrderKey: (() => void) | null = null;
+
+      if (!isPrePay && !editOrderId) {
+        const fingerprint = await sha256Hex(JSON.stringify({
+          delivery_date: deliveryDate,
+          note: notes.trim() || null,
+          items: cartItems
+            .map(({ product, quantity }) => ({ product_id: product.id, quantity }))
+            .sort((a, b) => a.product_id.localeCompare(b.product_id)),
+        }));
+        const storageKey = `vividaqua:later-pay-order:${customer.id}`;
+
+        const readStoredOrder = (): StoredLaterPayOrder | null => {
+          const raw = localStorage.getItem(storageKey);
+          if (!raw) return null;
+          const parsed = JSON.parse(raw) as Partial<StoredLaterPayOrder>;
+          if (
+            typeof parsed.orderKey !== 'string' ||
+            !UUID_RE.test(parsed.orderKey) ||
+            typeof parsed.fingerprint !== 'string' ||
+            !Array.isArray(parsed.items) ||
+            parsed.items.length === 0 ||
+            !parsed.items.every((row) =>
+              row &&
+              typeof row.product_id === 'string' &&
+              UUID_RE.test(row.product_id) &&
+              typeof row.product === 'string' &&
+              row.product.trim().length > 0 &&
+              typeof row.is_refill === 'boolean' &&
+              Number.isSafeInteger(row.quantity) && row.quantity > 0 &&
+              Number.isSafeInteger(row.unit_price) && row.unit_price >= 0 &&
+              Number.isSafeInteger(row.discount) && row.discount >= 0
+            ) ||
+            !Array.isArray(parsed.productDeductions) ||
+            !parsed.productDeductions.every((row) =>
+              row &&
+              typeof row.product_id === 'string' &&
+              UUID_RE.test(row.product_id) &&
+              Number.isSafeInteger(row.quantity) &&
+              row.quantity > 0
+            )
+          ) {
+            throw new Error(LATER_PAY_ORDER_STORAGE_MESSAGE);
+          }
+          return {
+            orderKey: parsed.orderKey.toLowerCase(),
+            fingerprint: parsed.fingerprint,
+            items: parsed.items.map((row) => ({
+              ...row,
+              product_id: row.product_id.toLowerCase(),
+            })),
+            productDeductions: parsed.productDeductions.map((row) => ({
+              product_id: row.product_id.toLowerCase(),
+              quantity: row.quantity,
+            })),
+          };
+        };
+
+        const selectLaterPayOrder = (): StoredLaterPayOrder => {
+          const persistedOrder = readStoredOrder();
+          if (persistedOrder) {
+            if (persistedOrder.fingerprint !== fingerprint) {
+              throw new Error(LATER_PAY_ORDER_IN_USE_MESSAGE);
+            }
+            return persistedOrder;
+          }
+
+          const memoryOrder = inMemoryLaterPayOrder.current;
+          if (memoryOrder && memoryOrder.fingerprint !== fingerprint) {
+            throw new Error(LATER_PAY_ORDER_IN_USE_MESSAGE);
+          }
+
+          const selectedOrder = memoryOrder || {
+            orderKey: createCheckoutKey(),
+            fingerprint,
+            items: orderItems,
+            productDeductions: calculatedProductDeductions,
+          };
+          localStorage.setItem(storageKey, JSON.stringify(selectedOrder));
+          const durableOrder = readStoredOrder();
+          if (durableOrder?.orderKey !== selectedOrder.orderKey) {
+            throw new Error(LATER_PAY_ORDER_STORAGE_MESSAGE);
+          }
+          return durableOrder;
+        };
+
+        const lockManager = navigator.locks;
+        if (!lockManager) throw new Error(LATER_PAY_ORDER_STORAGE_MESSAGE);
+
+        let storedOrder: StoredLaterPayOrder;
+        try {
+          storedOrder = await lockManager.request(
+            `vividaqua:later-pay-order:${customer.id}:lock`,
+            { mode: 'exclusive' },
+            selectLaterPayOrder,
+          );
+        } catch (storageError) {
+          if (
+            storageError instanceof Error &&
+            (
+              storageError.message === LATER_PAY_ORDER_IN_USE_MESSAGE ||
+              storageError.message === LATER_PAY_ORDER_STORAGE_MESSAGE
+            )
+          ) {
+            throw storageError;
+          }
+          throw new Error(LATER_PAY_ORDER_STORAGE_MESSAGE);
+        }
+
+        inMemoryLaterPayOrder.current = storedOrder;
+        laterPayOrderKey = storedOrder.orderKey;
+        orderItems = storedOrder.items;
+        product_deductions = storedOrder.productDeductions;
+        clearLaterPayOrderKey = () => {
+          if (inMemoryLaterPayOrder.current?.orderKey === storedOrder.orderKey) {
+            inMemoryLaterPayOrder.current = null;
+          }
+          try {
+            const current = readStoredOrder();
+            if (current?.orderKey === storedOrder.orderKey) {
+              localStorage.removeItem(storageKey);
+            }
+          } catch {
+            // A malformed or unavailable store is safer left untouched.
+          }
+        };
+      }
+
+      if (isPrePay && !editOrderId) {
+        const fingerprint = await sha256Hex(JSON.stringify({
+          delivery_date: deliveryDate,
+          note: notes.trim() || null,
+          items: cartItems
+            .map(({ product, quantity }) => ({ product_id: product.id, quantity }))
+            .sort((a, b) => a.product_id.localeCompare(b.product_id)),
+        }));
+        const storageKey = `vividaqua:voucher-only-order:${customer.id}`;
+        const qrisStorageKey = `vividaqua:prepay-checkout:${customer.id}`;
+
+        const readStoredOrder = (): StoredVoucherOnlyOrder | null => {
+          const raw = localStorage.getItem(storageKey);
+          if (!raw) return null;
+          const parsed = JSON.parse(raw) as Partial<StoredVoucherOnlyOrder>;
+          if (
+            typeof parsed.orderKey !== 'string' ||
+            !UUID_RE.test(parsed.orderKey) ||
+            typeof parsed.fingerprint !== 'string' ||
+            !Array.isArray(parsed.productDeductions) ||
+            !parsed.productDeductions.every((row) =>
+              row &&
+              typeof row.product_id === 'string' &&
+              UUID_RE.test(row.product_id) &&
+              Number.isSafeInteger(row.quantity) &&
+              row.quantity > 0
+            )
+          ) {
+            throw new Error(PREPAY_CHECKOUT_STORAGE_MESSAGE);
+          }
+          return {
+            orderKey: parsed.orderKey.toLowerCase(),
+            fingerprint: parsed.fingerprint,
+            productDeductions: parsed.productDeductions.map((row) => ({
+              product_id: row.product_id.toLowerCase(),
+              quantity: row.quantity,
+            })),
+          };
+        };
+
+        const selectVoucherOrder = (): StoredVoucherOnlyOrder => {
+          if (localStorage.getItem(qrisStorageKey)) {
+            throw new Error(PREPAY_CHECKOUT_IN_USE_MESSAGE);
+          }
+
+          const persistedOrder = readStoredOrder();
+          if (persistedOrder) {
+            if (persistedOrder.fingerprint !== fingerprint) {
+              throw new Error(PREPAY_CHECKOUT_IN_USE_MESSAGE);
+            }
+            return persistedOrder;
+          }
+
+          const memoryOrder = inMemoryVoucherOnlyOrder.current;
+          if (memoryOrder && memoryOrder.fingerprint !== fingerprint) {
+            throw new Error(PREPAY_CHECKOUT_IN_USE_MESSAGE);
+          }
+          if (!memoryOrder && payableAmount > 0) {
+            throw new Error('PRE_PAY_REQUIRES_PAYMENT');
+          }
+
+          const selectedOrder = memoryOrder || {
+            orderKey: createCheckoutKey(),
+            fingerprint,
+            productDeductions: calculatedProductDeductions,
+          };
+          localStorage.setItem(storageKey, JSON.stringify(selectedOrder));
+          const durableOrder = readStoredOrder();
+          if (durableOrder?.orderKey !== selectedOrder.orderKey) {
+            throw new Error(PREPAY_CHECKOUT_STORAGE_MESSAGE);
+          }
+          return durableOrder;
+        };
+
+        const lockManager = navigator.locks;
+        if (!lockManager) throw new Error(PREPAY_CHECKOUT_STORAGE_MESSAGE);
+
+        let storedOrder: StoredVoucherOnlyOrder;
+        try {
+          storedOrder = await lockManager.request(
+            `vividaqua:prepay-order:${customer.id}:lock`,
+            { mode: 'exclusive' },
+            selectVoucherOrder,
+          );
+        } catch (storageError) {
+          if (
+            storageError instanceof Error &&
+            (
+              storageError.message === PREPAY_CHECKOUT_IN_USE_MESSAGE ||
+              storageError.message === PREPAY_CHECKOUT_STORAGE_MESSAGE ||
+              storageError.message === 'PRE_PAY_REQUIRES_PAYMENT'
+            )
+          ) {
+            throw storageError;
+          }
+          throw new Error(PREPAY_CHECKOUT_STORAGE_MESSAGE);
+        }
+
+        inMemoryVoucherOnlyOrder.current = storedOrder;
+        voucherOrderKey = storedOrder.orderKey;
+        product_deductions = storedOrder.productDeductions;
+        clearVoucherOrderKey = () => {
+          if (inMemoryVoucherOnlyOrder.current?.orderKey === storedOrder.orderKey) {
+            inMemoryVoucherOnlyOrder.current = null;
+          }
+          try {
+            const current = readStoredOrder();
+            if (current?.orderKey === storedOrder.orderKey) {
+              localStorage.removeItem(storageKey);
+            }
+          } catch {
+            // A malformed or unavailable store is safer left untouched.
+          }
+        };
+      }
 
       const { data, error } = await supabase.functions.invoke('submit-order', {
         body: {
@@ -570,10 +881,18 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
           items: orderItems,
           product_deductions,
           edit_order_id: editOrderId || undefined,
+          voucher_order_key: voucherOrderKey,
+          later_pay_order_key: laterPayOrderKey,
         },
       });
 
       if (error) throw new Error(error.message);
+      if (data?.voucher_order_disposition === 'discard_key') {
+        clearVoucherOrderKey?.();
+      }
+      if (data?.later_pay_order_disposition === 'discard_key') {
+        clearLaterPayOrderKey?.();
+      }
       if (!data?.success) {
         if (data?.error === 'UNPAID_ORDERS' || data?.error === 'OUTSTANDING_PAYMENT_BLOCKED') {
           setError('UNPAID_ORDERS');
@@ -595,9 +914,19 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
           setError('DELIVERY_DATE_BRANCH_CLOSED');
           return;
         }
+        if (data?.error === 'ORDER_NOT_EDITABLE') {
+          setError('ORDER_NOT_EDITABLE');
+          return;
+        }
+        if (data?.error === 'VOUCHER_ORDER_EDIT_NOT_SUPPORTED') {
+          setError('VOUCHER_ORDER_EDIT_NOT_SUPPORTED');
+          return;
+        }
         throw new Error(data?.error || 'Unknown error');
       }
 
+      clearVoucherOrderKey?.();
+      clearLaterPayOrderKey?.();
       if (!editOrderId) await fetchProductVouchers();
 
       setShowSuccess(true);
@@ -636,21 +965,143 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
       const orderItems = buildOrderItemsPayload();
       const orderTotalAmount = computeOrderTotalFromRows(orderItems);
 
-      const product_deductions = voucherBreakdown
+      const calculatedProductDeductions = voucherBreakdown
         .filter(({ byVoucher }) => byVoucher > 0)
-        .map(({ item, byVoucher }) => ({ product_id: item.product.id, quantity: byVoucher }));
+        .map(({ item, byVoucher }) => ({ product_id: item.product.id, quantity: byVoucher }))
+        .sort((a, b) => a.product_id.localeCompare(b.product_id));
 
+      // Voucher balances change as soon as the checkout reserves them. Keep the
+      // fingerprint tied to customer intent, then reuse the original deduction
+      // split from storage so a reload cannot create a second reservation.
+      const fingerprint = await sha256Hex(JSON.stringify({
+        delivery_date: deliveryDate,
+        note: notes.trim() || null,
+        items: cartItems
+          .map(({ product, quantity }) => ({ product_id: product.id, quantity }))
+          .sort((a, b) => a.product_id.localeCompare(b.product_id)),
+      }));
+      const storageKey = `vividaqua:prepay-checkout:${customer.id}`;
+      const voucherOrderStorageKey = `vividaqua:voucher-only-order:${customer.id}`;
+
+      const readStoredCheckout = (): StoredPrepayCheckout | null => {
+        const raw = localStorage.getItem(storageKey);
+        if (!raw) return null;
+
+        const parsed = JSON.parse(raw) as Partial<StoredPrepayCheckout>;
+        if (
+          typeof parsed.checkoutKey !== 'string' ||
+          !UUID_RE.test(parsed.checkoutKey) ||
+          typeof parsed.fingerprint !== 'string' ||
+          !Array.isArray(parsed.productDeductions) ||
+          !parsed.productDeductions.every((row) =>
+            row &&
+            typeof row.product_id === 'string' &&
+            UUID_RE.test(row.product_id) &&
+            Number.isSafeInteger(row.quantity) &&
+            row.quantity > 0
+          )
+        ) {
+          throw new Error(PREPAY_CHECKOUT_STORAGE_MESSAGE);
+        }
+
+        return {
+          checkoutKey: parsed.checkoutKey.toLowerCase(),
+          fingerprint: parsed.fingerprint,
+          productDeductions: parsed.productDeductions.map((row) => ({
+            product_id: row.product_id.toLowerCase(),
+            quantity: row.quantity,
+          })),
+        };
+      };
+
+      const selectCheckout = (): StoredPrepayCheckout => {
+        if (localStorage.getItem(voucherOrderStorageKey)) {
+          throw new Error(PREPAY_CHECKOUT_IN_USE_MESSAGE);
+        }
+        const persistedCheckout = readStoredCheckout();
+        if (persistedCheckout) {
+          if (persistedCheckout.fingerprint !== fingerprint) {
+            throw new Error(PREPAY_CHECKOUT_IN_USE_MESSAGE);
+          }
+          return persistedCheckout;
+        }
+
+        const memoryCheckout = inMemoryPrepayCheckout.current;
+        if (memoryCheckout?.fingerprint !== undefined && memoryCheckout.fingerprint !== fingerprint) {
+          throw new Error(PREPAY_CHECKOUT_IN_USE_MESSAGE);
+        }
+
+        const checkout = memoryCheckout || {
+          checkoutKey: createCheckoutKey(),
+          fingerprint,
+          productDeductions: calculatedProductDeductions,
+        };
+        localStorage.setItem(storageKey, JSON.stringify(checkout));
+
+        // Verify ownership while the cross-tab lock is still held. Never send
+        // a request whose retry key is not the durable customer checkout key.
+        const durableCheckout = readStoredCheckout();
+        if (durableCheckout?.checkoutKey !== checkout.checkoutKey) {
+          throw new Error(PREPAY_CHECKOUT_STORAGE_MESSAGE);
+        }
+        return durableCheckout;
+      };
+
+      const lockManager = navigator.locks;
+      if (!lockManager) throw new Error(PREPAY_CHECKOUT_STORAGE_MESSAGE);
+
+      let storedCheckout: StoredPrepayCheckout;
+      try {
+        storedCheckout = await lockManager.request(
+          `vividaqua:prepay-order:${customer.id}:lock`,
+          { mode: 'exclusive' },
+          selectCheckout,
+        );
+      } catch (storageError) {
+        if (
+          storageError instanceof Error &&
+          (
+            storageError.message === PREPAY_CHECKOUT_IN_USE_MESSAGE ||
+            storageError.message === PREPAY_CHECKOUT_STORAGE_MESSAGE
+          )
+        ) {
+          throw storageError;
+        }
+        throw new Error(PREPAY_CHECKOUT_STORAGE_MESSAGE);
+      }
+      inMemoryPrepayCheckout.current = storedCheckout;
+      const checkoutKey = storedCheckout.checkoutKey;
+      const product_deductions = storedCheckout.productDeductions;
+
+      const clearCheckoutKey = () => {
+        if (inMemoryPrepayCheckout.current?.checkoutKey === checkoutKey) {
+          inMemoryPrepayCheckout.current = null;
+        }
+        try {
+          const raw = localStorage.getItem(storageKey);
+          const parsed = raw ? JSON.parse(raw) as Partial<StoredPrepayCheckout> : null;
+          if (parsed?.checkoutKey === checkoutKey) localStorage.removeItem(storageKey);
+        } catch {
+          // Nothing else to clear when storage is unavailable.
+        }
+      };
+
+      const prepayRequestBody = {
+        token,
+        checkout_key: checkoutKey,
+        order: { delivery_date: deliveryDate, note: notes || null, total_amount: orderTotalAmount },
+        items: orderItems,
+        payment_amount: payableAmount,
+        product_deductions,
+      };
       const { data, error } = await supabase.functions.invoke('submit-prepay-order', {
-        body: {
-          token,
-          order: { delivery_date: deliveryDate, note: notes || null, total_amount: orderTotalAmount },
-          items: orderItems,
-          payment_amount: payableAmount,
-          product_deductions,
-        },
+        body: prepayRequestBody,
       });
 
       if (error) throw new Error(error.message);
+      if (data?.checkout_disposition === 'discard_key') {
+        clearCheckoutKey();
+      }
       if (!data?.success) {
         if (data?.error === 'DELIVERY_DATE_TOO_SOON') {
           setError('DELIVERY_DATE_TOO_SOON');
@@ -662,7 +1113,23 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
           setSubmitting(false);
           return;
         }
+        if (data?.checkout_disposition === 'manual_reconcile') {
+          throw new Error(
+            `Payment status requires manual review. Do not start another checkout; contact support with reference ${data?.midtrans_order_id || checkoutKey}.`,
+          );
+        }
+        if (data?.checkout_disposition === 'retry_same_key') {
+          throw new Error(
+            `Payment status is not final. Retry this exact order; its checkout key has been kept. (${data?.error || 'UNKNOWN_STATUS'})`,
+          );
+        }
         throw new Error(data?.error || 'Failed to create payment');
+      }
+
+      if (data.paid === true) {
+        setShowSuccess(true);
+        setSubmitting(false);
+        return;
       }
 
       await loadSnapScript(data.client_key, data.snap_js_url);
@@ -673,12 +1140,35 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
         onSuccess: async () => {
           paymentCompleted = true;
           try {
-            await supabase.functions.invoke('confirm-snap-payment', {
+            const { data: confirmation, error: confirmationError } = await supabase.functions.invoke('confirm-snap-payment', {
               body: { token, midtrans_order_id: midtransOrderId },
             });
-          } catch (_) { /* webhook will handle it as fallback */ }
-          setSubmitting(false);
-          setShowSuccess(true);
+            if (confirmationError) throw new Error(confirmationError.message);
+            if (!confirmation?.success || !confirmation?.paid) {
+              throw new Error(confirmation?.error || 'PAYMENT_NOT_VERIFIED');
+            }
+
+            // Ask the idempotent checkout endpoint for its explicit terminal
+            // disposition. If that follow-up is interrupted, retain the key so
+            // the same checkout can be reconciled on a later retry.
+            try {
+              const { data: resolvedCheckout } = await supabase.functions.invoke(
+                'submit-prepay-order',
+                { body: prepayRequestBody },
+              );
+              if (resolvedCheckout?.checkout_disposition === 'discard_key') {
+                clearCheckoutKey();
+              }
+            } catch {
+              // Payment is already verified; retaining the key is the safe
+              // fallback when terminal cleanup cannot be confirmed.
+            }
+            setShowSuccess(true);
+          } catch (confirmationError: any) {
+            setError(`${t('placeOrder.paymentFailedPrefix')}${confirmationError?.message || 'PAYMENT_NOT_VERIFIED'}`);
+          } finally {
+            setSubmitting(false);
+          }
         },
         onPending: () => {
           paymentCompleted = true;
@@ -695,7 +1185,6 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
           setSubmitting(false);
           if (!paymentCompleted) {
             toast(t('placeOrder.paymentNotCompletedToast'), { duration: 6000 });
-            navigate('/orders');
           }
         },
       });
@@ -1058,8 +1547,33 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
           </div>
         )}
 
-        {/* Payment breakdown (pre_pay with QRIS, or later_pay with vouchers applied) */}
-        {cartItems.length > 0 && (isPrePay ? payableAmount > 0 : voucherBreakdown.some(v => v.byVoucher > 0)) && (
+        {/* Billing arrangement for postpaid customers */}
+        {cartItems.length > 0 && !isPrePay && (
+          <div style={{ background: tokens.card, borderRadius: '16px', padding: '20px', boxShadow: '0 4px 20px rgba(0,0,0,0.15)', backdropFilter: tokens.cardBlur, WebkitBackdropFilter: tokens.cardBlur, border: `1px solid ${tokens.primaryBorder}` }}>
+            <p style={{ margin: '0 0 12px 0', fontWeight: '700', color: tokens.text, fontSize: '14px' }}>
+              📋 {t('placeOrder.billingArrangement')}
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: tokens.muted, marginBottom: '8px' }}>
+              <span>{t('account.billingTerm')}</span>
+              <strong style={{ color: tokens.primary }}>{paymentTermLabel}</strong>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: tokens.muted }}>
+              <span>{t('placeOrder.onCredit')}</span>
+              <strong style={{ color: tokens.primary }}>{formatCurrency(payableAmount)}</strong>
+            </div>
+            <p style={{ margin: '10px 0 0', fontSize: '12px', lineHeight: 1.45, color: tokens.muted }}>
+              {t('placeOrder.billingArrangementDesc')}
+            </p>
+            {creditLimit !== null && (
+              <p style={{ margin: '6px 0 0', fontSize: '12px', color: unpaidCredit + payableAmount > creditLimit ? theme.error : tokens.muted }}>
+                {t('home.creditLimit')}: {formatCurrency(Math.max(0, creditLimit - unpaidCredit))} {t('placeOrder.remaining')}
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Payment breakdown for pre-pay orders with a remaining QRIS amount. */}
+        {cartItems.length > 0 && isPrePay && payableAmount > 0 && (
           <div style={{ background: tokens.card, borderRadius: '16px', padding: '20px', boxShadow: '0 4px 20px rgba(0,0,0,0.15)', backdropFilter: tokens.cardBlur, WebkitBackdropFilter: tokens.cardBlur, border: `1px solid ${tokens.primaryBorder}` }}>
             <p style={{ margin: '0 0 12px 0', fontWeight: '700', color: tokens.text, fontSize: '14px' }}>💳 {t('placeOrder.paymentBreakdown')}</p>
             {voucherBreakdown.filter(({ byPayment }) => byPayment > 0).map(({ item, byVoucher, byPayment }) => {
@@ -1079,17 +1593,12 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
               );
             })}
             <div style={{ borderTop: `1px solid ${tokens.divider}`, marginTop: '4px', paddingTop: '12px', display: 'flex', justifyContent: 'space-between', fontWeight: '700', fontSize: '15px', color: tokens.text }}>
-              <span>{isPrePay ? t('placeOrder.payViaQris') : t('placeOrder.onCredit')}</span>
+              <span>{t('placeOrder.payViaQris')}</span>
               <span style={{ color: tokens.primary }}>{formatCurrency(payableAmount)}</span>
             </div>
             {payableAmount < grossCartTotal && (
               <p style={{ margin: '6px 0 0', fontSize: '12px', color: tokens.muted }}>
                 {formatCurrency(grossCartTotal - payableAmount)} {t('placeOrder.voucherCovered')}
-              </p>
-            )}
-            {!isPrePay && creditLimit !== null && (
-              <p style={{ margin: '6px 0 0', fontSize: '12px', color: unpaidCredit + payableAmount > creditLimit ? theme.error : tokens.muted }}>
-                {t('home.creditLimit')}: {formatCurrency(Math.max(0, creditLimit - unpaidCredit))} {t('placeOrder.remaining')}
               </p>
             )}
           </div>
@@ -1148,8 +1657,22 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
           </div>
         )}
 
+        {error === 'ORDER_NOT_EDITABLE' && (
+          <div style={{ background: '#fdecea', border: `2px solid ${theme.error}`, borderRadius: '12px', padding: '16px' }}>
+            <p style={{ margin: 0, fontWeight: '700', color: theme.error, fontSize: '14px' }}>{t('placeOrder.orderNotEditableTitle')}</p>
+            <p style={{ margin: '8px 0 0', fontSize: '13px', color: theme.error }}>{t('placeOrder.orderNotEditableDesc')}</p>
+          </div>
+        )}
+
+        {error === 'VOUCHER_ORDER_EDIT_NOT_SUPPORTED' && (
+          <div style={{ background: '#fdecea', border: `2px solid ${theme.error}`, borderRadius: '12px', padding: '16px' }}>
+            <p style={{ margin: 0, fontWeight: '700', color: theme.error, fontSize: '14px' }}>{t('placeOrder.voucherOrderEditTitle')}</p>
+            <p style={{ margin: '8px 0 0', fontSize: '13px', color: theme.error }}>{t('placeOrder.voucherOrderEditDesc')}</p>
+          </div>
+        )}
+
         {/* Error */}
-        {error && error !== 'UNPAID_ORDERS' && error !== 'PRE_PAY_REQUIRES_PAYMENT' && error !== 'CREDIT_LIMIT_EXCEEDED' && error !== 'DELIVERY_DATE_TOO_SOON' && error !== 'DELIVERY_DATE_BRANCH_CLOSED' && (
+        {error && error !== 'UNPAID_ORDERS' && error !== 'PRE_PAY_REQUIRES_PAYMENT' && error !== 'CREDIT_LIMIT_EXCEEDED' && error !== 'DELIVERY_DATE_TOO_SOON' && error !== 'DELIVERY_DATE_BRANCH_CLOSED' && error !== 'ORDER_NOT_EDITABLE' && error !== 'VOUCHER_ORDER_EDIT_NOT_SUPPORTED' && (
           <div style={{ background: '#fdecea', border: `2px solid ${theme.error}`, borderRadius: '12px', padding: '14px 16px', color: theme.error, fontSize: '14px' }}>
             ⚠️ {error}
           </div>
@@ -1159,7 +1682,19 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
         <button
           onClick={() => {
             if (blockedByUnpaid) { setShowUnpaidModal(true); return; }
-            if (isPrePay && !hasEnoughVouchers) { handlePayWithQris(); return; }
+            if (isPrePay && !hasEnoughVouchers) {
+              try {
+                if (localStorage.getItem(`vividaqua:voucher-only-order:${customer.id}`)) {
+                  handleSubmit();
+                  return;
+                }
+              } catch {
+                handleSubmit();
+                return;
+              }
+              handlePayWithQris();
+              return;
+            }
             handleSubmit();
           }}
           disabled={submitting || cartItems.length === 0}
@@ -1176,7 +1711,9 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
               ? `✅ ${t('placeOrder.update')}`
               : isPrePay && !hasEnoughVouchers && cartItems.length > 0
                 ? `💳 ${t('placeOrder.submit')} · ${t('placeOrder.payViaQris')} ${formatCurrency(payableAmount)}`
-                : `✅ ${t('placeOrder.submit')}`}
+                : !isPrePay
+                  ? `✅ ${t('placeOrder.submit')} · ${paymentTermLabel}`
+                  : `✅ ${t('placeOrder.submit')}`}
         </button>
       </div>
 

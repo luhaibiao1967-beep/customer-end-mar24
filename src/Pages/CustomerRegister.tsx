@@ -7,6 +7,13 @@ import { getOrCreateDeviceId } from '../lib/deviceId';
 import { theme } from '../theme';
 import { useJsApiLoader, Autocomplete } from '@react-google-maps/api';
 import { useLanguage } from '../contexts/LanguageContext';
+import {
+  getRememberPreference,
+  getSafeCustomerReturnTo,
+  normalizeWhatsApp,
+  setRememberedLogin,
+  writeCustomerSession,
+} from '../lib/customerSession';
 
 const MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string;
 const REGISTER_LIBRARIES: ('places')[] = ['places'];
@@ -34,6 +41,10 @@ export default function CustomerRegister() {
   const [waMeUrl, setWaMeUrl] = useState('');
 
   const [deviceId, setDeviceId] = useState<string | null>(() => searchParams.get('device_id'));
+  const rememberLogin = searchParams.get('remember') == null
+    ? getRememberPreference()
+    : searchParams.get('remember') === '1';
+  const returnTo = getSafeCustomerReturnTo(searchParams.get('returnTo'));
 
   useEffect(() => {
     if (!deviceId) getOrCreateDeviceId().then(setDeviceId);
@@ -51,16 +62,7 @@ export default function CustomerRegister() {
     }
   }, [countdown]);
 
-  const formatPhoneNumber = (phone: string): string => {
-    let cleaned = phone.replace(/\D/g, '');
-    if (cleaned.startsWith('0')) {
-      cleaned = '62' + cleaned.substring(1);
-    }
-    if (!cleaned.startsWith('62')) {
-      cleaned = '62' + cleaned;
-    }
-    return '+' + cleaned;
-  };
+  const formatPhoneNumber = normalizeWhatsApp;
 
   const handleSubmitForm = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -75,16 +77,10 @@ export default function CustomerRegister() {
       }
 
       const formattedWhatsApp = formatPhoneNumber(formData.whatsapp);
-      const resolvedDeviceId = deviceId ?? await getOrCreateDeviceId();
-
-      const { data: checkData } = await supabase.functions.invoke('auth-check-device-login', {
-        body: { phone: formattedWhatsApp, device_id: resolvedDeviceId || 'dummy' },
-      });
-      if (checkData?.bound || checkData?.needs_otp) {
-        setError(t('register.numberRegistered'));
-        setLoading(false);
-        return;
+      if (!formattedWhatsApp) {
+        throw new Error(language === 'id' ? 'Nomor WhatsApp tidak valid' : 'Invalid WhatsApp number');
       }
+      const resolvedDeviceId = deviceId ?? await getOrCreateDeviceId();
 
       const { data, error: functionError } = await supabase.functions.invoke('auth-send-otp', {
         body: { phone: formattedWhatsApp, device_id: resolvedDeviceId }
@@ -102,7 +98,9 @@ export default function CustomerRegister() {
       }
       if (!data?.success) throw new Error(data?.error || 'OTP send failed');
 
-      setMessage(`📱 ${language === 'id' ? 'Kode OTP telah dikirim ke WhatsApp' : 'OTP code has been sent to WhatsApp'} ${formattedWhatsApp}`);
+      setMessage(data.dev_mode && data.otp
+        ? `🧪 ${language === 'id' ? 'Kode OTP pengujian' : 'Test OTP code'}: ${data.otp}`
+        : `📱 ${language === 'id' ? 'Kode OTP telah dikirim ke WhatsApp' : 'OTP code has been sent to WhatsApp'} ${formattedWhatsApp}`);
       setStep('otp');
       setCountdown(300);
       setLoading(false);
@@ -123,6 +121,9 @@ export default function CustomerRegister() {
 
     try {
       const formattedWhatsApp = formatPhoneNumber(formData.whatsapp);
+      if (!formattedWhatsApp) {
+        throw new Error(language === 'id' ? 'Nomor WhatsApp tidak valid' : 'Invalid WhatsApp number');
+      }
       const resolvedDeviceId = deviceId ?? await getOrCreateDeviceId();
 
       const { data, error: functionError } = await supabase.functions.invoke('auth-verify-otp', {
@@ -149,13 +150,17 @@ export default function CustomerRegister() {
         throw new Error(errMsg);
       }
       if (!data?.success) throw new Error(data?.error || 'Verification failed');
-
-      setRegistrationSuccess(true);
-      setMessage(t('register.successMessage'));
-      if (data.magic_link) {
-        setDevMagicLink(data.magic_link);
+      if (!data.customer || !data.auth_token) {
+        throw new Error(language === 'id' ? 'Sesi pelanggan tidak tersedia' : 'Customer session is unavailable');
       }
+
+      writeCustomerSession(data.customer, data.auth_token);
+      setRememberedLogin(formattedWhatsApp, rememberLogin);
+      setRegistrationSuccess(true);
+      setMessage(language === 'id' ? 'Registrasi berhasil. Mengalihkan...' : 'Registration successful. Redirecting...');
+      window.dispatchEvent(new Event('session-auth-updated'));
       setLoading(false);
+      setTimeout(() => navigate(returnTo, { replace: true }), 500);
 
     } catch (err: any) {
       console.error('❌ Registration error:', err);
@@ -173,6 +178,9 @@ export default function CustomerRegister() {
 
     try {
       const formattedWhatsApp = formatPhoneNumber(formData.whatsapp);
+      if (!formattedWhatsApp) {
+        throw new Error(language === 'id' ? 'Nomor WhatsApp tidak valid' : 'Invalid WhatsApp number');
+      }
       const resolvedDeviceId = deviceId ?? await getOrCreateDeviceId();
 
       const { data, error: functionError } = await supabase.functions.invoke('auth-send-otp', {
@@ -191,7 +199,9 @@ export default function CustomerRegister() {
       }
       if (!data?.success) throw new Error(data?.error || 'Resend failed');
 
-      setMessage(`📱 ${t('register.newOtpSent')}`);
+      setMessage(data.dev_mode && data.otp
+        ? `🧪 ${language === 'id' ? 'Kode OTP pengujian' : 'Test OTP code'}: ${data.otp}`
+        : `📱 ${t('register.newOtpSent')}`);
       setCountdown(300);
       setOtpCode('');
       setLoading(false);

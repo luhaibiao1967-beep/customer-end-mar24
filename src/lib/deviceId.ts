@@ -47,7 +47,11 @@ export async function getOrCreateDeviceId(): Promise<string> {
         return id
       }
     } catch {}
-    return randomFallback()
+    const fallbackId = randomFallback()
+    try {
+      localStorage.setItem(STORAGE_KEY, fallbackId)
+    } catch {}
+    return fallbackId
   })()
 
   return deviceIdPromise

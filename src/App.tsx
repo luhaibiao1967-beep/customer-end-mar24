@@ -2,7 +2,7 @@
 // Fixed: sessionStorage, storage event listener
 
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import CustomerLogin from './Pages/CustomerLogin';
 import CustomerRegister from './Pages/CustomerRegister';
@@ -22,45 +22,58 @@ import { LanguageProvider } from './contexts/LanguageContext';
 import { ColorTokensProvider } from './contexts/ColorTokensContext';
 import { theme } from './theme';
 import { Toaster } from 'react-hot-toast';
-import toast from 'react-hot-toast';
-
-// Shown when customer tries to place order without a branch assigned
-function NoBranchRedirect() {
-  const navigate = useNavigate();
-  useEffect(() => {
-    toast.error('Please select your service branch first.');
-    navigate('/customer-home', { replace: true });
-  }, []);
-  return null;
-}
+import { supabase } from './supabaseClient';
+import { getOrCreateDeviceId } from './lib/deviceId';
+import {
+  getRememberedWhatsApp,
+  readCustomerSession,
+  writeCustomerSession,
+} from './lib/customerSession';
 
 function App() {
   const [loading, setLoading] = useState(true);
   const [customer, setCustomer] = useState<any>(null);
 
-  // Load customer from sessionStorage
   const loadCustomer = () => {
-    const isAuthenticated = sessionStorage.getItem('authenticated');
-    const customerData = sessionStorage.getItem('customer');
-
-    if (isAuthenticated === 'true' && customerData) {
-      try {
-        const parsedCustomer = JSON.parse(customerData);
-        setCustomer(parsedCustomer);
-      } catch (err) {
-        console.error('Failed to parse customer data:', err);
-        sessionStorage.clear();
-        setCustomer(null);
-      }
-    } else {
-      // Explicitly clear customer when session is invalid or signed out
-      setCustomer(null);
-    }
+    const session = readCustomerSession();
+    setCustomer(session?.customer ?? null);
+    return session;
   };
 
   useEffect(() => {
-    loadCustomer();
-    setLoading(false);
+    let cancelled = false;
+
+    const restoreCustomer = async () => {
+      const existingSession = loadCustomer();
+      if (existingSession) {
+        setLoading(false);
+        return;
+      }
+
+      const rememberedPhone = getRememberedWhatsApp();
+      if (!rememberedPhone) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const deviceId = await getOrCreateDeviceId();
+        const { data, error } = await supabase.functions.invoke('auth-check-device-login', {
+          body: { phone: rememberedPhone, device_id: deviceId },
+        });
+
+        if (!cancelled && !error && data?.bound && data.customer && data.auth_token) {
+          writeCustomerSession(data.customer, data.auth_token);
+          setCustomer(data.customer);
+        }
+      } catch (error) {
+        console.warn('Remembered customer session could not be restored:', error);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    void restoreCustomer();
 
     // Listen for auth updates from MagicLinkHandler
     const handleAuthUpdate = () => {
@@ -71,6 +84,7 @@ function App() {
     window.addEventListener('session-auth-updated', handleAuthUpdate);
     
     return () => {
+      cancelled = true;
       window.removeEventListener('storage', handleAuthUpdate);
       window.removeEventListener('session-auth-updated', handleAuthUpdate);
     };
@@ -181,9 +195,9 @@ function App() {
             path="/place-order"
             element={
               !customer ? (
-                <Navigate to="/" replace />
+                <Navigate to="/?returnTo=%2Fplace-order" replace />
               ) : (!customer.branch || customer.branch === 'Pending') ? (
-                <NoBranchRedirect />
+                <BranchSelection customer={customer} />
               ) : (
                 <PlaceOrder customer={customer} />
               )

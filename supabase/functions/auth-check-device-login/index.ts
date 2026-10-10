@@ -1,16 +1,10 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.38.0'
+import { normalizeIndonesianWhatsApp } from '../_shared/phone.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
-
-function formatPhoneNumber(phone: string): string {
-  let cleaned = phone.replace(/\D/g, '')
-  if (cleaned.startsWith('0')) cleaned = '62' + cleaned.substring(1)
-  if (!cleaned.startsWith('62')) cleaned = '62' + cleaned
-  return '+' + cleaned
 }
 
 serve(async (req) => {
@@ -22,14 +16,14 @@ serve(async (req) => {
     const body = await req.json()
     const { phone, device_id } = body as { phone?: string; device_id?: string }
 
-    if (!phone || phone.length < 10) {
+    const formattedPhone = normalizeIndonesianWhatsApp(phone)
+    if (!formattedPhone) {
       throw new Error('Phone number is required')
     }
     if (!device_id || device_id.length < 8) {
       throw new Error('Device ID is required')
     }
 
-    const formattedPhone = formatPhoneNumber(phone)
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseKey)
@@ -60,6 +54,8 @@ serve(async (req) => {
               address: customer.address,
               whatsapp: customer.whatsapp,
               customer_type: customer.customer_type,
+              payment_term: customer.payment_term,
+              credit_limit: customer.credit_limit,
               voucher_balance: customer.voucher_balance,
               branch: customer.branch,
               discount: customer.discount,

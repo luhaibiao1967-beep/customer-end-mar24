@@ -34,11 +34,34 @@ interface Order {
   delivery_evidence?: string;
   payment_evidence?: string;
   borrowed_gallons?: number;
+  qris_charged_idr?: number | null;
+  midtrans_order_id?: string | null;
 }
 
 interface OrderHistoryProps {
   customer: Customer;
 }
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const canonicalOrderIds = (orderIds: string[]) => [...new Set(orderIds)].sort();
+
+const paymentKeyStorageKey = (customerId: string, orderIds: string[]) =>
+  `vividaqua:later-pay-payment:${customerId}:${canonicalOrderIds(orderIds).join(',')}`;
+
+const readOrCreatePaymentKey = (customerId: string, orderIds: string[]) => {
+  const storageKey = paymentKeyStorageKey(customerId, orderIds);
+  try {
+    const stored = localStorage.getItem(storageKey);
+    if (stored && UUID_RE.test(stored)) return { paymentKey: stored, storageKey };
+  } catch {
+    // Server-side reservation still prevents duplicates if storage is unavailable.
+  }
+
+  const paymentKey = crypto.randomUUID();
+  try { localStorage.setItem(storageKey, paymentKey); } catch { /* best effort */ }
+  return { paymentKey, storageKey };
+};
 
 export default function OrderHistory({ customer }: OrderHistoryProps) {
   const navigate = useNavigate();
@@ -51,6 +74,7 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
   const [productVouchers, setProductVouchers] = useState<{ product_id: string; balance: number; products: { name: string } | null }[]>([]);
 
   const [payingIds, setPayingIds] = useState<Set<string>>(new Set());
+  const [cancellingIds, setCancellingIds] = useState<Set<string>>(new Set());
 
   // Bank Transfer modal (covers all unpaid outstanding)
   const [showBankTransfer, setShowBankTransfer] = useState(false);
@@ -111,35 +135,92 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
       document.body.appendChild(script);
     });
 
-  const handlePayWithQris = async (orderIds: string[]) => {
+  const handlePayWithQris = async (requestedOrderIds: string[]) => {
+    const orderIds = canonicalOrderIds(requestedOrderIds);
+    const { paymentKey, storageKey } = readOrCreatePaymentKey(customer.id, orderIds);
+    const clearPaymentKey = () => {
+      try { localStorage.removeItem(storageKey); } catch { /* best effort */ }
+    };
+    const storeCanonicalPaymentKey = (value: unknown) => {
+      if (typeof value !== 'string' || !UUID_RE.test(value)) return;
+      try { localStorage.setItem(storageKey, value); } catch { /* best effort */ }
+    };
+
     setPayingIds(prev => new Set([...prev, ...orderIds]));
     try {
       const token = sessionStorage.getItem('auth_token');
       if (!token) throw new Error('Session expired');
 
       const { data, error } = await supabase.functions.invoke('create-order-payment', {
-        body: { token, order_ids: orderIds, enabled_payments: ['other_qris'] },
+        body: { token, order_ids: orderIds, payment_key: paymentKey },
       });
 
       if (error) throw new Error(error.message);
-      if (!data?.success) throw new Error(data?.error || 'Failed to create payment');
+      storeCanonicalPaymentKey(data?.payment_key);
+      if (data?.payment_disposition === 'discard_key') clearPaymentKey();
+      if (!data?.success) {
+        if (data?.payment_disposition === 'manual_reconcile') {
+          toast.error(t('orderHistory.paymentVerificationPending'), { duration: 8000 });
+          return;
+        }
+        throw new Error(data?.error || 'Failed to create payment');
+      }
+      if (data?.paid === true) {
+        clearPaymentKey();
+        await fetchOrders();
+        toast.success(t('orderHistory.paymentSuccess'));
+        return;
+      }
+      if (!data?.snap_token || !data?.client_key || !data?.snap_js_url) {
+        throw new Error('PAYMENT_SESSION_INCOMPLETE');
+      }
 
       await loadSnapScript(data.client_key, data.snap_js_url);
 
       const midtransOrderId = data.midtrans_order_id;
-      (window as any).snap.pay(data.snap_token, {
-        onSuccess: async () => {
-          try {
-            await supabase.functions.invoke('confirm-snap-payment', {
-              body: { token, midtrans_order_id: midtransOrderId },
-            });
-          } catch (_) { /* webhook will handle it as fallback */ }
-          fetchOrders();
-          toast.success(t('orderHistory.paymentSuccess'));
-        },
-        onPending: () => { toast(t('orderHistory.paymentPending'), { duration: 6000 }); },
-        onError: (result: any) => { toast.error(t('orderHistory.paymentFailed') + ' ' + (result?.status_message || 'Unknown error')); },
-        onClose: () => { /* user dismissed without paying */ },
+      await new Promise<void>((resolve) => {
+        (window as any).snap.pay(data.snap_token, {
+          onSuccess: async () => {
+            try {
+              const { data: confirmation, error: confirmationError } =
+                await supabase.functions.invoke('confirm-snap-payment', {
+                  body: { token, midtrans_order_id: midtransOrderId },
+                });
+              if (confirmationError) throw new Error(confirmationError.message);
+              if (confirmation?.payment_disposition === 'discard_key') clearPaymentKey();
+              if (confirmation?.success && confirmation?.paid) {
+                clearPaymentKey();
+                await fetchOrders();
+                toast.success(t('orderHistory.paymentSuccess'));
+              } else if (confirmation?.payment_disposition === 'manual_reconcile') {
+                toast.error(t('orderHistory.paymentVerificationPending'), { duration: 8000 });
+              } else {
+                await fetchOrders();
+                toast(t('orderHistory.paymentPending'), { duration: 6000 });
+              }
+            } catch {
+              await fetchOrders();
+              toast(t('orderHistory.paymentVerificationPending'), { duration: 8000 });
+            } finally {
+              resolve();
+            }
+          },
+          onPending: async () => {
+            await fetchOrders();
+            toast(t('orderHistory.paymentPending'), { duration: 6000 });
+            resolve();
+          },
+          onError: async (result: any) => {
+            await fetchOrders();
+            toast.error(t('orderHistory.paymentFailed') + ' ' + (result?.status_message || 'Unknown error'));
+            resolve();
+          },
+          onClose: async () => {
+            await fetchOrders();
+            toast(t('orderHistory.paymentSessionRetained'), { duration: 5000 });
+            resolve();
+          },
+        });
       });
     } catch (err: any) {
       toast.error('Error: ' + err.message);
@@ -147,6 +228,44 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
       setPayingIds(prev => {
         const next = new Set(prev);
         orderIds.forEach(id => next.delete(id));
+        return next;
+      });
+    }
+  };
+
+  const handleCancelOrder = async (orderId: string) => {
+    if (!window.confirm(t('orderHistory.cancelConfirm'))) return;
+
+    setCancellingIds(prev => new Set(prev).add(orderId));
+    try {
+      const token = sessionStorage.getItem('auth_token');
+      if (!token) throw new Error(t('orderHistory.sessionExpired'));
+
+      const { data, error } = await supabase.functions.invoke('cancel-order', {
+        body: { token, order_id: orderId },
+      });
+
+      if (error) {
+        let message = error.message;
+        const response = (error as any).context;
+        if (response instanceof Response) {
+          try {
+            const payload = await response.clone().json();
+            message = payload?.error || message;
+          } catch (_) { /* keep the function error message */ }
+        }
+        throw new Error(message);
+      }
+      if (!data?.success) throw new Error(data?.error || 'Failed to cancel order');
+
+      await fetchOrders();
+      toast.success(t('orderHistory.cancelSuccess'));
+    } catch (err: any) {
+      toast.error(t('orderHistory.cancelFailed') + ' ' + err.message);
+    } finally {
+      setCancellingIds(prev => {
+        const next = new Set(prev);
+        next.delete(orderId);
         return next;
       });
     }
@@ -174,7 +293,8 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
         reader.readAsDataURL(selectedFile);
       });
 
-      const targetIds = unpaidOrders.map(o => o.id);
+      const targetIds = unreservedUnpaidOrders.map(o => o.id);
+      if (targetIds.length === 0) throw new Error('All unpaid orders already have a QRIS payment in progress');
 
       const { data, error } = await supabase.functions.invoke('payment-action', {
         body: {
@@ -231,12 +351,23 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
   const isLaterPay = customer.customer_type !== 'pre_pay';
 
   const unpaidOrders = orders.filter(o => o.payment_status === 'unpaid');
-  const unpaidDeliveredOrders = unpaidOrders.filter(o => o.status === 'delivered');
+  const unreservedUnpaidOrders = unpaidOrders.filter(o => !o.midtrans_order_id);
   const totalUnpaid = unpaidOrders.reduce((sum, o) => sum + o.total_amount, 0);
+  const unreservedUnpaidTotal = unreservedUnpaidOrders.reduce((sum, o) => sum + o.total_amount, 0);
   const totalBorrowedGallons = initialBorrowedGallons +
     orders.reduce((sum, o) => sum + (o.borrowed_gallons || 0), 0);
 
-  const isPayingAll = unpaidOrders.some(o => payingIds.has(o.id));
+  const isPayingAll = unreservedUnpaidOrders.some(o => payingIds.has(o.id));
+
+  const getPaymentOrderIds = (order: Order) => {
+    if (!order.midtrans_order_id) return [order.id];
+    return orders
+      .filter(candidate =>
+        candidate.payment_status === 'unpaid' &&
+        candidate.midtrans_order_id === order.midtrans_order_id
+      )
+      .map(candidate => candidate.id);
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -309,10 +440,10 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
             </div>
 
             {/* Payment buttons — shown whenever there is outstanding */}
-            {unpaidOrders.length > 0 && (
+            {unreservedUnpaidOrders.length > 0 && (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                 <button
-                  onClick={() => handlePayWithQris(unpaidOrders.map(o => o.id))}
+                  onClick={() => handlePayWithQris(unreservedUnpaidOrders.map(o => o.id))}
                   disabled={isPayingAll}
                   style={{ padding: '12px', background: isPayingAll ? '#ccc' : tokens.gradientSuccess, color: 'white', border: 'none', borderRadius: '10px', fontSize: '14px', fontWeight: 'bold', cursor: isPayingAll ? 'not-allowed' : 'pointer' }}
                 >
@@ -392,7 +523,7 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   {order.status === 'pending' ? (
                     customer.customer_type === 'pre_pay' && order.payment_status === 'paid' ? (
-                      // Paid pre_pay order: locked, no edit/cancel
+                      // Paid pre_pay order: no edit; voucher-only rows may still be cancelled below.
                       <div style={{ padding: '8px 12px', background: '#f0fdf4', borderRadius: '8px', fontSize: '13px', color: '#15803d', textAlign: 'center' }}>
                         {`✅ ${t('orderHistory.orderConfirmedLocked')}`}
                       </div>
@@ -410,8 +541,23 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
                           {payingIds.has(order.id) ? 'Loading...' : t('orderHistory.completePaymentQris')}
                         </button>
                       </div>
+                    ) : order.midtrans_order_id ? (
+                      // A reserved later-pay batch is immutable until it settles
+                      // or reaches a verified terminal provider state.
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div style={{ padding: '8px 12px', background: '#fff3cd', borderRadius: '8px', fontSize: '13px', color: '#856404', textAlign: 'center' }}>
+                          {`🔒 ${t('orderHistory.paymentInProgress')}`}
+                        </div>
+                        <button
+                          onClick={() => handlePayWithQris(getPaymentOrderIds(order))}
+                          disabled={payingIds.has(order.id)}
+                          style={{ padding: '10px', background: payingIds.has(order.id) ? '#ccc' : tokens.gradientSuccess, color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: payingIds.has(order.id) ? 'not-allowed' : 'pointer' }}
+                        >
+                          {payingIds.has(order.id) ? 'Loading...' : t('orderHistory.resumePayment')}
+                        </button>
+                      </div>
                     ) : (
-                      // later_pay: edit + QRIS; cancellation is done in the staff app only
+                      // Unreserved later-pay order remains editable.
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                         <button onClick={() => navigate(`/place-order?edit=${order.id}`)} style={{ padding: '10px', background: theme.info, color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}>
                           {t('home.edit')}
@@ -434,15 +580,59 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
                       </div>
                       {isLaterPay && order.payment_status === 'unpaid' && (
                         <button
-                          onClick={() => handlePayWithQris([order.id])}
+                          onClick={() => handlePayWithQris(getPaymentOrderIds(order))}
                           disabled={payingIds.has(order.id)}
                           style={{ padding: '10px', background: payingIds.has(order.id) ? '#ccc' : tokens.gradientSuccess, color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: payingIds.has(order.id) ? 'not-allowed' : 'pointer' }}
                         >
-                          {payingIds.has(order.id) ? 'Loading...' : t('orderHistory.payViaQris')}
+                          {payingIds.has(order.id)
+                            ? 'Loading...'
+                            : order.midtrans_order_id
+                              ? t('orderHistory.resumePayment')
+                              : t('orderHistory.payViaQris')}
                         </button>
                       )}
                     </div>
                   ) : null}
+
+                  {order.status === 'delivered' && isLaterPay && order.payment_status === 'unpaid' && (
+                    <button
+                      onClick={() => handlePayWithQris(getPaymentOrderIds(order))}
+                      disabled={payingIds.has(order.id)}
+                      style={{ padding: '10px', background: payingIds.has(order.id) ? '#ccc' : tokens.gradientSuccess, color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: payingIds.has(order.id) ? 'not-allowed' : 'pointer' }}
+                    >
+                      {payingIds.has(order.id)
+                        ? 'Loading...'
+                        : order.midtrans_order_id
+                          ? t('orderHistory.resumePayment')
+                          : t('orderHistory.payViaQris')}
+                    </button>
+                  )}
+
+                  {order.status === 'pending' &&
+                    !order.midtrans_order_id &&
+                    ((customer.customer_type === 'pre_pay' &&
+                      order.payment_status === 'paid' &&
+                      (order.qris_charged_idr ?? 0) === 0) ||
+                     (customer.customer_type !== 'pre_pay' && order.payment_status === 'unpaid')) && (
+                    <button
+                      onClick={() => handleCancelOrder(order.id)}
+                      disabled={cancellingIds.has(order.id)}
+                      style={{
+                        padding: '10px',
+                        background: cancellingIds.has(order.id) ? '#ccc' : '#fee2e2',
+                        color: cancellingIds.has(order.id) ? '#666' : '#b91c1c',
+                        border: '1px solid #fca5a5',
+                        borderRadius: '8px',
+                        fontSize: '14px',
+                        fontWeight: 'bold',
+                        cursor: cancellingIds.has(order.id) ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      {cancellingIds.has(order.id)
+                        ? t('orderHistory.cancelling')
+                        : t('orderHistory.cancelOrder')}
+                    </button>
+                  )}
 
                   {/* View payment evidence */}
                   {order.payment_evidence && (
@@ -481,7 +671,7 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
               <div>
                 <p style={{ margin: 0, fontWeight: '700', fontSize: '16px' }}>{t('orderHistory.bankTransfer')}</p>
                 <p style={{ margin: 0, fontSize: '13px', color: tokens.muted }}>
-                  {unpaidOrders.length} order(s) · {formatCurrency(totalUnpaid)}
+                  {unreservedUnpaidOrders.length} order(s) · {formatCurrency(unreservedUnpaidTotal)}
                 </p>
               </div>
               <button onClick={closeUploadModal} style={{ background: 'none', border: 'none', fontSize: '22px', cursor: 'pointer', color: tokens.muted }}>✕</button>
@@ -498,8 +688,8 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
                 <p style={{ margin: 0, fontSize: '14px', fontWeight: '600', color: tokens.text }}>{BANK_INFO.name}</p>
               </div>
               <p style={{ fontSize: '13px', color: theme.error, fontWeight: '700', textAlign: 'center', marginBottom: '20px', background: '#fff3e0', padding: '10px', borderRadius: '8px' }}>
-                {t('orderHistory.transferAmount') + ' '}{formatCurrency(totalUnpaid)}
-                {unpaidOrders.length > 1 && ` (${unpaidOrders.length} orders)`}
+                {t('orderHistory.transferAmount') + ' '}{formatCurrency(unreservedUnpaidTotal)}
+                {unreservedUnpaidOrders.length > 1 && ` (${unreservedUnpaidOrders.length} orders)`}
               </p>
 
               {/* Upload evidence */}

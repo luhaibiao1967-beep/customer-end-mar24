@@ -7,6 +7,7 @@ import { formatCurrency } from '../utils/format';
 import toast from 'react-hot-toast';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useColorTokens } from '../contexts/ColorTokensContext';
+import { fetchCustomerVouchers } from '../lib/customerVouchers';
 
 interface Customer {
   id: string;
@@ -176,16 +177,15 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
 
   const loadData = async () => {
     try {
+      const token = sessionStorage.getItem('auth_token');
+      if (!token) throw new Error('Session expired');
       const [pkgRes, vRes, prodRes] = await Promise.all([
         supabase
           .from('voucher_packages')
           .select('id, product_id, qty, price, label, sort_order, description, image_url, products(name)')
           .eq('is_active', true)
           .order('sort_order'),
-        supabase
-          .from('customer_product_vouchers')
-          .select('product_id, balance')
-          .eq('customer_id', customer.id),
+        fetchCustomerVouchers(token),
         supabase
           .from('products')
           .select('id, name, price, unit, is_refill, description, image_url')
@@ -216,7 +216,7 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
       setProductNames(nameMap);
 
       const map = new Map<string, number>();
-      for (const row of vRes.data || []) map.set(row.product_id, row.balance);
+      for (const row of vRes) map.set(row.product_id, row.balance);
       setCurrentVouchers(map);
     } catch {
       // silently fail
@@ -269,20 +269,27 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
       const orderId = data.midtrans_order_id;
       (window as any).snap.pay(data.snap_token, {
         onSuccess: async () => {
-          // Optimistic UI update
-          setCurrentVouchers(prev => {
-            const next = new Map(prev);
-            next.set(pkg.product_id, (prev.get(pkg.product_id) ?? 0) + pkg.qty);
-            return next;
-          });
-          // Confirm with Midtrans API and write to DB
-          const authToken = sessionStorage.getItem('auth_token');
-          await supabase.functions.invoke('confirm-voucher-payment', {
-            body: { token: authToken, midtrans_order_id: orderId },
-          });
-          toast.success(t('vouchers.paymentSuccess'));
-          loadData();
-          fetchHistory();
+          try {
+            const authToken = sessionStorage.getItem('auth_token');
+            const { data: confirmation, error: confirmationError } = await supabase.functions.invoke('confirm-voucher-payment', {
+              body: { token: authToken, midtrans_order_id: orderId },
+            });
+            if (confirmationError) throw new Error(confirmationError.message);
+            if (!confirmation?.success || !confirmation?.paid) {
+              throw new Error(confirmation?.error || 'PAYMENT_NOT_VERIFIED');
+            }
+
+            setCurrentVouchers(prev => {
+              const next = new Map(prev);
+              next.set(pkg.product_id, (prev.get(pkg.product_id) ?? 0) + pkg.qty);
+              return next;
+            });
+            toast.success(t('vouchers.paymentSuccess'));
+            loadData();
+            fetchHistory();
+          } catch (confirmationError: any) {
+            toast.error(t('vouchers.paymentError') + (confirmationError?.message || 'PAYMENT_NOT_VERIFIED'));
+          }
         },
         onPending: () => { toast(t('vouchers.paymentPending'), { duration: 6000 }); },
         onError: (result: any) => { toast.error(t('vouchers.paymentFailed') + (result?.status_message || 'Unknown error')); },
@@ -310,20 +317,27 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
       const orderId = data.midtrans_order_id;
       (window as any).snap.pay(data.snap_token, {
         onSuccess: async () => {
-          // Optimistic UI update
-          setCurrentVouchers(prev => {
-            const next = new Map(prev);
-            next.set(product.id, (prev.get(product.id) ?? 0) + qty);
-            return next;
-          });
-          // Confirm with Midtrans API and write to DB
-          const authToken = sessionStorage.getItem('auth_token');
-          await supabase.functions.invoke('confirm-voucher-payment', {
-            body: { token: authToken, midtrans_order_id: orderId },
-          });
-          toast.success(t('vouchers.paymentSuccess'));
-          loadData();
-          fetchHistory();
+          try {
+            const authToken = sessionStorage.getItem('auth_token');
+            const { data: confirmation, error: confirmationError } = await supabase.functions.invoke('confirm-voucher-payment', {
+              body: { token: authToken, midtrans_order_id: orderId },
+            });
+            if (confirmationError) throw new Error(confirmationError.message);
+            if (!confirmation?.success || !confirmation?.paid) {
+              throw new Error(confirmation?.error || 'PAYMENT_NOT_VERIFIED');
+            }
+
+            setCurrentVouchers(prev => {
+              const next = new Map(prev);
+              next.set(product.id, (prev.get(product.id) ?? 0) + qty);
+              return next;
+            });
+            toast.success(t('vouchers.paymentSuccess'));
+            loadData();
+            fetchHistory();
+          } catch (confirmationError: any) {
+            toast.error(t('vouchers.paymentError') + (confirmationError?.message || 'PAYMENT_NOT_VERIFIED'));
+          }
         },
         onPending: () => { toast(t('vouchers.paymentPending'), { duration: 6000 }); },
         onError: (result: any) => { toast.error(t('vouchers.paymentFailed') + (result?.status_message || 'Unknown error')); },
