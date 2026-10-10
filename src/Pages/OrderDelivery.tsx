@@ -8,6 +8,16 @@ import { theme } from '../theme';
 import { Order, OrderItem } from '../Types';
 import './OrderDelivery.css';
 
+async function getFunctionErrorMessage(error: any, fallback: string): Promise<string> {
+  try {
+    const payload = await error?.context?.clone?.().json();
+    if (typeof payload?.error === 'string' && payload.error) return payload.error;
+  } catch {
+    // Fall back to the SDK error when the response body is unavailable.
+  }
+  return error?.message || fallback;
+}
+
 export const OrderDelivery: React.FC = () => {
   const navigate = useNavigate();
   const { orderId } = useParams<{ orderId: string }>();
@@ -46,14 +56,16 @@ export const OrderDelivery: React.FC = () => {
   const handleConfirmDelivery = async () => {
     try {
       setConfirming(true);
-      const { error } = await supabase
-        .from('orders')
-        .update({
-          status: 'delivered',
-          delivered_date: new Date().toISOString().split('T')[0],
-        })
-        .eq('id', orderId);
-      if (error) throw error;
+      const token = sessionStorage.getItem('auth_token');
+      if (!token) throw new Error('Session expired, please login again');
+      if (!orderId) throw new Error('Order not found');
+
+      const { data, error } = await supabase.functions.invoke('customer-self-service', {
+        body: { token, action: 'confirm_delivery', order_id: orderId },
+      });
+      if (error) throw new Error(await getFunctionErrorMessage(error, 'Delivery confirmation failed'));
+      if (!data?.success) throw new Error(data?.error || 'Delivery confirmation failed');
+
       alert(t('delivery.confirmSuccess'));
       await fetchOrderDetails();
     } catch (err: any) {

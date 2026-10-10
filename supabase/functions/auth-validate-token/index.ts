@@ -74,6 +74,7 @@ serve(async (req) => {
           whatsapp: customer.whatsapp,
           customer_type: customer.customer_type,
           payment_term: customer.payment_term,
+          credit_limit: customer.credit_limit,
           voucher_balance: customer.voucher_balance,
           branch: customer.branch,
           discount: customer.discount,

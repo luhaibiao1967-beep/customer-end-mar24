@@ -9,6 +9,9 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useColorTokens } from '../contexts/ColorTokensContext';
 import { theme } from '../theme';
 import { markLogoutForPwaPrompt } from '../utils/pwaInstall';
+import { getPaymentTermTranslationKey } from '../utils/paymentTerm';
+import { fetchCustomerVouchers } from '../lib/customerVouchers';
+import { clearCustomerSession, clearRememberedLogin } from '../lib/customerSession';
 import {
   User,
   MapPin,
@@ -43,6 +46,16 @@ interface MyAccountProps {
   customer: Customer;
 }
 
+async function getFunctionErrorMessage(error: any, fallback: string): Promise<string> {
+  try {
+    const payload = await error?.context?.clone?.().json();
+    if (typeof payload?.error === 'string' && payload.error) return payload.error;
+  } catch {
+    // Fall back to the SDK error when the response body is unavailable.
+  }
+  return error?.message || fallback;
+}
+
 export default function MyAccount({ customer }: MyAccountProps) {
   const navigate = useNavigate();
   const { t } = useLanguage();
@@ -72,6 +85,9 @@ export default function MyAccount({ customer }: MyAccountProps) {
   };
 
   const isPrePay = (customer.customer_type || '').toLowerCase() === 'pre_pay';
+  const [paymentTerm, setPaymentTerm] = useState(customer.payment_term || '');
+  const [creditLimit, setCreditLimit] = useState<number | null>(customer.credit_limit ?? null);
+  const paymentTermLabel = t(getPaymentTermTranslationKey(paymentTerm));
 
   const [editingAddress, setEditingAddress] = useState(false);
   const [addressInput, setAddressInput] = useState(customer.address);
@@ -83,23 +99,22 @@ export default function MyAccount({ customer }: MyAccountProps) {
 
   const handleSignOut = () => {
     markLogoutForPwaPrompt();
-    sessionStorage.removeItem('customer');
-    sessionStorage.removeItem('auth_token');
-    sessionStorage.removeItem('authenticated');
+    clearCustomerSession();
+    clearRememberedLogin();
     window.dispatchEvent(new Event('session-auth-updated'));
     navigate('/', { replace: true });
   };
 
   useEffect(() => {
+    const token = sessionStorage.getItem('auth_token');
     if (customer.customer_type === 'pre_pay') {
-      supabase
-        .from('customer_product_vouchers')
-        .select('product_id, balance, products(name)')
-        .eq('customer_id', customer.id)
-        .then(({ data }) => setProductVouchers((data as any) || []));
+      if (token) {
+        fetchCustomerVouchers(token)
+          .then((vouchers) => setProductVouchers(vouchers))
+          .catch(() => setProductVouchers([]));
+      }
     }
 
-    const token = sessionStorage.getItem('auth_token');
     if (token) {
       supabase.functions
         .invoke('get-orders', { body: { token, active_order_count_only: true } })
@@ -107,25 +122,49 @@ export default function MyAccount({ customer }: MyAccountProps) {
           if (data?.success && typeof data.active_order_count === 'number') {
             setActiveOrderCount(data.active_order_count);
           }
+      });
+    }
+
+    if (!isPrePay && token) {
+      supabase.functions
+        .invoke('auth-validate-token', { body: { token } })
+        .then(({ data, error }) => {
+          if (error || !data?.success || !data.customer) return;
+
+          const freshCustomer = data.customer as Customer;
+          setPaymentTerm(freshCustomer.payment_term || customer.payment_term || '');
+          setCreditLimit(freshCustomer.credit_limit ?? customer.credit_limit ?? null);
+
+          sessionStorage.setItem(
+            'customer',
+            JSON.stringify({ ...customer, ...freshCustomer }),
+          );
+          window.dispatchEvent(new Event('session-auth-updated'));
         });
     }
-  }, [customer.id]);
+  }, [customer.id, isPrePay]);
 
   const handleSaveAddress = async () => {
-    if (!addressInput.trim()) return;
+    const address = addressInput.trim();
+    if (!address) return;
     setSavingAddress(true);
     try {
-      const { error } = await supabase
-        .from('customers')
-        .update({ address: addressInput.trim() })
-        .eq('id', customer.id);
-      if (error) throw error;
+      const token = sessionStorage.getItem('auth_token');
+      if (!token) throw new Error('Session expired, please login again');
+
+      const { data, error } = await supabase.functions.invoke('customer-self-service', {
+        body: { token, action: 'update_address', address },
+      });
+      if (error) throw new Error(await getFunctionErrorMessage(error, 'Address update failed'));
+      if (!data?.success) throw new Error(data?.error || 'Address update failed');
+
       toast.success(t('account.addressUpdated'));
       setEditingAddress(false);
+      setAddressInput(data.address || address);
       const stored = sessionStorage.getItem('customer');
       if (stored) {
         const parsed = JSON.parse(stored);
-        sessionStorage.setItem('customer', JSON.stringify({ ...parsed, address: addressInput.trim() }));
+        sessionStorage.setItem('customer', JSON.stringify({ ...parsed, address: data.address || address }));
       }
       window.dispatchEvent(new Event('session-auth-updated'));
     } catch (err: any) {
@@ -211,6 +250,17 @@ export default function MyAccount({ customer }: MyAccountProps) {
                 }}>
                   {customer.customer_type === 'pre_pay' ? t('account.prepaid') : t('account.postpaid')}
                 </span>
+                {!isPrePay && (
+                  <span style={{
+                    display: 'inline-block', marginLeft: 6,
+                    padding: '4px 14px', borderRadius: 20,
+                    background: COLOR.primaryBg,
+                    border: `1px solid ${COLOR.primaryBorder}`,
+                    color: COLOR.primary, fontSize: 11, fontWeight: 700,
+                  }}>
+                    {paymentTermLabel}
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -397,6 +447,20 @@ export default function MyAccount({ customer }: MyAccountProps) {
                 )}
               </div>
 
+              {!isPrePay && (
+                <div style={{ ...menuRow, cursor: 'default', borderBottom: `1px solid ${COLOR.divider}` }}>
+                  <div style={iconBox}><ClipboardList size={18} color={COLOR.primary} /></div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ color: COLOR.text, fontWeight: 500, fontSize: 15, margin: 0 }}>
+                      {t('account.billingTerm')}
+                    </p>
+                    <p style={{ color: COLOR.muted, fontSize: 12, margin: '3px 0 0' }}>
+                      {paymentTermLabel}
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* Service Branch — pre_pay can change in app; later_pay is read-only */}
               {isPrePay ? (
                 <button onClick={() => navigate('/select-branch')} style={menuRow}>
@@ -427,7 +491,7 @@ export default function MyAccount({ customer }: MyAccountProps) {
           </div>
 
           {/* Credit Limit (later_pay only) */}
-          {customer.customer_type !== 'pre_pay' && customer.credit_limit != null && (
+          {!isPrePay && creditLimit != null && (
             <div>
               <div style={card}>
                 <p style={{ margin: 0, padding: '12px 16px 0', fontSize: 11, color: COLOR.primary, fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: '0.08em' }}>{t('home.creditLimit')}</p>
@@ -435,14 +499,14 @@ export default function MyAccount({ customer }: MyAccountProps) {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                     <span style={{ color: COLOR.muted, fontSize: 13 }}>{t('home.creditUsed')}</span>
                     <span style={{ color: COLOR.text, fontSize: 13, fontWeight: 700 }}>
-                      — / {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(customer.credit_limit)}
+                      — / {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(creditLimit)}
                     </span>
                   </div>
                   <div style={{ height: 6, borderRadius: 99, background: COLOR.divider, overflow: 'hidden' }}>
                     <div style={{ height: '100%', width: '0%', borderRadius: 99, background: COLOR.gradientPrimary }} />
                   </div>
                   <p style={{ color: COLOR.muted, fontSize: 11, margin: '6px 0 0' }}>
-                    {t('home.creditLimit')}: {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(customer.credit_limit)}
+                    {t('home.creditLimit')}: {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(creditLimit)}
                   </p>
                 </div>
               </div>

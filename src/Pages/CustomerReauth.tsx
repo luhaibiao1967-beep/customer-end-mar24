@@ -1,8 +1,29 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { FunctionsHttpError } from '@supabase/supabase-js'
 import { supabase } from '../supabaseClient'
 import { getOrCreateDeviceId } from '../lib/deviceId'
 import { theme } from '../theme'
+import {
+  getRememberPreference,
+  getSafeCustomerReturnTo,
+  normalizeWhatsApp,
+  setRememberedLogin,
+  writeCustomerSession,
+} from '../lib/customerSession'
+
+async function getFunctionErrorMessage(error: unknown, data: any, fallback: string): Promise<string> {
+  let message = data?.error || (error as any)?.message || fallback
+  if (error instanceof FunctionsHttpError && error.context) {
+    try {
+      const body = await error.context.json()
+      message = body?.error || message
+    } catch {
+      // The public fallback is sufficient when the response body is unavailable.
+    }
+  }
+  return message
+}
 
 export default function CustomerReauth() {
   const navigate = useNavigate()
@@ -15,6 +36,10 @@ export default function CustomerReauth() {
   const [message, setMessage] = useState('')
 
   const [deviceId, setDeviceId] = useState<string | null>(() => searchParams.get('device_id'))
+  const rememberLogin = searchParams.get('remember') == null
+    ? getRememberPreference()
+    : searchParams.get('remember') === '1'
+  const returnTo = getSafeCustomerReturnTo(searchParams.get('returnTo'))
 
   useEffect(() => {
     if (!deviceId) getOrCreateDeviceId().then(setDeviceId)
@@ -25,16 +50,7 @@ export default function CustomerReauth() {
     if (wa) setPhoneNumber(wa)
   }, [searchParams])
 
-  const formatPhoneNumber = (phone: string): string => {
-    let cleaned = phone.replace(/\D/g, '')
-    if (cleaned.startsWith('0')) {
-      cleaned = '62' + cleaned.substring(1)
-    }
-    if (!cleaned.startsWith('62')) {
-      cleaned = '62' + cleaned
-    }
-    return '+' + cleaned
-  }
+  const formatPhoneNumber = normalizeWhatsApp
 
   const handleSendOTP = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -44,16 +60,21 @@ export default function CustomerReauth() {
 
     try {
       const formattedPhone = formatPhoneNumber(phoneNumber)
+      if (!formattedPhone) throw new Error('Nomor WhatsApp tidak valid')
       const resolvedDeviceId = deviceId ?? await getOrCreateDeviceId()
 
       const { data, error: functionError } = await supabase.functions.invoke('auth-send-otp', {
         body: { phone: formattedPhone, device_id: resolvedDeviceId }
       })
 
-      if (functionError) throw functionError
-      if (!data.success) throw new Error(data.error)
+      if (functionError) {
+        throw new Error(await getFunctionErrorMessage(functionError, data, 'Gagal mengirim OTP'))
+      }
+      if (!data?.success) throw new Error(data?.error || 'Gagal mengirim OTP')
 
-      setMessage('📱 OTP dikirim ke WhatsApp Anda')
+      setMessage(data.dev_mode && data.otp
+        ? `🧪 Kode OTP pengujian: ${data.otp}`
+        : '📱 OTP dikirim ke WhatsApp Anda')
       setStep('otp')
       setLoading(false)
     } catch (err: any) {
@@ -69,6 +90,7 @@ export default function CustomerReauth() {
 
     try {
       const formattedPhone = formatPhoneNumber(phoneNumber)
+      if (!formattedPhone) throw new Error('Nomor WhatsApp tidak valid')
       const resolvedDeviceId = deviceId ?? await getOrCreateDeviceId()
 
       const { data, error: functionError } = await supabase.functions.invoke('auth-verify-otp', {
@@ -80,19 +102,18 @@ export default function CustomerReauth() {
         }
       })
 
-      if (functionError) throw functionError
-      if (!data.success) throw new Error(data.error)
-
-      sessionStorage.setItem('customer', JSON.stringify(data.customer))
-      sessionStorage.setItem('authenticated', 'true')
-      if (data.auth_token) {
-        sessionStorage.setItem('auth_token', data.auth_token)
+      if (functionError) {
+        throw new Error(await getFunctionErrorMessage(functionError, data, 'OTP tidak valid'))
       }
+      if (!data?.success) throw new Error(data?.error || 'OTP tidak valid')
+      if (!data.customer || !data.auth_token) throw new Error('Sesi pelanggan tidak tersedia')
 
-      // Device binding created - go directly to dashboard
+      writeCustomerSession(data.customer, data.auth_token)
+      setRememberedLogin(formattedPhone, rememberLogin)
+
       setMessage('✅ Verifikasi berhasil, mengalihkan...')
       window.dispatchEvent(new Event('session-auth-updated'))
-      setTimeout(() => navigate('/customer-home', { replace: true }), 500)
+      setTimeout(() => navigate(returnTo, { replace: true }), 500)
       setLoading(false)
     } catch (err: any) {
       setError(err.message || 'OTP tidak valid')

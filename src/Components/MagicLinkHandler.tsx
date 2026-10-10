@@ -5,6 +5,12 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { theme } from '../theme';
+import {
+  getRememberPreference,
+  getSafeCustomerReturnTo,
+  setRememberedLogin,
+  writeCustomerSession,
+} from '../lib/customerSession';
 
 export default function MagicLinkHandler() {
   const navigate = useNavigate();
@@ -12,6 +18,7 @@ export default function MagicLinkHandler() {
   const [status, setStatus] = useState<'validating' | 'success' | 'error'>('validating');
   const [message, setMessage] = useState('Memvalidasi link...');
   const [reauthPhone, setReauthPhone] = useState('');
+  const returnTo = getSafeCustomerReturnTo(searchParams.get('returnTo'));
 
   useEffect(() => {
     const token = searchParams.get('token');
@@ -41,7 +48,12 @@ export default function MagicLinkHandler() {
         setReauthPhone(data.whatsapp || '');
         setTimeout(() => {
           if (data.whatsapp) {
-            navigate(`/reauth?whatsapp=${encodeURIComponent(data.whatsapp)}`);
+            const params = new URLSearchParams({
+              whatsapp: data.whatsapp,
+              remember: getRememberPreference() ? '1' : '0',
+              returnTo,
+            });
+            navigate(`/reauth?${params.toString()}`);
           } else {
             navigate('/reauth');
           }
@@ -52,16 +64,10 @@ export default function MagicLinkHandler() {
 
       console.log('✅ Token valid, customer:', data.customer);
 
-      // Use sessionStorage instead of localStorage
-      sessionStorage.setItem('customer', JSON.stringify(data.customer));
-      sessionStorage.setItem('authenticated', 'true');
-      
-      // Store token for potential refresh
-      if (data.new_token) {
-        sessionStorage.setItem('auth_token', data.new_token);
-        console.log('🔄 Token refreshed');
-      } else {
-        sessionStorage.setItem('auth_token', token);
+      const authToken = data.new_token || token;
+      writeCustomerSession(data.customer, authToken);
+      if (data.customer?.whatsapp) {
+        setRememberedLogin(data.customer.whatsapp, getRememberPreference());
       }
 
       setStatus('success');
@@ -70,7 +76,7 @@ export default function MagicLinkHandler() {
       // Notify App.tsx and navigate to customer home
       setTimeout(() => {
         window.dispatchEvent(new Event('session-auth-updated'));
-        navigate('/customer-home', { 
+        navigate(returnTo, {
           replace: true
         });
       }, 1500);
@@ -175,7 +181,12 @@ export default function MagicLinkHandler() {
             <button
               onClick={() => {
                 if (reauthPhone) {
-                  navigate(`/reauth?whatsapp=${encodeURIComponent(reauthPhone)}`);
+                  const params = new URLSearchParams({
+                    whatsapp: reauthPhone,
+                    remember: getRememberPreference() ? '1' : '0',
+                    returnTo,
+                  });
+                  navigate(`/reauth?${params.toString()}`);
                 } else {
                   navigate('/');
                 }
