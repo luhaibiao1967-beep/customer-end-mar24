@@ -21,7 +21,9 @@ export const LanguageSwitcher: React.FC<LanguageSwitcherProps> = ({ variant = 'h
     return (
       <div style={{
         display: 'flex',
-        flexWrap: 'wrap',
+        flexWrap: 'nowrap',
+        flexShrink: 0,
+        width: 'max-content',
         gap: '6px',
         alignItems: 'center',
         justifyContent: 'flex-end',
@@ -45,6 +47,8 @@ export const LanguageSwitcher: React.FC<LanguageSwitcherProps> = ({ variant = 'h
                 borderRadius: '8px',
                 fontSize: '14px',
                 fontWeight: active ? 'bold' : 'normal',
+                whiteSpace: 'nowrap',
+                flex: '0 0 auto',
                 cursor: 'pointer',
                 transition: 'all 0.3s',
               }}
@@ -60,7 +64,9 @@ export const LanguageSwitcher: React.FC<LanguageSwitcherProps> = ({ variant = 'h
   return (
     <div style={{
       display: 'flex',
-      flexWrap: 'wrap',
+      flexWrap: 'nowrap',
+      flexShrink: 0,
+      width: 'max-content',
       gap: '2px',
       background: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
       padding: '3px',
@@ -86,6 +92,8 @@ export const LanguageSwitcher: React.FC<LanguageSwitcherProps> = ({ variant = 'h
               borderRadius: '5px',
               fontSize: '11px',
               fontWeight: active ? 700 : 400,
+              whiteSpace: 'nowrap',
+              flex: '0 0 auto',
               cursor: 'pointer',
               transition: 'all 0.2s',
               boxShadow: active ? '0 1px 3px rgba(0,0,0,0.12)' : 'none',
