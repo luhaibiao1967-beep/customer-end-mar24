@@ -5,6 +5,8 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { theme } from '../theme';
+import LanguageSwitcher from './LanguageSwitcher';
+import { useLanguage } from '../contexts/LanguageContext';
 import {
   getRememberPreference,
   getSafeCustomerReturnTo,
@@ -15,8 +17,9 @@ import {
 export default function MagicLinkHandler() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { t } = useLanguage();
   const [status, setStatus] = useState<'validating' | 'success' | 'error'>('validating');
-  const [message, setMessage] = useState('Memvalidasi link...');
+  const [message, setMessage] = useState('magic.validatingMessage');
   const [reauthPhone, setReauthPhone] = useState('');
   const returnTo = getSafeCustomerReturnTo(searchParams.get('returnTo'));
 
@@ -25,7 +28,7 @@ export default function MagicLinkHandler() {
     
     if (!token) {
       setStatus('error');
-      setMessage('Token tidak ditemukan');
+      setMessage('magic.tokenMissing');
       setTimeout(() => navigate('/'), 3000);
       return;
     }
@@ -44,7 +47,7 @@ export default function MagicLinkHandler() {
       if (functionError) throw functionError;
       if (data?.reauth_required) {
         setStatus('error');
-        setMessage('Link kadaluarsa. Silakan verifikasi OTP untuk masuk.');
+        setMessage('magic.expiredReauth');
         setReauthPhone(data.whatsapp || '');
         setTimeout(() => {
           if (data.whatsapp) {
@@ -71,7 +74,7 @@ export default function MagicLinkHandler() {
       }
 
       setStatus('success');
-      setMessage('✅ Login berhasil! Mengalihkan...');
+      setMessage('magic.loginSuccess');
 
       // Notify App.tsx and navigate to customer home
       setTimeout(() => {
@@ -84,7 +87,7 @@ export default function MagicLinkHandler() {
     } catch (err: any) {
       console.error('❌ Token validation error:', err);
       setStatus('error');
-      setMessage(err.message || 'Token tidak valid atau kadaluarsa');
+      setMessage('magic.invalidOrExpired');
       setTimeout(() => navigate('/'), 3000);
     }
   };
@@ -98,6 +101,9 @@ export default function MagicLinkHandler() {
       background: theme.gradientPrimary,
       padding: '20px'
     }}>
+      <div style={{ position: 'fixed', top: '16px', right: '16px', zIndex: 10 }}>
+        <LanguageSwitcher variant="inline" />
+      </div>
       <div style={{
         background: 'white',
         borderRadius: '20px',
@@ -119,10 +125,10 @@ export default function MagicLinkHandler() {
               animation: 'spin 1s linear infinite'
             }} />
             <h2 style={{ fontSize: '24px', marginBottom: '15px', color: '#333' }}>
-              🔐 Memvalidasi Link
+              🔐 {t('magic.validatingTitle')}
             </h2>
             <p style={{ fontSize: '16px', color: '#666', margin: 0 }}>
-              Tunggu sebentar...
+              {t('magic.wait')}
             </p>
             <style>{`
               @keyframes spin {
@@ -149,10 +155,10 @@ export default function MagicLinkHandler() {
               ✅
             </div>
             <h2 style={{ fontSize: '24px', marginBottom: '15px', color: '#333' }}>
-              Berhasil!
+              {t('magic.successTitle')}
             </h2>
             <p style={{ fontSize: '16px', color: '#666', margin: 0 }}>
-              {message}
+              {t(message)}
             </p>
           </>
         )}
@@ -173,10 +179,10 @@ export default function MagicLinkHandler() {
               ❌
             </div>
             <h2 style={{ fontSize: '24px', marginBottom: '15px', color: '#333' }}>
-              Link Tidak Valid
+              {t('magic.invalidTitle')}
             </h2>
             <p style={{ fontSize: '16px', color: '#666', marginBottom: '25px' }}>
-              {message}
+              {t(message)}
             </p>
             <button
               onClick={() => {
@@ -202,7 +208,7 @@ export default function MagicLinkHandler() {
                 cursor: 'pointer'
               }}
             >
-              {reauthPhone ? 'Verifikasi OTP' : 'Daftar Akun Baru'}
+              {reauthPhone ? t('magic.verifyOtp') : t('magic.registerNew')}
             </button>
           </>
         )}

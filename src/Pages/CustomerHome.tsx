@@ -179,7 +179,7 @@ function outstandingMessageKey(errorCode: string | null): string {
 
 export default function CustomerHome({ customer }: CustomerHomeProps) {
   const navigate = useNavigate();
-  const { t } = useLanguage();
+  const { language, t } = useLanguage();
   const { tokens: C, isDark } = useColorTokens();
   const [loading, setLoading] = useState(false);
   const [activeVoucherSlide, setActiveVoucherSlide] = useState(0);
@@ -200,36 +200,36 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
   const voucherSlides: VoucherSlide[] = [
     {
       id: 'voucher-10',
-      title: 'Paket 10 Voucher',
+      title: t('home.package10Title'),
       tickets: 10,
-      subtitle: 'Cocok untuk kebutuhan rumah tangga ringan',
-      badge: 'Starter',
+      subtitle: t('home.package10Subtitle'),
+      badge: t('home.packageStarterBadge'),
       packImage: publicPackAssetUrl(base, '10 Pack Indonesia.jpg'),
     },
     {
       id: 'voucher-20',
-      title: 'Paket 20 Voucher',
+      title: t('home.package20Title'),
       tickets: 20,
-      subtitle: 'Pilihan paling hemat untuk pemakaian rutin',
-      badge: 'Best Value',
+      subtitle: t('home.package20Subtitle'),
+      badge: t('home.packageBestValueBadge'),
       packImage: publicPackAssetUrl(base, '20 Pack Indonesia.jpg'),
     },
     {
       id: 'voucher-50',
-      title: 'Paket 50 Voucher',
+      title: t('home.package50Title'),
       tickets: 50,
-      subtitle: 'Untuk keluarga besar atau kebutuhan usaha',
-      badge: 'Bulk Save',
+      subtitle: t('home.package50Subtitle'),
+      badge: t('home.packageBulkBadge'),
       packImage: publicPackAssetUrl(base, '50 Pack Indonesia.jpg'),
     },
   ];
 
   // Product Gallery packages
   const galleryItems = [
-    { title: 'Starter Pack', subtitle: '10 vouchers', count: 10 },
-    { title: 'Value Pack', subtitle: '20 vouchers', count: 20 },
-    { title: 'Bulk Pack', subtitle: '50 vouchers', count: 50 },
-    { title: 'Custom Order', subtitle: 'Order anytime', count: null },
+    { title: t('home.starterPack'), subtitle: t('home.tenVouchers'), count: 10 },
+    { title: t('home.valuePack'), subtitle: t('home.twentyVouchers'), count: 20 },
+    { title: t('home.bulkPack'), subtitle: t('home.fiftyVouchers'), count: 50 },
+    { title: t('home.customOrder'), subtitle: t('home.orderAnytime'), count: null },
   ];
 
   const generateShareImage = async (): Promise<Blob | null> => {
@@ -338,7 +338,10 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
   };
 
   const formatDate = (dateString: string) =>
-    new Date(dateString).toLocaleDateString('id-ID', { timeZone: 'Asia/Jakarta', year: 'numeric', month: 'long', day: 'numeric' });
+    new Date(dateString).toLocaleDateString(
+      language === 'zh' ? 'zh-CN' : language === 'en' ? 'en-GB' : 'id-ID',
+      { timeZone: 'Asia/Jakarta', year: 'numeric', month: 'long', day: 'numeric' },
+    );
 
   const getStatusColor = (status: string) =>
     status === 'pending' ? theme.warning : status === 'scheduled' ? theme.info : '#999';
@@ -379,12 +382,12 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
               margin: 0, fontSize: 12, letterSpacing: '0.03em', fontWeight: 700,
               background: C.gradientPrimary, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
             }}>
-              VIVIDAQUA PROMO PACKAGES
+              {t('home.promoPackages')}
             </p>
             <span style={{
               fontSize: 11, fontWeight: 600,
               background: C.gradientPrimary, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
-            }}>Swipe / Auto Slide</span>
+            }}>{t('home.swipeAutoSlide')}</span>
           </div>
           <div style={{ overflow: 'hidden', padding: '4px 8px 0' }}>
             <div style={{
@@ -449,8 +452,8 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
                   <Ticket size={22} color="white" />
                 </div>
                 <div>
-                  <p style={{ color: C.text, fontWeight: 600, fontSize: 14, margin: 0 }}>Buy Vouchers</p>
-                  <p style={{ color: C.muted, fontSize: 11, margin: '2px 0 0' }}>Save more</p>
+                  <p style={{ color: C.text, fontWeight: 600, fontSize: 14, margin: 0 }}>{t('home.buyVouchers')}</p>
+                  <p style={{ color: C.muted, fontSize: 11, margin: '2px 0 0' }}>{t('home.saveMore')}</p>
                 </div>
               </div>
             </button>
@@ -478,8 +481,8 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
                 <Droplets size={22} color="white" />
               </div>
               <div>
-                <p style={{ color: C.text, fontWeight: 600, fontSize: 14, margin: 0 }}>Order Delivery</p>
-                <p style={{ color: C.muted, fontSize: 11, margin: '2px 0 0' }}>Fast delivery</p>
+                <p style={{ color: C.text, fontWeight: 600, fontSize: 14, margin: 0 }}>{t('home.orderDelivery')}</p>
+                <p style={{ color: C.muted, fontSize: 11, margin: '2px 0 0' }}>{t('home.fastDelivery')}</p>
               </div>
             </div>
           </button>
@@ -488,12 +491,12 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
         {/* ── 3. My Account Overview ── */}
         <div style={{ background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 16, padding: 12, backdropFilter: C.cardBlur, WebkitBackdropFilter: C.cardBlur, boxShadow: C.cardShadow }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <p style={{ color: C.text, fontWeight: 600, fontSize: 15, margin: 0 }}>My Account</p>
+            <p style={{ color: C.text, fontWeight: 600, fontSize: 15, margin: 0 }}>{t('account.title')}</p>
             <button
               onClick={() => navigate('/account')}
               style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: C.primary, fontSize: 12, cursor: 'pointer' }}
             >
-              View Details <ChevronRight size={13} />
+              {t('home.viewDetails')} <ChevronRight size={13} />
             </button>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, textAlign: 'center' }}>
@@ -505,7 +508,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
               }}>
                 {totalVouchers}
               </p>
-              <p style={{ color: C.muted, fontSize: 11, margin: '4px 0 0' }}>Vouchers</p>
+              <p style={{ color: C.muted, fontSize: 11, margin: '4px 0 0' }}>{t('home.vouchers')}</p>
             </div>
             <div>
               <p style={{
@@ -515,7 +518,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
               }}>
                 {pendingCount}
               </p>
-              <p style={{ color: C.muted, fontSize: 11, margin: '4px 0 0' }}>Delivery</p>
+              <p style={{ color: C.muted, fontSize: 11, margin: '4px 0 0' }}>{t('home.deliveryCount')}</p>
             </div>
             <div>
               {customer.customer_type !== 'pre_pay' ? (
@@ -523,14 +526,14 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
                   <p style={{ fontSize: unpaidAmount > 0 ? 16 : 26, fontWeight: 700, margin: 0, color: unpaidAmount > 0 ? '#ef4444' : C.primary }}>
                     {unpaidAmount > 0 ? formatCurrency(unpaidAmount) : '0'}
                   </p>
-                  <p style={{ color: C.muted, fontSize: 11, margin: '4px 0 0' }}>Unpaid</p>
+                  <p style={{ color: C.muted, fontSize: 11, margin: '4px 0 0' }}>{t('orderHistory.unpaid')}</p>
                 </>
               ) : (
                 <>
                   <p style={{ fontSize: 26, fontWeight: 700, margin: 0, background: 'linear-gradient(135deg, #00A0E9, #00CED1)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
                     0
                   </p>
-                  <p style={{ color: C.muted, fontSize: 11, margin: '4px 0 0' }}>Points</p>
+                  <p style={{ color: C.muted, fontSize: 11, margin: '4px 0 0' }}>{t('home.points')}</p>
                 </>
               )}
             </div>
@@ -636,8 +639,8 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
           backdropFilter: C.cardBlur, WebkitBackdropFilter: C.cardBlur, boxShadow: C.cardShadow,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-            <p style={{ color: C.text, fontWeight: 600, fontSize: 15, margin: 0 }}>Product Gallery</p>
-            <span style={{ color: C.muted, fontSize: 11 }}>Swipe to see more</span>
+            <p style={{ color: C.text, fontWeight: 600, fontSize: 15, margin: 0 }}>{t('home.productGallery')}</p>
+            <span style={{ color: C.muted, fontSize: 11 }}>{t('home.swipeMore')}</span>
           </div>
           <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 2, scrollbarWidth: 'none' }}>
             {isPrePay ? (
@@ -743,7 +746,7 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
                   if (blob && navigator.canShare) {
                     const file = new File([blob], 'vividaqua.png', { type: 'image/png' });
                     if (navigator.canShare({ files: [file] })) {
-                      await navigator.share({ title: 'VividAqua', text: 'Order air galon sekarang! ' + APP_URL, files: [file] });
+                      await navigator.share({ title: 'VividAqua', text: `${t('home.shareMessage')} ${APP_URL}`, files: [file] });
                       return;
                     }
                   }

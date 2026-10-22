@@ -38,16 +38,17 @@ export const OrderDelivery: React.FC = () => {
     try {
       setLoading(true);
       const token = sessionStorage.getItem('auth_token');
-      if (!token) throw new Error('Session expired, please login again');
+      if (!token) throw new Error(t('common.sessionExpired'));
       const { data, error } = await supabase.functions.invoke('get-orders', {
         body: { token, order_id: orderId },
       });
       if (error) throw new Error(error.message);
-      if (!data?.success) throw new Error(data?.error || 'Order not found');
+      if (!data?.success) throw new Error(data?.error || t('delivery.orderNotFound'));
       setOrder(data.order);
       setOrderItems(data.order?.order_items || []);
     } catch (err: any) {
-      setError(err.message);
+      console.error('Failed to load delivery details:', err);
+      setError(t('delivery.loadFailed'));
     } finally {
       setLoading(false);
     }
@@ -57,19 +58,20 @@ export const OrderDelivery: React.FC = () => {
     try {
       setConfirming(true);
       const token = sessionStorage.getItem('auth_token');
-      if (!token) throw new Error('Session expired, please login again');
-      if (!orderId) throw new Error('Order not found');
+      if (!token) throw new Error(t('delivery.sessionExpired'));
+      if (!orderId) throw new Error(t('delivery.orderNotFound'));
 
       const { data, error } = await supabase.functions.invoke('customer-self-service', {
         body: { token, action: 'confirm_delivery', order_id: orderId },
       });
-      if (error) throw new Error(await getFunctionErrorMessage(error, 'Delivery confirmation failed'));
-      if (!data?.success) throw new Error(data?.error || 'Delivery confirmation failed');
+      if (error) throw new Error(await getFunctionErrorMessage(error, t('delivery.confirmFailed')));
+      if (!data?.success) throw new Error(data?.error || t('delivery.confirmFailed'));
 
       alert(t('delivery.confirmSuccess'));
       await fetchOrderDetails();
     } catch (err: any) {
-      alert(`${t('delivery.confirmFailed')}: ${err.message}`);
+      console.error('Failed to confirm delivery:', err);
+      alert(t('delivery.confirmFailed'));
     } finally {
       setConfirming(false);
     }
@@ -77,7 +79,8 @@ export const OrderDelivery: React.FC = () => {
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
-    return new Intl.DateTimeFormat(language === 'en' ? 'en-US' : 'id-ID', {
+    const locale = language === 'zh' ? 'zh-CN' : language === 'en' ? 'en-US' : 'id-ID';
+    return new Intl.DateTimeFormat(locale, {
       year: 'numeric', month: 'long', day: 'numeric', weekday: 'long',
     }).format(date);
   };
@@ -283,13 +286,13 @@ export const OrderDelivery: React.FC = () => {
                 {order.empty_gallons_returned > 0 && (
                   <div style={{ ...infoRowStyle, borderBottom: order.borrowed_gallons > 0 ? `1px solid ${tokens.divider}` : 'none' }}>
                     <span style={labelStyle}>🔄 {t('delivery.emptyGallons')}</span>
-                    <span style={valueStyle}>{order.empty_gallons_returned} {language === 'en' ? 'pcs' : 'buah'}</span>
+                    <span style={valueStyle}>{order.empty_gallons_returned} {t('common.pieces')}</span>
                   </div>
                 )}
                 {order.borrowed_gallons > 0 && (
                   <div style={{ ...infoRowStyle, borderBottom: 'none' }}>
                     <span style={labelStyle}>📦 {t('delivery.borrowedGallons')}</span>
-                    <span style={valueStyle}>{order.borrowed_gallons} {language === 'en' ? 'pcs' : 'buah'}</span>
+                    <span style={valueStyle}>{order.borrowed_gallons} {t('common.pieces')}</span>
                   </div>
                 )}
               </div>

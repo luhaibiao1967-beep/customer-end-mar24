@@ -51,6 +51,7 @@
     "build": "node node_modules/vite/bin/vite.js build",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
+    "test:i18n": "node scripts/check-i18n.mjs",
     "test:magic-link": "node test-auth.js",
     "test:customer-auth": "node scripts/test-customer-auth-flow.mjs",
     "diagnostics": "node scripts/run-diagnostics.js",

@@ -491,7 +491,8 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
 
       setProducts(filtered);
     } catch (err: any) {
-      setError(t('placeOrder.failedLoadProducts') + err.message);
+      console.error('Failed to load products:', err);
+      setError(t('placeOrder.failedLoadProducts') + t('common.unexpectedError'));
     } finally {
       setLoading(false);
       // Fetch vouchers after products loaded
@@ -502,14 +503,14 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
   const loadEditOrder = async (orderId: string) => {
     try {
       const token = sessionStorage.getItem('auth_token');
-      if (!token) throw new Error('Session expired');
+      if (!token) throw new Error(t('common.sessionExpired'));
 
       const { data, error } = await supabase.functions.invoke('get-orders', {
         body: { token, order_id: orderId },
       });
 
       if (error) throw new Error(error.message);
-      if (!data?.success) throw new Error(data?.error || 'Failed to load order');
+      if (!data?.success) throw new Error(data?.error || t('placeOrder.failedLoadOrder'));
 
       const order = data.order;
       if (typeof order.branch === 'string' && order.branch.trim()) {
@@ -529,7 +530,8 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
       }
       setCart(newCart);
     } catch (err: any) {
-      setError(t('placeOrder.failedLoadOrder') + err.message);
+      console.error('Failed to load editable order:', err);
+      setError(t('placeOrder.failedLoadOrder') + t('common.error'));
     }
   };
 
@@ -922,7 +924,7 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
           setError('VOUCHER_ORDER_EDIT_NOT_SUPPORTED');
           return;
         }
-        throw new Error(data?.error || 'Unknown error');
+        throw new Error(data?.error || t('common.error'));
       }
 
       clearVoucherOrderKey?.();
@@ -931,7 +933,8 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
 
       setShowSuccess(true);
     } catch (err: any) {
-      setError('Failed to submit: ' + err.message);
+      console.error('Failed to submit order:', err);
+      setError(t('placeOrder.failedSubmit') + t('common.error'));
     } finally {
       setSubmitting(false);
     }
@@ -1115,15 +1118,15 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
         }
         if (data?.checkout_disposition === 'manual_reconcile') {
           throw new Error(
-            `Payment status requires manual review. Do not start another checkout; contact support with reference ${data?.midtrans_order_id || checkoutKey}.`,
+            t('placeOrder.paymentManualReview').replace('{reference}', data?.midtrans_order_id || checkoutKey),
           );
         }
         if (data?.checkout_disposition === 'retry_same_key') {
           throw new Error(
-            `Payment status is not final. Retry this exact order; its checkout key has been kept. (${data?.error || 'UNKNOWN_STATUS'})`,
+            t('placeOrder.paymentRetrySameOrder').replace('{status}', data?.error || 'UNKNOWN_STATUS'),
           );
         }
-        throw new Error(data?.error || 'Failed to create payment');
+        throw new Error(data?.error || t('placeOrder.paymentCreateFailed'));
       }
 
       if (data.paid === true) {
@@ -1165,7 +1168,8 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
             }
             setShowSuccess(true);
           } catch (confirmationError: any) {
-            setError(`${t('placeOrder.paymentFailedPrefix')}${confirmationError?.message || 'PAYMENT_NOT_VERIFIED'}`);
+            console.error('Order payment confirmation failed:', confirmationError);
+            setError(`${t('placeOrder.paymentFailedPrefix')}${t('placeOrder.paymentNotVerified')}`);
           } finally {
             setSubmitting(false);
           }
@@ -1177,9 +1181,10 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
           navigate('/customer-home');
         },
         onError: (result: any) => {
+          console.error('Order payment failed:', result);
           paymentCompleted = true;
           setSubmitting(false);
-          setError(`${t('placeOrder.paymentFailedPrefix')}${result?.status_message || t('common.error')}`);
+          setError(`${t('placeOrder.paymentFailedPrefix')}${t('common.error')}`);
         },
         onClose: () => {
           setSubmitting(false);
@@ -1189,8 +1194,9 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
         },
       });
     } catch (err: any) {
+      console.error('Prepaid order checkout failed:', err);
       setSubmitting(false);
-      setError('Failed to submit: ' + err.message);
+      setError(t('placeOrder.failedSubmit') + t('common.error'));
     }
   };
 
@@ -1199,9 +1205,11 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
     : getMinimumDeliveryDate(new Date(), 16, []);
 
   const wdShort =
-    language === 'en'
-      ? ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-      : ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+    language === 'zh'
+      ? ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+      : language === 'en'
+        ? ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+        : ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
   const closedDayLabels =
     branchSchedule && branchSchedule.closed_weekdays.length > 0
       ? [...branchSchedule.closed_weekdays].sort((a, b) => a - b).map((w) => wdShort[w]).join(', ')
@@ -1382,7 +1390,7 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
                           {formatCurrency(unitPrice)} / {product.unit}
                           {!isPrePay && product.is_refill && freshDiscount > 0 && (
                             <span style={{ marginLeft: '6px', color: theme.success, fontSize: '11px' }}>
-                              (disc. {formatCurrency(freshDiscount)})
+                              ({t('placeOrder.disc')} {formatCurrency(freshDiscount)})
                             </span>
                           )}
                         </span>

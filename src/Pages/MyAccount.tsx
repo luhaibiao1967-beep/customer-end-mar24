@@ -150,13 +150,13 @@ export default function MyAccount({ customer }: MyAccountProps) {
     setSavingAddress(true);
     try {
       const token = sessionStorage.getItem('auth_token');
-      if (!token) throw new Error('Session expired, please login again');
+      if (!token) throw new Error(t('common.sessionExpired'));
 
       const { data, error } = await supabase.functions.invoke('customer-self-service', {
         body: { token, action: 'update_address', address },
       });
-      if (error) throw new Error(await getFunctionErrorMessage(error, 'Address update failed'));
-      if (!data?.success) throw new Error(data?.error || 'Address update failed');
+      if (error) throw new Error(await getFunctionErrorMessage(error, t('account.updateFailed')));
+      if (!data?.success) throw new Error(t('account.updateFailed'));
 
       toast.success(t('account.addressUpdated'));
       setEditingAddress(false);
@@ -168,7 +168,8 @@ export default function MyAccount({ customer }: MyAccountProps) {
       }
       window.dispatchEvent(new Event('session-auth-updated'));
     } catch (err: any) {
-      toast.error(t('account.updateFailed') + err.message);
+      console.error('Failed to update customer address:', err);
+      toast.error(t('account.updateFailed') + t('common.error'));
     } finally {
       setSavingAddress(false);
     }
@@ -202,7 +203,8 @@ export default function MyAccount({ customer }: MyAccountProps) {
           {/* Log Out — top right */}
           <button
             onClick={handleSignOut}
-            title="Log Out"
+            title={t('account.logout')}
+            aria-label={t('account.logout')}
             style={{
               position: 'absolute', top: 16, right: 16, zIndex: 10,
               width: 36, height: 36, borderRadius: '50%',
@@ -300,14 +302,14 @@ export default function MyAccount({ customer }: MyAccountProps) {
           {/* Orders */}
           <div>
             <div style={card}>
-              <p style={{ margin: 0, padding: '12px 16px 0', fontSize: 11, color: COLOR.primary, fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: '0.08em' }}>Orders</p>
+              <p style={{ margin: 0, padding: '12px 16px 0', fontSize: 11, color: COLOR.primary, fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: '0.08em' }}>{t('account.ordersSection')}</p>
               {/* My Orders */}
               <button
                 onClick={() => navigate('/orders')}
                 style={{ ...menuRow, borderBottom: `1px solid ${COLOR.divider}` }}
               >
                 <div style={iconBox}><Droplets size={18} color={COLOR.primary} /></div>
-                <span style={{ flex: 1, color: COLOR.text, fontWeight: 500, fontSize: 15 }}>My Orders</span>
+                <span style={{ flex: 1, color: COLOR.text, fontWeight: 500, fontSize: 15 }}>{t('nav.myOrders')}</span>
                 {activeOrderCount !== null && activeOrderCount > 0 && (
                   <span style={{
                     padding: '2px 8px', borderRadius: 20,
@@ -325,7 +327,7 @@ export default function MyAccount({ customer }: MyAccountProps) {
                   style={{ ...menuRow, borderBottom: `1px solid ${COLOR.divider}` }}
                 >
                   <div style={iconBox}><Ticket size={18} color={COLOR.primary} /></div>
-                  <span style={{ flex: 1, color: COLOR.text, fontWeight: 500, fontSize: 15 }}>My Vouchers</span>
+                  <span style={{ flex: 1, color: COLOR.text, fontWeight: 500, fontSize: 15 }}>{t('account.myVouchers')}</span>
                   {totalVouchers > 0 && (
                     <span style={{
                       padding: '2px 8px', borderRadius: 20,
@@ -340,7 +342,7 @@ export default function MyAccount({ customer }: MyAccountProps) {
               {/* Order History */}
               <button onClick={() => navigate('/orders')} style={menuRow}>
                 <div style={iconBox}><ClipboardList size={18} color={COLOR.primary} /></div>
-                <span style={{ flex: 1, color: COLOR.text, fontWeight: 500, fontSize: 15 }}>Order History</span>
+                <span style={{ flex: 1, color: COLOR.text, fontWeight: 500, fontSize: 15 }}>{t('account.orderHistory')}</span>
                 <ChevronRight size={18} color={COLOR.muted} />
               </button>
             </div>
@@ -349,7 +351,7 @@ export default function MyAccount({ customer }: MyAccountProps) {
           {/* Settings */}
           <div>
             <div style={card}>
-              <p style={{ margin: 0, padding: '12px 16px 0', fontSize: 11, color: COLOR.primary, fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: '0.08em' }}>Settings</p>
+              <p style={{ margin: 0, padding: '12px 16px 0', fontSize: 11, color: COLOR.primary, fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: '0.08em' }}>{t('account.settings')}</p>
               {/* Theme Toggle */}
               <div style={{ borderBottom: `1px solid ${COLOR.divider}` }}>
                 <div style={{ ...menuRow, cursor: 'default' }}>
@@ -357,7 +359,7 @@ export default function MyAccount({ customer }: MyAccountProps) {
                     {isDark ? <Moon size={18} color={COLOR.primary} /> : <Sun size={18} color={COLOR.primary} />}
                   </div>
                   <span style={{ flex: 1, color: COLOR.text, fontWeight: 500, fontSize: 15 }}>
-                    {isDark ? 'Dark Mode' : 'Light Mode'}
+                    {isDark ? t('account.darkMode') : t('account.lightMode')}
                   </span>
                   <button
                     onClick={toggleTheme}
@@ -387,7 +389,7 @@ export default function MyAccount({ customer }: MyAccountProps) {
                   <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 6 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                       <div style={iconBox}><MapPin size={18} color={COLOR.primary} /></div>
-                      <span style={{ color: COLOR.text, fontWeight: 500, fontSize: 15 }}>Delivery Address</span>
+                      <span style={{ color: COLOR.text, fontWeight: 500, fontSize: 15 }}>{t('account.deliveryAddress')}</span>
                     </div>
                     <input
                       value={addressInput}
@@ -437,7 +439,7 @@ export default function MyAccount({ customer }: MyAccountProps) {
                   >
                     <div style={iconBox}><MapPin size={18} color={COLOR.primary} /></div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ color: COLOR.text, fontWeight: 500, fontSize: 15, margin: 0 }}>Delivery Address</p>
+                      <p style={{ color: COLOR.text, fontWeight: 500, fontSize: 15, margin: 0 }}>{t('account.deliveryAddress')}</p>
                       <p style={{ color: COLOR.muted, fontSize: 12, margin: '3px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {addressInput}
                       </p>
@@ -466,7 +468,7 @@ export default function MyAccount({ customer }: MyAccountProps) {
                 <button onClick={() => navigate('/select-branch')} style={menuRow}>
                   <div style={iconBox}><Building2 size={18} color={COLOR.primary} /></div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ color: COLOR.text, fontWeight: 500, fontSize: 15, margin: 0 }}>Service Branch</p>
+                    <p style={{ color: COLOR.text, fontWeight: 500, fontSize: 15, margin: 0 }}>{t('account.serviceBranch')}</p>
                     <p style={{ color: COLOR.muted, fontSize: 12, margin: '3px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {customer.branch === 'Pending' ? t('account.pendingSetup') : customer.branch || t('account.notAssigned')}
                     </p>
@@ -477,7 +479,7 @@ export default function MyAccount({ customer }: MyAccountProps) {
                 <div style={{ ...menuRow, cursor: 'default' }}>
                   <div style={iconBox}><Building2 size={18} color={COLOR.primary} /></div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ color: COLOR.text, fontWeight: 500, fontSize: 15, margin: 0 }}>Service Branch</p>
+                    <p style={{ color: COLOR.text, fontWeight: 500, fontSize: 15, margin: 0 }}>{t('account.serviceBranch')}</p>
                     <p style={{ color: COLOR.muted, fontSize: 12, margin: '3px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {customer.branch === 'Pending' ? t('account.pendingSetup') : customer.branch || t('account.notAssigned')}
                     </p>
@@ -516,7 +518,7 @@ export default function MyAccount({ customer }: MyAccountProps) {
           {/* Contact */}
           <div>
             <div style={card}>
-              <p style={{ margin: 0, padding: '12px 16px 0', fontSize: 11, color: COLOR.primary, fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: '0.08em' }}>Contact</p>
+              <p style={{ margin: 0, padding: '12px 16px 0', fontSize: 11, color: COLOR.primary, fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: '0.08em' }}>{t('account.contact')}</p>
               <div style={{ ...menuRow, cursor: 'default' }}>
                 <div style={iconBox}><MessageCircle size={18} color={COLOR.primary} /></div>
                 <div>
@@ -530,7 +532,7 @@ export default function MyAccount({ customer }: MyAccountProps) {
           {/* Version */}
           <div style={{ textAlign: 'center', paddingTop: 8, paddingBottom: 8 }}>
             <p style={{ color: COLOR.muted, fontSize: 11, margin: 0 }}>VIVIDAQUA v1.0.0</p>
-            <p style={{ color: COLOR.muted, fontSize: 11, margin: '4px 0 0' }}>The Purest Water</p>
+            <p style={{ color: COLOR.muted, fontSize: 11, margin: '4px 0 0' }}>{t('account.tagline')}</p>
           </div>
         </div>
       </div>

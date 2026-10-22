@@ -91,6 +91,12 @@ function App() {
   }, []);
 
   if (loading) {
+    const savedLanguage = localStorage.getItem('app_language');
+    const loadingLabel = savedLanguage === 'zh'
+      ? '加载中...'
+      : savedLanguage === 'en'
+        ? 'Loading...'
+        : 'Memuat...';
     return (
       <div style={{
         minHeight: '100vh',
@@ -109,7 +115,7 @@ function App() {
             margin: '0 auto 20px',
             animation: 'spin 1s linear infinite'
           }} />
-          <p>Loading...</p>
+          <p>{loadingLabel}</p>
           <style>{`
             @keyframes spin {
               0% { transform: rotate(0deg); }

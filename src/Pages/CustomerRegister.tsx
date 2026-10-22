@@ -7,6 +7,7 @@ import { getOrCreateDeviceId } from '../lib/deviceId';
 import { theme } from '../theme';
 import { useJsApiLoader, Autocomplete } from '@react-google-maps/api';
 import { useLanguage } from '../contexts/LanguageContext';
+import LanguageSwitcher from '../Components/LanguageSwitcher';
 import {
   getRememberPreference,
   getSafeCustomerReturnTo,
@@ -21,7 +22,7 @@ const REGISTER_LIBRARIES: ('places')[] = ['places'];
 export default function CustomerRegister() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { language, setLanguage, t } = useLanguage();
+  const { t } = useLanguage();
   const [step, setStep] = useState<'form' | 'otp'>('form');
   const [formData, setFormData] = useState({
     name: '',
@@ -78,7 +79,7 @@ export default function CustomerRegister() {
 
       const formattedWhatsApp = formatPhoneNumber(formData.whatsapp);
       if (!formattedWhatsApp) {
-        throw new Error(language === 'id' ? 'Nomor WhatsApp tidak valid' : 'Invalid WhatsApp number');
+        throw new Error(t('register.invalidWhatsApp'));
       }
       const resolvedDeviceId = deviceId ?? await getOrCreateDeviceId();
 
@@ -96,17 +97,22 @@ export default function CustomerRegister() {
         }
         throw new Error(errMsg);
       }
-      if (!data?.success) throw new Error(data?.error || 'OTP send failed');
+      if (!data?.success) throw new Error(data?.error || t('register.processFailed'));
 
       setMessage(data.dev_mode && data.otp
-        ? `🧪 ${language === 'id' ? 'Kode OTP pengujian' : 'Test OTP code'}: ${data.otp}`
-        : `📱 ${language === 'id' ? 'Kode OTP telah dikirim ke WhatsApp' : 'OTP code has been sent to WhatsApp'} ${formattedWhatsApp}`);
+        ? `🧪 ${t('register.testOtpCode')}: ${data.otp}`
+        : `📱 ${t('register.otpSentToWhatsApp')} ${formattedWhatsApp}`);
       setStep('otp');
       setCountdown(300);
       setLoading(false);
     } catch (err: any) {
       console.error('Registration error:', err);
-      setError(err.message || 'Failed to process registration');
+      const safeMessages = new Set([
+        t('register.errorRequired'),
+        t('register.invalidWhatsApp'),
+        t('register.processFailed'),
+      ]);
+      setError(safeMessages.has(err?.message) ? err.message : t('register.processFailed'));
       setLoading(false);
     }
   };
@@ -122,7 +128,7 @@ export default function CustomerRegister() {
     try {
       const formattedWhatsApp = formatPhoneNumber(formData.whatsapp);
       if (!formattedWhatsApp) {
-        throw new Error(language === 'id' ? 'Nomor WhatsApp tidak valid' : 'Invalid WhatsApp number');
+        throw new Error(t('register.invalidWhatsApp'));
       }
       const resolvedDeviceId = deviceId ?? await getOrCreateDeviceId();
 
@@ -149,22 +155,28 @@ export default function CustomerRegister() {
         }
         throw new Error(errMsg);
       }
-      if (!data?.success) throw new Error(data?.error || 'Verification failed');
+      if (!data?.success) throw new Error(data?.error || t('register.registrationFailed'));
       if (!data.customer || !data.auth_token) {
-        throw new Error(language === 'id' ? 'Sesi pelanggan tidak tersedia' : 'Customer session is unavailable');
+        throw new Error(t('register.sessionUnavailable'));
       }
 
       writeCustomerSession(data.customer, data.auth_token);
       setRememberedLogin(formattedWhatsApp, rememberLogin);
       setRegistrationSuccess(true);
-      setMessage(language === 'id' ? 'Registrasi berhasil. Mengalihkan...' : 'Registration successful. Redirecting...');
+      setMessage(t('register.registrationRedirecting'));
       window.dispatchEvent(new Event('session-auth-updated'));
       setLoading(false);
       setTimeout(() => navigate(returnTo, { replace: true }), 500);
 
     } catch (err: any) {
       console.error('❌ Registration error:', err);
-      setError(err.message || 'Registration failed');
+      const safeMessages = new Set([
+        t('register.invalidWhatsApp'),
+        t('register.sessionUnavailable'),
+        t('register.registrationFailed'),
+        t('reauth.invalidOtp'),
+      ]);
+      setError(safeMessages.has(err?.message) ? err.message : t('register.registrationFailed'));
       setLoading(false);
     }
   };
@@ -174,12 +186,12 @@ export default function CustomerRegister() {
 
     setLoading(true);
     setError('');
-    setMessage(language === 'id' ? 'Mengirim ulang OTP...' : 'Resending OTP...');
+    setMessage(t('register.resendingOtp'));
 
     try {
       const formattedWhatsApp = formatPhoneNumber(formData.whatsapp);
       if (!formattedWhatsApp) {
-        throw new Error(language === 'id' ? 'Nomor WhatsApp tidak valid' : 'Invalid WhatsApp number');
+        throw new Error(t('register.invalidWhatsApp'));
       }
       const resolvedDeviceId = deviceId ?? await getOrCreateDeviceId();
 
@@ -197,16 +209,21 @@ export default function CustomerRegister() {
         }
         throw new Error(errMsg);
       }
-      if (!data?.success) throw new Error(data?.error || 'Resend failed');
+      if (!data?.success) throw new Error(data?.error || t('register.resendFailed'));
 
       setMessage(data.dev_mode && data.otp
-        ? `🧪 ${language === 'id' ? 'Kode OTP pengujian' : 'Test OTP code'}: ${data.otp}`
+        ? `🧪 ${t('register.testOtpCode')}: ${data.otp}`
         : `📱 ${t('register.newOtpSent')}`);
       setCountdown(300);
       setOtpCode('');
       setLoading(false);
     } catch (err: any) {
-      setError(err.message || 'Failed to resend OTP');
+      console.error('OTP resend failed:', err);
+      const safeMessages = new Set([
+        t('register.invalidWhatsApp'),
+        t('register.resendFailed'),
+      ]);
+      setError(safeMessages.has(err?.message) ? err.message : t('register.resendFailed'));
       setLoading(false);
     }
   };
@@ -248,42 +265,9 @@ export default function CustomerRegister() {
           padding: '4px',
           boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
         }}>
-          <button
-            onClick={() => setLanguage('id')}
-            disabled={registrationSuccess}
-            style={{
-              padding: '6px 14px',
-              background: language === 'id' ? theme.gradientPrimary : 'transparent',
-              border: 'none',
-              borderRadius: '16px',
-              color: language === 'id' ? 'white' : theme.primary,
-              fontWeight: 'bold',
-              cursor: registrationSuccess ? 'not-allowed' : 'pointer',
-              fontSize: '13px',
-              opacity: registrationSuccess ? 0.5 : 1,
-              transition: 'all 0.3s ease'
-            }}
-          >
-            ID
-          </button>
-          <button
-            onClick={() => setLanguage('en')}
-            disabled={registrationSuccess}
-            style={{
-              padding: '6px 14px',
-              background: language === 'en' ? theme.gradientPrimary : 'transparent',
-              border: 'none',
-              borderRadius: '16px',
-              color: language === 'en' ? 'white' : theme.primary,
-              fontWeight: 'bold',
-              cursor: registrationSuccess ? 'not-allowed' : 'pointer',
-              fontSize: '13px',
-              opacity: registrationSuccess ? 0.5 : 1,
-              transition: 'all 0.3s ease'
-            }}
-          >
-            EN
-          </button>
+          <div style={{ pointerEvents: registrationSuccess ? 'none' : 'auto', opacity: registrationSuccess ? 0.5 : 1 }}>
+            <LanguageSwitcher />
+          </div>
         </div>
 
         {/* Header */}
@@ -304,10 +288,10 @@ export default function CustomerRegister() {
             <img src={`${import.meta.env.BASE_URL}logo.png`} alt="VividAqua" style={{ width: '180px', height: '180px', objectFit: 'contain' }} />
           </div>
           <h1 style={{ fontSize: '28px', fontWeight: 'bold', margin: '0 0 10px 0' }}>
-            {registrationSuccess ? t('register.registrationComplete') : alreadyRegistered ? (language === 'id' ? 'Sudah Terdaftar' : 'Already Registered') : t('register.title')}
+            {registrationSuccess ? t('register.registrationComplete') : alreadyRegistered ? t('register.alreadyRegistered') : t('register.title')}
           </h1>
           <p style={{ margin: 0, opacity: 0.9 }}>
-            {registrationSuccess ? t('register.successTitle') : alreadyRegistered ? (language === 'id' ? 'Link masuk dikirim ke WhatsApp Anda' : 'Login link sent to your WhatsApp') : t('register.subtitle')}
+            {registrationSuccess ? t('register.successTitle') : alreadyRegistered ? t('register.loginLinkSent') : t('register.subtitle')}
           </p>
         </div>
 
@@ -638,7 +622,7 @@ export default function CustomerRegister() {
                       📱 <strong>{t('register.nextStep')}</strong><br/>
                       {devMagicLink ? (
                         <>
-                          {language === 'id' ? 'Atau klik link di bawah untuk langsung masuk:' : 'Or click the link below to enter directly:'}
+                          {t('register.devDirectLink')}
                           <br/>
                           <a
                             href={devMagicLink}

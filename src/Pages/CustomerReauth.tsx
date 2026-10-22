@@ -4,6 +4,8 @@ import { FunctionsHttpError } from '@supabase/supabase-js'
 import { supabase } from '../supabaseClient'
 import { getOrCreateDeviceId } from '../lib/deviceId'
 import { theme } from '../theme'
+import LanguageSwitcher from '../Components/LanguageSwitcher'
+import { useLanguage } from '../contexts/LanguageContext'
 import {
   getRememberPreference,
   getSafeCustomerReturnTo,
@@ -22,18 +24,21 @@ async function getFunctionErrorMessage(error: unknown, data: any, fallback: stri
       // The public fallback is sufficient when the response body is unavailable.
     }
   }
-  return message
+  console.error('Customer reauthentication function failed:', { error, message })
+  return fallback
 }
 
 export default function CustomerReauth() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
+  const { t } = useLanguage()
   const [phoneNumber, setPhoneNumber] = useState('')
   const [otpCode, setOtpCode] = useState('')
   const [step, setStep] = useState<'phone' | 'otp'>('phone')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
+  const [devOtp, setDevOtp] = useState<string | null>(null)
 
   const [deviceId, setDeviceId] = useState<string | null>(() => searchParams.get('device_id'))
   const rememberLogin = searchParams.get('remember') == null
@@ -60,7 +65,7 @@ export default function CustomerReauth() {
 
     try {
       const formattedPhone = formatPhoneNumber(phoneNumber)
-      if (!formattedPhone) throw new Error('Nomor WhatsApp tidak valid')
+      if (!formattedPhone) throw new Error('reauth.invalidWhatsapp')
       const resolvedDeviceId = deviceId ?? await getOrCreateDeviceId()
 
       const { data, error: functionError } = await supabase.functions.invoke('auth-send-otp', {
@@ -68,17 +73,21 @@ export default function CustomerReauth() {
       })
 
       if (functionError) {
-        throw new Error(await getFunctionErrorMessage(functionError, data, 'Gagal mengirim OTP'))
+        throw new Error(await getFunctionErrorMessage(functionError, data, 'reauth.sendOtpFailed'))
       }
-      if (!data?.success) throw new Error(data?.error || 'Gagal mengirim OTP')
+      if (!data?.success) {
+        console.error('OTP request was rejected:', data)
+        throw new Error('reauth.sendOtpFailed')
+      }
 
-      setMessage(data.dev_mode && data.otp
-        ? `🧪 Kode OTP pengujian: ${data.otp}`
-        : '📱 OTP dikirim ke WhatsApp Anda')
+      setDevOtp(data.dev_mode && data.otp ? String(data.otp) : null)
+      setMessage(data.dev_mode && data.otp ? 'reauth.testOtp' : 'reauth.otpSent')
       setStep('otp')
       setLoading(false)
     } catch (err: any) {
-      setError(err.message || 'Gagal mengirim OTP')
+      console.error('Unable to request customer OTP:', err)
+      const safeErrorKeys = new Set(['reauth.invalidWhatsapp', 'reauth.sendOtpFailed'])
+      setError(safeErrorKeys.has(err?.message) ? err.message : 'common.unexpectedError')
       setLoading(false)
     }
   }
@@ -90,7 +99,7 @@ export default function CustomerReauth() {
 
     try {
       const formattedPhone = formatPhoneNumber(phoneNumber)
-      if (!formattedPhone) throw new Error('Nomor WhatsApp tidak valid')
+      if (!formattedPhone) throw new Error('reauth.invalidWhatsapp')
       const resolvedDeviceId = deviceId ?? await getOrCreateDeviceId()
 
       const { data, error: functionError } = await supabase.functions.invoke('auth-verify-otp', {
@@ -103,20 +112,30 @@ export default function CustomerReauth() {
       })
 
       if (functionError) {
-        throw new Error(await getFunctionErrorMessage(functionError, data, 'OTP tidak valid'))
+        throw new Error(await getFunctionErrorMessage(functionError, data, 'reauth.invalidOtp'))
       }
-      if (!data?.success) throw new Error(data?.error || 'OTP tidak valid')
-      if (!data.customer || !data.auth_token) throw new Error('Sesi pelanggan tidak tersedia')
+      if (!data?.success) {
+        console.error('OTP verification was rejected:', data)
+        throw new Error('reauth.invalidOtp')
+      }
+      if (!data.customer || !data.auth_token) throw new Error('reauth.sessionUnavailable')
 
       writeCustomerSession(data.customer, data.auth_token)
       setRememberedLogin(formattedPhone, rememberLogin)
 
-      setMessage('✅ Verifikasi berhasil, mengalihkan...')
+      setDevOtp(null)
+      setMessage('reauth.verifySuccess')
       window.dispatchEvent(new Event('session-auth-updated'))
       setTimeout(() => navigate(returnTo, { replace: true }), 500)
       setLoading(false)
     } catch (err: any) {
-      setError(err.message || 'OTP tidak valid')
+      console.error('Unable to verify customer OTP:', err)
+      const safeErrorKeys = new Set([
+        'reauth.invalidWhatsapp',
+        'reauth.invalidOtp',
+        'reauth.sessionUnavailable',
+      ])
+      setError(safeErrorKeys.has(err?.message) ? err.message : 'common.unexpectedError')
       setLoading(false)
     }
   }
@@ -130,6 +149,9 @@ export default function CustomerReauth() {
       background: theme.gradientPrimary,
       padding: '20px'
     }}>
+      <div style={{ position: 'fixed', top: '16px', right: '16px', zIndex: 10 }}>
+        <LanguageSwitcher variant="inline" />
+      </div>
       <div style={{
         background: 'white',
         borderRadius: '20px',
@@ -150,10 +172,10 @@ export default function CustomerReauth() {
             style={{ width: '100px', height: '100px', objectFit: 'contain', margin: '0 auto 12px', display: 'block' }}
           />
           <h1 style={{ fontSize: '22px', fontWeight: '800', margin: '0 0 6px 0' }}>
-            {step === 'phone' ? 'Verifikasi Identitas' : 'Masukkan Kode OTP'}
+            {step === 'phone' ? t('reauth.identityTitle') : t('reauth.otpTitle')}
           </h1>
           <p style={{ margin: 0, opacity: 0.85, fontSize: '13px' }}>
-            {step === 'phone' ? 'Masukkan nomor WhatsApp Anda' : 'Kode telah dikirim ke WhatsApp Anda'}
+            {step === 'phone' ? t('reauth.phoneSubtitle') : t('reauth.otpSubtitle')}
           </p>
         </div>
 
@@ -167,7 +189,7 @@ export default function CustomerReauth() {
                 marginBottom: '8px',
                 color: '#333'
               }}>
-                Nomor WhatsApp
+                {t('reauth.whatsappLabel')}
               </label>
               <input
                 type="tel"
@@ -196,7 +218,7 @@ export default function CustomerReauth() {
                   color: '#c00',
                   fontSize: '14px'
                 }}>
-                  ⚠️ {error}
+                  ⚠️ {t(error)}
                 </div>
               )}
 
@@ -215,7 +237,7 @@ export default function CustomerReauth() {
                   cursor: loading ? 'not-allowed' : 'pointer'
                 }}
               >
-                {loading ? '⏳ Mengirim...' : 'Kirim OTP'}
+                {loading ? `⏳ ${t('reauth.sending')}` : t('reauth.sendOtp')}
               </button>
             </form>
           ) : (
@@ -231,7 +253,7 @@ export default function CustomerReauth() {
                   fontSize: '14px',
                   textAlign: 'center'
                 }}>
-                  {message}
+                  {message && t(message)}{devOtp ? ` ${devOtp}` : ''}
                 </div>
               )}
 
@@ -267,7 +289,7 @@ export default function CustomerReauth() {
                   color: '#c00',
                   fontSize: '14px'
                 }}>
-                  ⚠️ {error}
+                  ⚠️ {t(error)}
                 </div>
               )}
 
@@ -286,7 +308,7 @@ export default function CustomerReauth() {
                   cursor: (loading || otpCode.length < 4) ? 'not-allowed' : 'pointer'
                 }}
               >
-                {loading ? '⏳ Verifikasi...' : 'Verifikasi OTP'}
+                {loading ? `⏳ ${t('reauth.verifying')}` : t('reauth.verifyOtp')}
               </button>
             </form>
           )}

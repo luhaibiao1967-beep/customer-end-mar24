@@ -65,7 +65,7 @@ const readOrCreatePaymentKey = (customerId: string, orderIds: string[]) => {
 
 export default function OrderHistory({ customer }: OrderHistoryProps) {
   const navigate = useNavigate();
-  const { t } = useLanguage();
+  const { language, t } = useLanguage();
   const { tokens } = useColorTokens();
   const [orders, setOrders] = useState<Order[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
@@ -97,7 +97,7 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
       setOrdersLoading(true);
       setError('');
       const token = sessionStorage.getItem('auth_token');
-      if (!token) throw new Error('Session expired, please login again');
+      if (!token) throw new Error(t('orderHistory.sessionExpired'));
 
       const { data, error } = await supabase.functions.invoke('get-orders', {
         body: {
@@ -108,7 +108,7 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
       });
 
       if (error) throw new Error(error.message);
-      if (!data?.success) throw new Error(data?.error || 'Failed to load orders');
+      if (!data?.success) throw new Error(data?.error || t('orderHistory.loadFailed'));
 
       setOrders(data.orders || []);
       setInitialBorrowedGallons(data.initial_borrowed_gallons || 0);
@@ -116,7 +116,8 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
         setProductVouchers(data.product_vouchers as { product_id: string; balance: number; products: { name: string } | null }[]);
       }
     } catch (err: any) {
-      setError(err.message);
+      console.error('Failed to load customer orders:', err);
+      setError(t('orderHistory.loadFailed'));
     } finally {
       setOrdersLoading(false);
     }
@@ -149,7 +150,7 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
     setPayingIds(prev => new Set([...prev, ...orderIds]));
     try {
       const token = sessionStorage.getItem('auth_token');
-      if (!token) throw new Error('Session expired');
+      if (!token) throw new Error(t('orderHistory.sessionExpired'));
 
       const { data, error } = await supabase.functions.invoke('create-order-payment', {
         body: { token, order_ids: orderIds, payment_key: paymentKey },
@@ -163,7 +164,7 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
           toast.error(t('orderHistory.paymentVerificationPending'), { duration: 8000 });
           return;
         }
-        throw new Error(data?.error || 'Failed to create payment');
+        throw new Error(t('common.error'));
       }
       if (data?.paid === true) {
         clearPaymentKey();
@@ -172,7 +173,7 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
         return;
       }
       if (!data?.snap_token || !data?.client_key || !data?.snap_js_url) {
-        throw new Error('PAYMENT_SESSION_INCOMPLETE');
+        throw new Error(t('orderHistory.paymentSessionIncomplete'));
       }
 
       await loadSnapScript(data.client_key, data.snap_js_url);
@@ -211,8 +212,9 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
             resolve();
           },
           onError: async (result: any) => {
+            console.error('QRIS payment failed:', result);
             await fetchOrders();
-            toast.error(t('orderHistory.paymentFailed') + ' ' + (result?.status_message || 'Unknown error'));
+            toast.error(t('orderHistory.paymentFailed') + ' ' + t('common.error'));
             resolve();
           },
           onClose: async () => {
@@ -223,7 +225,13 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
         });
       });
     } catch (err: any) {
-      toast.error('Error: ' + err.message);
+      console.error('Unable to start or resume QRIS payment:', err);
+      const safeMessages = new Set([
+        t('orderHistory.sessionExpired'),
+        t('orderHistory.paymentSessionIncomplete'),
+      ]);
+      const message = safeMessages.has(err?.message) ? err.message : t('common.unexpectedError');
+      toast.error(t('orderHistory.paymentFailed') + ' ' + message);
     } finally {
       setPayingIds(prev => {
         const next = new Set(prev);
@@ -256,12 +264,13 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
         }
         throw new Error(message);
       }
-      if (!data?.success) throw new Error(data?.error || 'Failed to cancel order');
+      if (!data?.success) throw new Error(t('common.error'));
 
       await fetchOrders();
       toast.success(t('orderHistory.cancelSuccess'));
     } catch (err: any) {
-      toast.error(t('orderHistory.cancelFailed') + ' ' + err.message);
+      console.error('Unable to cancel order:', err);
+      toast.error(t('orderHistory.cancelFailed') + ' ' + t('common.error'));
     } finally {
       setCancellingIds(prev => {
         const next = new Set(prev);
@@ -284,7 +293,7 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
     setUploading(true);
     try {
       const token = sessionStorage.getItem('auth_token');
-      if (!token) throw new Error('Session expired');
+      if (!token) throw new Error(t('orderHistory.sessionExpired'));
 
       const base64 = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
@@ -294,7 +303,7 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
       });
 
       const targetIds = unreservedUnpaidOrders.map(o => o.id);
-      if (targetIds.length === 0) throw new Error('All unpaid orders already have a QRIS payment in progress');
+      if (targetIds.length === 0) throw new Error(t('orderHistory.qrisAlreadyInProgress'));
 
       const { data, error } = await supabase.functions.invoke('payment-action', {
         body: {
@@ -307,14 +316,15 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
       });
 
       if (error) throw new Error(error.message);
-      if (!data?.success) throw new Error(data?.error || 'Upload failed');
+      if (!data?.success) throw new Error(t('common.error'));
 
       setUploadSuccess(true);
       setOrders(prev => prev.map(o =>
         targetIds.includes(o.id) ? { ...o, payment_evidence: data.path } : o
       ));
     } catch (err: any) {
-      toast.error(t('orderHistory.uploadFailed') + err.message);
+      console.error('Unable to upload payment receipt:', err);
+      toast.error(t('orderHistory.uploadFailed') + ' ' + t('common.unexpectedError'));
     } finally {
       setUploading(false);
     }
@@ -324,18 +334,19 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
     setLoadingEvidenceId(order.id);
     try {
       const token = sessionStorage.getItem('auth_token');
-      if (!token) throw new Error('Session expired');
+      if (!token) throw new Error(t('orderHistory.sessionExpired'));
 
       const { data, error } = await supabase.functions.invoke('payment-action', {
         body: { token, action: 'view', order_id: order.id },
       });
 
       if (error) throw new Error(error.message);
-      if (!data?.success) throw new Error(data?.error || 'Failed to get URL');
+      if (!data?.success) throw new Error(t('common.error'));
 
       setPaymentEvidenceUrl(data.url);
     } catch (err: any) {
-      toast.error(t('orderHistory.evidenceFailed') + err.message);
+      console.error('Unable to view payment receipt:', err);
+      toast.error(t('orderHistory.evidenceFailed') + t('common.error'));
     } finally {
       setLoadingEvidenceId(null);
     }
@@ -398,7 +409,10 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
   };
 
   const formatDate = (dateString: string) =>
-    new Date(dateString).toLocaleDateString('id-ID', { timeZone: 'Asia/Jakarta', year: 'numeric', month: 'long', day: 'numeric' });
+    new Date(dateString).toLocaleDateString(
+      language === 'zh' ? 'zh-CN' : language === 'en' ? 'en-GB' : 'id-ID',
+      { timeZone: 'Asia/Jakarta', year: 'numeric', month: 'long', day: 'numeric' },
+    );
 
   return (
     <div style={{ minHeight: '100vh', background: tokens.pageBg, padding: '14px', paddingBottom: '88px' }}>
@@ -428,13 +442,13 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
                   {totalUnpaid > 0 ? formatCurrency(totalUnpaid) : `✅ ${t('orderHistory.clear')}`}
                 </p>
                 {unpaidOrders.length > 1 && (
-                  <p style={{ margin: '2px 0 0', fontSize: '11px', color: tokens.muted }}>{unpaidOrders.length} orders</p>
+                  <p style={{ margin: '2px 0 0', fontSize: '11px', color: tokens.muted }}>{unpaidOrders.length} {t('orderHistory.ordersUnit')}</p>
                 )}
               </div>
               <div style={{ borderLeft: `4px solid ${tokens.primary}`, paddingLeft: '12px' }}>
                 <p style={{ margin: 0, fontSize: '11px', color: tokens.muted }}>{t('orderHistory.borrowedGallons')}</p>
                 <p style={{ margin: '4px 0 0', fontSize: '18px', fontWeight: 'bold', color: tokens.primary }}>
-                  {totalBorrowedGallons} gallons
+                  {totalBorrowedGallons} {t('orderHistory.gallonsUnit')}
                 </p>
               </div>
             </div>
@@ -447,7 +461,7 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
                   disabled={isPayingAll}
                   style={{ padding: '12px', background: isPayingAll ? '#ccc' : tokens.gradientSuccess, color: 'white', border: 'none', borderRadius: '10px', fontSize: '14px', fontWeight: 'bold', cursor: isPayingAll ? 'not-allowed' : 'pointer' }}
                 >
-                  {isPayingAll ? 'Loading...' : t('orderHistory.payViaQris')}
+                  {isPayingAll ? t('common.loading') : t('orderHistory.payViaQris')}
                 </button>
                 <button
                   onClick={() => setShowBankTransfer(true)}
@@ -516,7 +530,7 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
                 </div>
 
                 <p style={{ fontSize: '12px', color: tokens.muted, margin: '0 0 8px 0' }}>
-                  Order #{order.id.slice(0, 8)} · {formatDate(order.created_at)}
+                  {t('orderHistory.orderNumber')} #{order.id.slice(0, 8)} · {formatDate(order.created_at)}
                 </p>
 
                 {/* Buttons */}
@@ -538,7 +552,7 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
                           disabled={payingIds.has(order.id)}
                           style={{ padding: '10px', background: payingIds.has(order.id) ? '#ccc' : tokens.gradientPrimary, color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: payingIds.has(order.id) ? 'not-allowed' : 'pointer' }}
                         >
-                          {payingIds.has(order.id) ? 'Loading...' : t('orderHistory.completePaymentQris')}
+                          {payingIds.has(order.id) ? t('common.loading') : t('orderHistory.completePaymentQris')}
                         </button>
                       </div>
                     ) : order.midtrans_order_id ? (
@@ -553,7 +567,7 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
                           disabled={payingIds.has(order.id)}
                           style={{ padding: '10px', background: payingIds.has(order.id) ? '#ccc' : tokens.gradientSuccess, color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: payingIds.has(order.id) ? 'not-allowed' : 'pointer' }}
                         >
-                          {payingIds.has(order.id) ? 'Loading...' : t('orderHistory.resumePayment')}
+                          {payingIds.has(order.id) ? t('common.loading') : t('orderHistory.resumePayment')}
                         </button>
                       </div>
                     ) : (
@@ -568,7 +582,7 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
                             disabled={payingIds.has(order.id)}
                             style={{ padding: '10px', background: payingIds.has(order.id) ? '#ccc' : tokens.gradientSuccess, color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: payingIds.has(order.id) ? 'not-allowed' : 'pointer' }}
                           >
-                            {payingIds.has(order.id) ? 'Loading...' : t('orderHistory.payViaQris')}
+                            {payingIds.has(order.id) ? t('common.loading') : t('orderHistory.payViaQris')}
                           </button>
                         )}
                       </div>
@@ -585,7 +599,7 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
                           style={{ padding: '10px', background: payingIds.has(order.id) ? '#ccc' : tokens.gradientSuccess, color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: payingIds.has(order.id) ? 'not-allowed' : 'pointer' }}
                         >
                           {payingIds.has(order.id)
-                            ? 'Loading...'
+                            ? t('common.loading')
                             : order.midtrans_order_id
                               ? t('orderHistory.resumePayment')
                               : t('orderHistory.payViaQris')}
@@ -601,7 +615,7 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
                       style={{ padding: '10px', background: payingIds.has(order.id) ? '#ccc' : tokens.gradientSuccess, color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: payingIds.has(order.id) ? 'not-allowed' : 'pointer' }}
                     >
                       {payingIds.has(order.id)
-                        ? 'Loading...'
+                        ? t('common.loading')
                         : order.midtrans_order_id
                           ? t('orderHistory.resumePayment')
                           : t('orderHistory.payViaQris')}
@@ -671,7 +685,7 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
               <div>
                 <p style={{ margin: 0, fontWeight: '700', fontSize: '16px' }}>{t('orderHistory.bankTransfer')}</p>
                 <p style={{ margin: 0, fontSize: '13px', color: tokens.muted }}>
-                  {unreservedUnpaidOrders.length} order(s) · {formatCurrency(unreservedUnpaidTotal)}
+                  {unreservedUnpaidOrders.length} {t('orderHistory.ordersUnit')} · {formatCurrency(unreservedUnpaidTotal)}
                 </p>
               </div>
               <button onClick={closeUploadModal} style={{ background: 'none', border: 'none', fontSize: '22px', cursor: 'pointer', color: tokens.muted }}>✕</button>
@@ -689,7 +703,7 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
               </div>
               <p style={{ fontSize: '13px', color: theme.error, fontWeight: '700', textAlign: 'center', marginBottom: '20px', background: '#fff3e0', padding: '10px', borderRadius: '8px' }}>
                 {t('orderHistory.transferAmount') + ' '}{formatCurrency(unreservedUnpaidTotal)}
-                {unreservedUnpaidOrders.length > 1 && ` (${unreservedUnpaidOrders.length} orders)`}
+                {unreservedUnpaidOrders.length > 1 && ` (${unreservedUnpaidOrders.length} ${t('orderHistory.ordersUnit')})`}
               </p>
 
               {/* Upload evidence */}
@@ -703,7 +717,7 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
                 ) : (
                   <>
                     {previewUrl && (
-                      <img src={previewUrl} alt="Preview" style={{ width: '100%', borderRadius: '10px', marginBottom: '12px', maxHeight: '200px', objectFit: 'cover' }} />
+                      <img src={previewUrl} alt={t('orderHistory.paymentReceipt')} style={{ width: '100%', borderRadius: '10px', marginBottom: '12px', maxHeight: '200px', objectFit: 'cover' }} />
                     )}
                     <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileSelect} style={{ display: 'none' }} />
                     <button
@@ -737,7 +751,7 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
               <span style={{ fontWeight: '600' }}>🧾 {t('orderHistory.paymentReceipt')}</span>
               <button onClick={() => setPaymentEvidenceUrl(null)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer' }}>✕</button>
             </div>
-            <img src={paymentEvidenceUrl} alt="Payment receipt" style={{ width: '100%', display: 'block', maxHeight: '70vh', objectFit: 'contain' }} />
+            <img src={paymentEvidenceUrl} alt={t('orderHistory.paymentReceipt')} style={{ width: '100%', display: 'block', maxHeight: '70vh', objectFit: 'contain' }} />
           </div>
         </div>
       )}

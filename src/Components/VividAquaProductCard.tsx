@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface VividAquaProductCardProps {
   title: string;
@@ -25,6 +26,7 @@ export default function VividAquaProductCard({
   compact = false,
   imageOnly = false,
 }: VividAquaProductCardProps) {
+  const { t } = useLanguage();
   const [isHovered, setIsHovered] = useState(false);
   const [imageFailed, setImageFailed] = useState(false);
 
@@ -126,7 +128,7 @@ export default function VividAquaProductCard({
           </div>
           <div className="text-right">
             <p className={`font-black leading-none text-cyan-300 ${compact ? 'text-3xl' : 'text-4xl'}`}>{ticketCount}</p>
-            <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-cyan-100">Water Tickets</p>
+            <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-cyan-100">{t('vouchers.tickets')}</p>
           </div>
         </div>
 

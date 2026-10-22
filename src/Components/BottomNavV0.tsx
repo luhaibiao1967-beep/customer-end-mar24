@@ -2,17 +2,18 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Home, Droplets, Ticket, User } from 'lucide-react';
 import { useColorTokens } from '../contexts/ColorTokensContext';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface BottomNavV0Props {
   customer: { customer_type: string };
 }
 
 const navItems = [
-  { id: 'home', path: '/customer-home', label: 'Home', icon: Home },
-  { id: 'voucher', path: '/buy-vouchers', label: 'Voucher', icon: Ticket },
-  { id: 'order', path: '/place-order', label: 'Order', icon: Droplets },
-  { id: 'account', path: '/account', label: 'My Account', icon: User },
-  { id: 'voucher-test', path: '/buy-vouchers', label: 'Test', icon: Ticket, showActive: false },
+  { id: 'home', path: '/customer-home', labelKey: 'nav.home', icon: Home },
+  { id: 'voucher', path: '/buy-vouchers', labelKey: 'nav.vouchers', icon: Ticket },
+  { id: 'order', path: '/place-order', labelKey: 'nav.newOrder', icon: Droplets },
+  { id: 'account', path: '/account', labelKey: 'nav.myAccount', icon: User },
+  { id: 'voucher-test', path: '/buy-vouchers', labelKey: 'nav.test', icon: Ticket, showActive: false },
 ];
 
 export default function BottomNavV0({ customer }: BottomNavV0Props) {
@@ -20,6 +21,7 @@ export default function BottomNavV0({ customer }: BottomNavV0Props) {
   const location = useLocation();
   const isActive = (path: string) => location.pathname === path;
   const { tokens } = useColorTokens();
+  const { t } = useLanguage();
 
   return (
     <nav
@@ -102,7 +104,7 @@ export default function BottomNavV0({ customer }: BottomNavV0Props) {
                   transition: 'color 0.3s',
                 }}
               >
-                {item.label}
+                {t(item.labelKey)}
               </span>
             </button>
           );

@@ -178,7 +178,7 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
   const loadData = async () => {
     try {
       const token = sessionStorage.getItem('auth_token');
-      if (!token) throw new Error('Session expired');
+      if (!token) throw new Error(t('common.sessionExpired'));
       const [pkgRes, vRes, prodRes] = await Promise.all([
         supabase
           .from('voucher_packages')
@@ -259,12 +259,15 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
     setPaying(pkg.id);
     try {
       const token = sessionStorage.getItem('auth_token');
-      if (!token) throw new Error('Session expired');
+      if (!token) {
+        toast.error(t('common.sessionExpired'));
+        return;
+      }
       const { data, error } = await supabase.functions.invoke('create-voucher-payment', {
         body: { token, package_id: pkg.id },
       });
       if (error) throw new Error(error.message);
-      if (!data?.success) throw new Error(data?.error || 'Failed to create payment');
+      if (!data?.success) throw new Error(data?.error || t('vouchers.createPaymentFailed'));
       await loadSnapScript(data.client_key, data.snap_js_url);
       const orderId = data.midtrans_order_id;
       (window as any).snap.pay(data.snap_token, {
@@ -276,7 +279,7 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
             });
             if (confirmationError) throw new Error(confirmationError.message);
             if (!confirmation?.success || !confirmation?.paid) {
-              throw new Error(confirmation?.error || 'PAYMENT_NOT_VERIFIED');
+              throw new Error(t('vouchers.paymentNotVerified'));
             }
 
             setCurrentVouchers(prev => {
@@ -288,15 +291,20 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
             loadData();
             fetchHistory();
           } catch (confirmationError: any) {
-            toast.error(t('vouchers.paymentError') + (confirmationError?.message || 'PAYMENT_NOT_VERIFIED'));
+            console.error('Voucher payment confirmation failed:', confirmationError);
+            toast.error(t('vouchers.paymentError') + t('vouchers.paymentNotVerified'));
           }
         },
         onPending: () => { toast(t('vouchers.paymentPending'), { duration: 6000 }); },
-        onError: (result: any) => { toast.error(t('vouchers.paymentFailed') + (result?.status_message || 'Unknown error')); },
+        onError: (result: any) => {
+          console.error('Voucher payment failed:', result);
+          toast.error(t('vouchers.paymentFailed') + t('common.unexpectedError'));
+        },
         onClose: () => { /* user dismissed */ },
       });
     } catch (err: any) {
-      toast.error(t('vouchers.paymentError') + err.message);
+      console.error('Voucher checkout failed:', err);
+      toast.error(t('vouchers.paymentError') + t('vouchers.createPaymentFailed'));
     } finally {
       setPaying(null);
     }
@@ -307,12 +315,15 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
     setPaying(`custom_${product.id}`);
     try {
       const token = sessionStorage.getItem('auth_token');
-      if (!token) throw new Error('Session expired');
+      if (!token) {
+        toast.error(t('common.sessionExpired'));
+        return;
+      }
       const { data, error } = await supabase.functions.invoke('create-voucher-payment', {
         body: { token, product_id: product.id, qty },
       });
       if (error) throw new Error(error.message);
-      if (!data?.success) throw new Error(data?.error || 'Failed to create payment');
+      if (!data?.success) throw new Error(data?.error || t('vouchers.createPaymentFailed'));
       await loadSnapScript(data.client_key, data.snap_js_url);
       const orderId = data.midtrans_order_id;
       (window as any).snap.pay(data.snap_token, {
@@ -324,7 +335,7 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
             });
             if (confirmationError) throw new Error(confirmationError.message);
             if (!confirmation?.success || !confirmation?.paid) {
-              throw new Error(confirmation?.error || 'PAYMENT_NOT_VERIFIED');
+              throw new Error(t('vouchers.paymentNotVerified'));
             }
 
             setCurrentVouchers(prev => {
@@ -336,15 +347,20 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
             loadData();
             fetchHistory();
           } catch (confirmationError: any) {
-            toast.error(t('vouchers.paymentError') + (confirmationError?.message || 'PAYMENT_NOT_VERIFIED'));
+            console.error('Custom voucher payment confirmation failed:', confirmationError);
+            toast.error(t('vouchers.paymentError') + t('vouchers.paymentNotVerified'));
           }
         },
         onPending: () => { toast(t('vouchers.paymentPending'), { duration: 6000 }); },
-        onError: (result: any) => { toast.error(t('vouchers.paymentFailed') + (result?.status_message || 'Unknown error')); },
+        onError: (result: any) => {
+          console.error('Custom voucher payment failed:', result);
+          toast.error(t('vouchers.paymentFailed') + t('common.unexpectedError'));
+        },
         onClose: () => { /* user dismissed */ },
       });
     } catch (err: any) {
-      toast.error(t('vouchers.paymentError') + err.message);
+      console.error('Custom voucher checkout failed:', err);
+      toast.error(t('vouchers.paymentError') + t('vouchers.createPaymentFailed'));
     } finally {
       setPaying(null);
     }
@@ -355,7 +371,7 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
   const productIdsWithPackages = new Set(packages.map(p => p.product_id));
   const otherProducts = products.filter(p => !productIdsWithPackages.has(p.id));
 
-  const locale = language === 'id' ? 'id-ID' : 'en-GB';
+  const locale = language === 'zh' ? 'zh-CN' : language === 'id' ? 'id-ID' : 'en-GB';
   const fmtWhen = (iso: string) => {
     try {
       return new Date(iso).toLocaleString(locale, { dateStyle: 'short', timeStyle: 'short' });
@@ -488,13 +504,13 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
                             background: tokens.gradientPrimary, color: 'white',
                             letterSpacing: '0.03em',
                           }}>
-                            {isHot ? '🔥 Hot Sales' : pkg.label}
+                            {isHot ? `🔥 ${t('vouchers.hotSales')}` : pkg.label}
                           </span>
                         )}
                         <p style={{ margin: 0, fontSize: '22px', fontWeight: '900', color: tokens.text }}>{pkg.qty}</p>
-                        <p style={{ margin: '2px 0 6px', fontSize: '11px', color: tokens.muted }}>Vouchers · {pkg.products?.name}</p>
+                        <p style={{ margin: '2px 0 6px', fontSize: '11px', color: tokens.muted }}>{t('vouchers.tickets')} · {pkg.products?.name}</p>
                         <p style={{ margin: '0 0 2px', fontSize: '16px', fontWeight: '700', color: tokens.primary }}>{formatCurrency(pkg.price)}</p>
-                        <p style={{ margin: '0 0 12px', fontSize: '10px', color: tokens.muted }}>{formatCurrency(Math.round(pkg.price / pkg.qty))}/voucher</p>
+                        <p style={{ margin: '0 0 12px', fontSize: '10px', color: tokens.muted }}>{formatCurrency(Math.round(pkg.price / pkg.qty))}{t('vouchers.perVoucherPrice')}</p>
                         {hasInfo && <div style={{ marginBottom: '8px' }}><InfoButton expanded={expanded} onClick={() => toggleExpand(pkg.id)} /></div>}
                         {expanded && <InfoPanel description={pkg.description} imageUrl={pkg.image_url} />}
                         <button
