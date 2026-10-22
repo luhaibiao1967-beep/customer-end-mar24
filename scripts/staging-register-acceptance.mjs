@@ -45,7 +45,7 @@ async function invoke(functionName, body) {
 }
 
 async function sendOtp() {
-  const result = await invoke('auth-send-otp', { phone });
+  const result = await invoke('auth-send-otp', { phone, device_id: deviceId });
   if (!result?.success || result?.dev_mode !== true || result?.otp !== '1234') {
     throw new Error('Staging did not return the explicit development OTP');
   }

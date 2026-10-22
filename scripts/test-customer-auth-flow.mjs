@@ -25,6 +25,7 @@ async function importTypeScript(relativePath) {
 
 const backendPhone = await importTypeScript('supabase/functions/_shared/phone.ts')
 const frontendSession = await importTypeScript('src/lib/customerSession.ts')
+const frontendDeviceId = await importTypeScript('src/lib/deviceId.ts')
 const otpPolicy = await importTypeScript('supabase/functions/_shared/otpPolicy.ts')
 
 const equivalentInputs = [
@@ -57,6 +58,10 @@ assert.equal(otpPolicy.getOtpVerificationMode(false, ''), 'reject')
 assert.equal(otpPolicy.getOtpVerificationMode(false, 'provider-request-id'), 'provider')
 assert.equal(otpPolicy.getOtpVerificationMode(true, null), 'development_plaintext')
 assert.equal(otpPolicy.getOtpVerificationMode(true, 'provider-request-id'), 'provider')
+assert.equal(frontendDeviceId.normalizeDeviceId(null), null)
+assert.equal(frontendDeviceId.normalizeDeviceId('short'), null)
+assert.equal(frontendDeviceId.normalizeDeviceId('        '), null)
+assert.equal(frontendDeviceId.normalizeDeviceId(' valid-device-id '), 'valid-device-id')
 
 const sendSource = await read('supabase/functions/auth-send-otp/index.ts')
 const verifySource = await read('supabase/functions/auth-verify-otp/index.ts')
@@ -67,6 +72,7 @@ const magicLinkSource = await read('src/Components/MagicLinkHandler.tsx')
 const appSource = await read('src/App.tsx')
 const branchSelectionSource = await read('src/Pages/BranchSelection.tsx')
 const deviceIdSource = await read('src/lib/deviceId.ts')
+const stagingAcceptanceSource = await read('scripts/staging-register-acceptance.mjs')
 const logoutSources = await Promise.all([
   'src/Pages/CustomerHome.tsx',
   'src/Pages/MyAccount.tsx',
@@ -81,7 +87,14 @@ const authFunctionSources = await Promise.all([
 
 assert.match(sendSource, /otp:\s*PROVIDER_OTP_SENTINEL/)
 assert.doesNotMatch(sendSource, /otpFromFazpass|otp_code/)
+assert.match(sendSource, /INVALID_DEVICE_ID/)
+assert.match(sendSource, /reserveOtpRateLimit/)
+assert.match(sendSource, /phone:\$\{phoneHash\}/)
+assert.match(sendSource, /METHOD_NOT_ALLOWED/)
 assert.match(verifySource, /getOtpVerificationMode\(DEV_MODE,/)
+assert.match(verifySource, /\.eq\('verified', false\)/)
+assert.match(verifySource, /OTP_ALREADY_USED/)
+assert.match(verifySource, /METHOD_NOT_ALLOWED/)
 assert.match(fazpassSource, /\/v1\/otp\/request/)
 assert.match(fazpassSource, /\/v1\/otp\/verify/)
 assert.match(fazpassSource, /JSON\.stringify\(\{ otp_id: otpId, otp \}\)/)
@@ -108,6 +121,7 @@ assert.match(reauthSource, /data\.dev_mode && data\.otp/)
 assert.match(magicLinkSource, /writeCustomerSession\(data\.customer, authToken\)/)
 assert.match(magicLinkSource, /setRememberedLogin\(data\.customer\.whatsapp/)
 assert.match(deviceIdSource, /localStorage\.setItem\(STORAGE_KEY, fallbackId\)/)
+assert.match(stagingAcceptanceSource, /auth-send-otp', \{ phone, device_id: deviceId \}/)
 
 for (const source of logoutSources) {
   assert.match(source, /clearCustomerSession\(\)/)

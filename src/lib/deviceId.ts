@@ -5,6 +5,16 @@
  */
 const STORAGE_KEY = 'wd_device_id'
 
+export function normalizeDeviceId(value: string | null | undefined): string | null {
+  const normalized = typeof value === 'string' ? value.trim() : ''
+  if (
+    normalized.length < 8 ||
+    normalized.length > 200 ||
+    /[\u0000-\u001f\u007f]/.test(normalized)
+  ) return null
+  return normalized
+}
+
 function randomFallback(): string {
   return `d-${Date.now()}-${Math.random().toString(36).slice(2, 15)}`
 }
@@ -12,8 +22,7 @@ function randomFallback(): string {
 /** Sync check - returns stored ID if available, else null */
 export function getStoredDeviceId(): string | null {
   try {
-    const id = localStorage.getItem(STORAGE_KEY)
-    if (id && id.length >= 8) return id
+    return normalizeDeviceId(localStorage.getItem(STORAGE_KEY))
   } catch {}
   return null
 }

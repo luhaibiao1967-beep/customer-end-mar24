@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { FunctionsHttpError } from '@supabase/supabase-js'
 import { supabase } from '../supabaseClient'
-import { getOrCreateDeviceId } from '../lib/deviceId'
+import { getOrCreateDeviceId, normalizeDeviceId } from '../lib/deviceId'
 import { theme } from '../theme'
 import LanguageSwitcher from '../Components/LanguageSwitcher'
 import { useLanguage } from '../contexts/LanguageContext'
@@ -40,7 +40,7 @@ export default function CustomerReauth() {
   const [message, setMessage] = useState('')
   const [devOtp, setDevOtp] = useState<string | null>(null)
 
-  const [deviceId, setDeviceId] = useState<string | null>(() => searchParams.get('device_id'))
+  const [deviceId, setDeviceId] = useState<string | null>(() => normalizeDeviceId(searchParams.get('device_id')))
   const rememberLogin = searchParams.get('remember') == null
     ? getRememberPreference()
     : searchParams.get('remember') === '1'

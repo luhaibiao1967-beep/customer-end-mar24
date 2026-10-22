@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { FunctionsHttpError } from '@supabase/supabase-js';
-import { getOrCreateDeviceId } from '../lib/deviceId';
+import { getOrCreateDeviceId, normalizeDeviceId } from '../lib/deviceId';
 import { theme } from '../theme';
 import { useJsApiLoader, Autocomplete } from '@react-google-maps/api';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -42,7 +42,7 @@ export default function CustomerRegister() {
   const [alreadyRegistered, setAlreadyRegistered] = useState(false);
   const [waMeUrl, setWaMeUrl] = useState('');
 
-  const [deviceId, setDeviceId] = useState<string | null>(() => searchParams.get('device_id'));
+  const [deviceId, setDeviceId] = useState<string | null>(() => normalizeDeviceId(searchParams.get('device_id')));
   const rememberLogin = searchParams.get('remember') == null
     ? getRememberPreference()
     : searchParams.get('remember') === '1';

@@ -8,6 +8,10 @@ import { getOtpVerificationMode } from '../_shared/otpPolicy.ts'
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Cache-Control': 'no-store, max-age=0',
+  'Pragma': 'no-cache',
+  'X-Content-Type-Options': 'nosniff',
 }
 
 const DEV_MODE = Deno.env.get('ENVIRONMENT') === 'development'
@@ -35,11 +39,26 @@ interface RequestBody {
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return new Response(null, { headers: corsHeaders, status: 204 })
+  }
+  if (req.method !== 'POST') {
+    return new Response(
+      JSON.stringify({ success: false, code: 'METHOD_NOT_ALLOWED', error: 'Method not allowed' }),
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Allow': 'POST' },
+        status: 405,
+      },
+    )
   }
 
   try {
-    const { phone, otp, device_id, name, address, isRegistration }: RequestBody = await req.json()
+    let body: RequestBody
+    try {
+      body = await req.json()
+    } catch {
+      throw new OtpVerificationError('INVALID_JSON', 'Invalid JSON body')
+    }
+    const { phone, otp, device_id, name, address, isRegistration } = body
 
     if (!phone || !otp) {
       throw new OtpVerificationError('OTP_INPUT_REQUIRED', 'Phone and OTP are required')
@@ -167,6 +186,28 @@ serve(async (req) => {
         )
       }
       otpRecord = record
+    }
+
+    // Consume the OTP with a compare-and-set before any customer/session/device
+    // side effects. Concurrent or replayed verification can cross this boundary
+    // only once.
+    const { data: consumedOtp, error: otpConsumeError } = await supabase
+      .from('auth_otps')
+      .update({ verified: true, verified_at: new Date().toISOString() })
+      .eq('id', otpRecord.id)
+      .eq('verified', false)
+      .select('id')
+      .maybeSingle()
+    if (otpConsumeError) {
+      console.error('OTP consume failed:', otpConsumeError)
+      throw new OtpVerificationError(
+        'OTP_CONSUME_FAILED',
+        'Unable to finalize verification right now',
+        500,
+      )
+    }
+    if (!consumedOtp) {
+      throw new OtpVerificationError('OTP_ALREADY_USED', 'This OTP has already been used', 409)
     }
 
     const { data: existingCustomer, error: existingCustomerError } = await supabase
@@ -325,21 +366,6 @@ serve(async (req) => {
           500
         )
       }
-    }
-
-    // Consume the OTP only after customer/session and trusted-device writes
-    // succeed, so transient downstream failures remain retryable.
-    const { error: otpMarkError } = await supabase
-      .from('auth_otps')
-      .update({ verified: true })
-      .eq('id', otpRecord.id)
-    if (otpMarkError) {
-      console.error('OTP consume failed:', otpMarkError)
-      throw new OtpVerificationError(
-        'OTP_CONSUME_FAILED',
-        'Unable to finalize verification right now',
-        500
-      )
     }
 
     if (createdCustomer) {
