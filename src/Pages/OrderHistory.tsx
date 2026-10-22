@@ -117,7 +117,7 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
       }
     } catch (err: any) {
       console.error('Failed to load customer orders:', err);
-      setError(t('orderHistory.loadFailed'));
+      setError('orderHistory.loadFailed');
     } finally {
       setOrdersLoading(false);
     }
@@ -499,7 +499,7 @@ export default function OrderHistory({ customer }: OrderHistoryProps) {
         ) : error ? (
           <div style={{ background: tokens.card, borderRadius: '20px', padding: '40px', textAlign: 'center', backdropFilter: tokens.cardBlur, WebkitBackdropFilter: tokens.cardBlur }}>
             <p style={{ fontSize: '48px', margin: '0 0 20px 0' }}>⚠️</p>
-            <p style={{ color: '#666', marginBottom: '20px' }}>{error}</p>
+            <p style={{ color: '#666', marginBottom: '20px' }}>{t(error)}</p>
             <button onClick={fetchOrders} style={{ padding: '12px 30px', background: tokens.gradientPrimary, color: 'white', border: 'none', borderRadius: '8px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer' }}>{t('orders.tryAgain')}</button>
           </div>
         ) : orders.length === 0 ? (

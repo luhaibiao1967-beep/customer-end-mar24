@@ -98,14 +98,14 @@ export default function CustomerLogin() {
     } catch (err: any) {
       console.error('Customer login failed:', err)
       if (err?.message === '__LOGIN_401__') {
-        setError(t('login.functions401'))
+        setError('login.functions401')
         return
       }
       const fetchFailed =
         err?.name === 'FunctionsFetchError' ||
         (typeof err?.message === 'string' &&
           err.message.includes('Failed to send a request to the Edge Function'))
-      setError(fetchFailed ? t('login.functionsUnreachable') : t('common.unexpectedError'))
+      setError(fetchFailed ? 'login.functionsUnreachable' : 'common.unexpectedError')
     } finally {
       setLoading(false)
     }
@@ -286,7 +286,7 @@ export default function CustomerLogin() {
                   color: '#c00',
                   fontSize: '14px',
                 }}>
-                  ⚠️ {error}
+                  ⚠️ {t(error)}
                 </div>
               )}
 

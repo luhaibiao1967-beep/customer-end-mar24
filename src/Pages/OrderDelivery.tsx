@@ -48,7 +48,7 @@ export const OrderDelivery: React.FC = () => {
       setOrderItems(data.order?.order_items || []);
     } catch (err: any) {
       console.error('Failed to load delivery details:', err);
-      setError(t('delivery.loadFailed'));
+      setError('delivery.loadFailed');
     } finally {
       setLoading(false);
     }
@@ -183,7 +183,7 @@ export const OrderDelivery: React.FC = () => {
         <div style={{ ...cardStyle, padding: '40px', textAlign: 'center', maxWidth: '400px', width: '100%' }}>
           <p style={{ fontSize: '48px', margin: '0 0 16px' }}>❌</p>
           <h2 style={{ color: tokens.text, margin: '0 0 8px' }}>{t('delivery.loadFailed')}</h2>
-          <p style={{ color: tokens.muted, marginBottom: '20px' }}>{error || t('delivery.orderNotFound')}</p>
+          <p style={{ color: tokens.muted, marginBottom: '20px' }}>{error ? t(error) : t('delivery.orderNotFound')}</p>
           <button
             onClick={() => navigate('/orders')}
             style={{ padding: '12px 24px', background: tokens.gradientPrimary, color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}

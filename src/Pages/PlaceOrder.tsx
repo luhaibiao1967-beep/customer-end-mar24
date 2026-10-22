@@ -215,6 +215,26 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const localizedError = (() => {
+    switch (error) {
+      case 'placeOrder.failedLoadProducts':
+        return t('placeOrder.failedLoadProducts') + t('common.unexpectedError');
+      case 'placeOrder.failedLoadOrder':
+        return t('placeOrder.failedLoadOrder') + t('common.unexpectedError');
+      case 'placeOrder.failedSubmit':
+        return t('placeOrder.failedSubmit') + t('common.unexpectedError');
+      case 'PAYMENT_NOT_VERIFIED':
+        return t('placeOrder.paymentFailedPrefix') + t('placeOrder.paymentNotVerified');
+      case 'PAYMENT_GENERIC_ERROR':
+        return t('placeOrder.paymentFailedPrefix') + t('common.unexpectedError');
+      case 'placeOrder.selectProductError':
+        return t('placeOrder.selectProductError');
+      case 'placeOrder.selectDateError':
+        return t('placeOrder.selectDateError');
+      default:
+        return error ? t(error) : '';
+    }
+  })();
   const [showSuccess, setShowSuccess] = useState(false);
   const inMemoryPrepayCheckout = useRef<StoredPrepayCheckout | null>(null);
   const inMemoryVoucherOnlyOrder = useRef<StoredVoucherOnlyOrder | null>(null);
@@ -492,7 +512,7 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
       setProducts(filtered);
     } catch (err: any) {
       console.error('Failed to load products:', err);
-      setError(t('placeOrder.failedLoadProducts') + t('common.unexpectedError'));
+      setError('placeOrder.failedLoadProducts');
     } finally {
       setLoading(false);
       // Fetch vouchers after products loaded
@@ -531,7 +551,7 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
       setCart(newCart);
     } catch (err: any) {
       console.error('Failed to load editable order:', err);
-      setError(t('placeOrder.failedLoadOrder') + t('common.error'));
+      setError('placeOrder.failedLoadOrder');
     }
   };
 
@@ -575,11 +595,11 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
 
   const handleSubmit = async () => {
     if (cartItems.length === 0) {
-      setError(t('placeOrder.selectProductError'));
+      setError('placeOrder.selectProductError');
       return;
     }
     if (!deliveryDate) {
-      setError(t('placeOrder.selectDateError'));
+      setError('placeOrder.selectDateError');
       return;
     }
     if (branchSchedule) {
@@ -934,15 +954,15 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
       setShowSuccess(true);
     } catch (err: any) {
       console.error('Failed to submit order:', err);
-      setError(t('placeOrder.failedSubmit') + t('common.error'));
+      setError('placeOrder.failedSubmit');
     } finally {
       setSubmitting(false);
     }
   };
 
   const handlePayWithQris = async () => {
-    if (cartItems.length === 0) { setError(t('placeOrder.selectProductError')); return; }
-    if (!deliveryDate) { setError(t('placeOrder.selectDateError')); return; }
+    if (cartItems.length === 0) { setError('placeOrder.selectProductError'); return; }
+    if (!deliveryDate) { setError('placeOrder.selectDateError'); return; }
     if (branchSchedule) {
       const min = getMinimumDeliveryDate(
         new Date(),
@@ -1169,7 +1189,7 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
             setShowSuccess(true);
           } catch (confirmationError: any) {
             console.error('Order payment confirmation failed:', confirmationError);
-            setError(`${t('placeOrder.paymentFailedPrefix')}${t('placeOrder.paymentNotVerified')}`);
+            setError('PAYMENT_NOT_VERIFIED');
           } finally {
             setSubmitting(false);
           }
@@ -1184,7 +1204,7 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
           console.error('Order payment failed:', result);
           paymentCompleted = true;
           setSubmitting(false);
-          setError(`${t('placeOrder.paymentFailedPrefix')}${t('common.error')}`);
+          setError('PAYMENT_GENERIC_ERROR');
         },
         onClose: () => {
           setSubmitting(false);
@@ -1196,7 +1216,7 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
     } catch (err: any) {
       console.error('Prepaid order checkout failed:', err);
       setSubmitting(false);
-      setError(t('placeOrder.failedSubmit') + t('common.error'));
+      setError('placeOrder.failedSubmit');
     }
   };
 
@@ -1682,7 +1702,7 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
         {/* Error */}
         {error && error !== 'UNPAID_ORDERS' && error !== 'PRE_PAY_REQUIRES_PAYMENT' && error !== 'CREDIT_LIMIT_EXCEEDED' && error !== 'DELIVERY_DATE_TOO_SOON' && error !== 'DELIVERY_DATE_BRANCH_CLOSED' && error !== 'ORDER_NOT_EDITABLE' && error !== 'VOUCHER_ORDER_EDIT_NOT_SUPPORTED' && (
           <div style={{ background: '#fdecea', border: `2px solid ${theme.error}`, borderRadius: '12px', padding: '14px 16px', color: theme.error, fontSize: '14px' }}>
-            ⚠️ {error}
+            ⚠️ {localizedError}
           </div>
         )}
 

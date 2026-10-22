@@ -35,6 +35,7 @@ export default function CustomerRegister() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [messageDetail, setMessageDetail] = useState('');
   const [countdown, setCountdown] = useState(0);
   const [registrationSuccess, setRegistrationSuccess] = useState(false);
   const [devMagicLink, setDevMagicLink] = useState('');
@@ -70,16 +71,17 @@ export default function CustomerRegister() {
     setLoading(true);
     setError('');
     setMessage('');
+    setMessageDetail('');
     setAlreadyRegistered(false);
 
     try {
       if (!formData.name || !formData.address || !formData.whatsapp) {
-        throw new Error(t('register.errorRequired'));
+        throw new Error('register.errorRequired');
       }
 
       const formattedWhatsApp = formatPhoneNumber(formData.whatsapp);
       if (!formattedWhatsApp) {
-        throw new Error(t('register.invalidWhatsApp'));
+        throw new Error('register.invalidWhatsApp');
       }
       const resolvedDeviceId = deviceId ?? await getOrCreateDeviceId();
 
@@ -95,24 +97,28 @@ export default function CustomerRegister() {
             errMsg = body?.error || errMsg;
           } catch (_) {}
         }
-        throw new Error(errMsg);
+        console.error('OTP request rejected:', errMsg);
+        throw new Error('register.processFailed');
       }
-      if (!data?.success) throw new Error(data?.error || t('register.processFailed'));
+      if (!data?.success) {
+        console.error('OTP request rejected:', data);
+        throw new Error('register.processFailed');
+      }
 
-      setMessage(data.dev_mode && data.otp
-        ? `🧪 ${t('register.testOtpCode')}: ${data.otp}`
-        : `📱 ${t('register.otpSentToWhatsApp')} ${formattedWhatsApp}`);
+      const isTestOtp = Boolean(data.dev_mode && data.otp);
+      setMessage(isTestOtp ? 'register.testOtpCode' : 'register.otpSentToWhatsApp');
+      setMessageDetail(isTestOtp ? String(data.otp) : formattedWhatsApp);
       setStep('otp');
       setCountdown(300);
       setLoading(false);
     } catch (err: any) {
       console.error('Registration error:', err);
-      const safeMessages = new Set([
-        t('register.errorRequired'),
-        t('register.invalidWhatsApp'),
-        t('register.processFailed'),
+      const safeErrorKeys = new Set([
+        'register.errorRequired',
+        'register.invalidWhatsApp',
+        'register.processFailed',
       ]);
-      setError(safeMessages.has(err?.message) ? err.message : t('register.processFailed'));
+      setError(safeErrorKeys.has(err?.message) ? err.message : 'register.processFailed');
       setLoading(false);
     }
   };
@@ -123,12 +129,13 @@ export default function CustomerRegister() {
 
     setLoading(true);
     setError('');
-    setMessage(t('register.creatingAccount'));
+    setMessage('register.creatingAccount');
+    setMessageDetail('');
 
     try {
       const formattedWhatsApp = formatPhoneNumber(formData.whatsapp);
       if (!formattedWhatsApp) {
-        throw new Error(t('register.invalidWhatsApp'));
+        throw new Error('register.invalidWhatsApp');
       }
       const resolvedDeviceId = deviceId ?? await getOrCreateDeviceId();
 
@@ -147,36 +154,45 @@ export default function CustomerRegister() {
 
       if (functionError) {
         let errMsg = data?.error || functionError.message;
+        let errCode = data?.code;
         if (functionError instanceof FunctionsHttpError && functionError.context) {
           try {
             const body = await functionError.context.json();
             errMsg = body?.error || errMsg;
+            errCode = body?.code || errCode;
           } catch (_) {}
         }
-        throw new Error(errMsg);
+        console.error('OTP verification rejected:', { errCode, errMsg });
+        const invalidOtp = errCode === 'INVALID_OR_EXPIRED_OTP' || errCode === 'OTP_INPUT_REQUIRED';
+        throw new Error(invalidOtp ? 'reauth.invalidOtp' : 'register.registrationFailed');
       }
-      if (!data?.success) throw new Error(data?.error || t('register.registrationFailed'));
+      if (!data?.success) {
+        console.error('OTP verification rejected:', data);
+        const invalidOtp = data?.code === 'INVALID_OR_EXPIRED_OTP' || data?.code === 'OTP_INPUT_REQUIRED';
+        throw new Error(invalidOtp ? 'reauth.invalidOtp' : 'register.registrationFailed');
+      }
       if (!data.customer || !data.auth_token) {
-        throw new Error(t('register.sessionUnavailable'));
+        throw new Error('register.sessionUnavailable');
       }
 
       writeCustomerSession(data.customer, data.auth_token);
       setRememberedLogin(formattedWhatsApp, rememberLogin);
       setRegistrationSuccess(true);
-      setMessage(t('register.registrationRedirecting'));
+      setMessage('register.registrationRedirecting');
+      setMessageDetail('');
       window.dispatchEvent(new Event('session-auth-updated'));
       setLoading(false);
       setTimeout(() => navigate(returnTo, { replace: true }), 500);
 
     } catch (err: any) {
       console.error('❌ Registration error:', err);
-      const safeMessages = new Set([
-        t('register.invalidWhatsApp'),
-        t('register.sessionUnavailable'),
-        t('register.registrationFailed'),
-        t('reauth.invalidOtp'),
+      const safeErrorKeys = new Set([
+        'register.invalidWhatsApp',
+        'register.sessionUnavailable',
+        'register.registrationFailed',
+        'reauth.invalidOtp',
       ]);
-      setError(safeMessages.has(err?.message) ? err.message : t('register.registrationFailed'));
+      setError(safeErrorKeys.has(err?.message) ? err.message : 'register.registrationFailed');
       setLoading(false);
     }
   };
@@ -186,12 +202,13 @@ export default function CustomerRegister() {
 
     setLoading(true);
     setError('');
-    setMessage(t('register.resendingOtp'));
+    setMessage('register.resendingOtp');
+    setMessageDetail('');
 
     try {
       const formattedWhatsApp = formatPhoneNumber(formData.whatsapp);
       if (!formattedWhatsApp) {
-        throw new Error(t('register.invalidWhatsApp'));
+        throw new Error('register.invalidWhatsApp');
       }
       const resolvedDeviceId = deviceId ?? await getOrCreateDeviceId();
 
@@ -207,23 +224,27 @@ export default function CustomerRegister() {
             errMsg = body?.error || errMsg;
           } catch (_) {}
         }
-        throw new Error(errMsg);
+        console.error('OTP resend rejected:', errMsg);
+        throw new Error('register.resendFailed');
       }
-      if (!data?.success) throw new Error(data?.error || t('register.resendFailed'));
+      if (!data?.success) {
+        console.error('OTP resend rejected:', data);
+        throw new Error('register.resendFailed');
+      }
 
-      setMessage(data.dev_mode && data.otp
-        ? `🧪 ${t('register.testOtpCode')}: ${data.otp}`
-        : `📱 ${t('register.newOtpSent')}`);
+      const isTestOtp = Boolean(data.dev_mode && data.otp);
+      setMessage(isTestOtp ? 'register.testOtpCode' : 'register.newOtpSent');
+      setMessageDetail(isTestOtp ? String(data.otp) : '');
       setCountdown(300);
       setOtpCode('');
       setLoading(false);
     } catch (err: any) {
       console.error('OTP resend failed:', err);
-      const safeMessages = new Set([
-        t('register.invalidWhatsApp'),
-        t('register.resendFailed'),
+      const safeErrorKeys = new Set([
+        'register.invalidWhatsApp',
+        'register.resendFailed',
       ]);
-      setError(safeMessages.has(err?.message) ? err.message : t('register.resendFailed'));
+      setError(safeErrorKeys.has(err?.message) ? err.message : 'register.resendFailed');
       setLoading(false);
     }
   };
@@ -529,7 +550,7 @@ export default function CustomerRegister() {
                   color: '#c00',
                   fontSize: '14px'
                 }}>
-                  ⚠️ {error}
+                  ⚠️ {t(error)}
                 </div>
               )}
 
@@ -616,7 +637,7 @@ export default function CustomerRegister() {
                   textAlign: 'center',
                   lineHeight: '1.6'
                 }}>
-                  {registrationSuccess && '✅'} {message}
+                  {registrationSuccess && '✅'} {t(message)}{messageDetail ? `: ${messageDetail}` : ''}
                   {registrationSuccess && (
                     <div style={{ marginTop: '15px', padding: '12px', background: 'white', borderRadius: '8px', fontSize: '13px' }}>
                       📱 <strong>{t('register.nextStep')}</strong><br/>
@@ -687,7 +708,7 @@ export default function CustomerRegister() {
                   color: '#c00',
                   fontSize: '14px'
                 }}>
-                  ⚠️ {error}
+                  ⚠️ {t(error)}
                 </div>
               )}
 
@@ -739,6 +760,7 @@ export default function CustomerRegister() {
                         setOtpCode('');
                         setError('');
                         setMessage('');
+                        setMessageDetail('');
                         setCountdown(0);
                       }}
                       style={{
