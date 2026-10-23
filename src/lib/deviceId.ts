@@ -5,6 +5,8 @@
  */
 const STORAGE_KEY = 'wd_device_id'
 
+let deviceIdPromise: Promise<string> | null = null
+
 export function normalizeDeviceId(value: string | null | undefined): string | null {
   const normalized = typeof value === 'string' ? value.trim() : ''
   if (
@@ -27,7 +29,16 @@ export function getStoredDeviceId(): string | null {
   return null
 }
 
-let deviceIdPromise: Promise<string> | null = null
+/**
+ * Clears only this app's device binding. The caller must require an explicit
+ * retry afterwards; resetting a device ID must never trigger an OTP request.
+ */
+export function resetDeviceId(): void {
+  deviceIdPromise = null
+  try {
+    localStorage.removeItem(STORAGE_KEY)
+  } catch {}
+}
 
 /**
  * Returns device ID: localStorage (instant) > ThumbmarkJS (~200-500ms) > random.
@@ -48,8 +59,8 @@ export async function getOrCreateDeviceId(): Promise<string> {
         logging: false,
       })
       const res = await tm.get()
-      const id = res?.thumbmark
-      if (id && typeof id === 'string' && id.length >= 8) {
+      const id = normalizeDeviceId(res?.thumbmark)
+      if (id) {
         try {
           localStorage.setItem(STORAGE_KEY, id)
         } catch {}

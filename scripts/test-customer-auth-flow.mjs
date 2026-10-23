@@ -26,6 +26,7 @@ async function importTypeScript(relativePath) {
 const backendPhone = await importTypeScript('supabase/functions/_shared/phone.ts')
 const frontendSession = await importTypeScript('src/lib/customerSession.ts')
 const frontendDeviceId = await importTypeScript('src/lib/deviceId.ts')
+const otpSendError = await importTypeScript('src/lib/otpSendError.ts')
 const otpPolicy = await importTypeScript('supabase/functions/_shared/otpPolicy.ts')
 
 const equivalentInputs = [
@@ -62,6 +63,47 @@ assert.equal(frontendDeviceId.normalizeDeviceId(null), null)
 assert.equal(frontendDeviceId.normalizeDeviceId('short'), null)
 assert.equal(frontendDeviceId.normalizeDeviceId('        '), null)
 assert.equal(frontendDeviceId.normalizeDeviceId(' valid-device-id '), 'valid-device-id')
+
+const rateLimitedFailure = await otpSendError.parseOtpSendFailure({
+  name: 'FunctionsHttpError',
+  context: {
+    json: async () => ({
+      code: 'OTP_RATE_LIMITED',
+      error: 'provider detail must not be rendered',
+      retry_after: 12.2,
+    }),
+  },
+}, null)
+assert.equal(rateLimitedFailure.kind, 'rate_limited')
+assert.equal(rateLimitedFailure.retryAfter, 13)
+assert.equal(
+  otpSendError.otpSendFailureTranslationKey(rateLimitedFailure, 'register.processFailed'),
+  'register.otpRateLimited',
+)
+
+for (const code of [
+  'OTP_PROVIDER_NOT_CONFIGURED',
+  'OTP_PROVIDER_RESPONSE_INVALID',
+  'OTP_PROVIDER_REQUEST_FAILED',
+  'OTP_RATE_LIMIT_UNAVAILABLE',
+  'OTP_STORAGE_FAILED',
+]) {
+  const failure = await otpSendError.parseOtpSendFailure(null, { code })
+  assert.equal(failure.kind, 'service_unavailable')
+}
+
+assert.equal(
+  (await otpSendError.parseOtpSendFailure({ name: 'FunctionsFetchError' }, null)).kind,
+  'network',
+)
+assert.equal(
+  (await otpSendError.parseOtpSendFailure(null, { code: 'INVALID_DEVICE_ID' })).kind,
+  'invalid_device',
+)
+assert.equal(
+  (await otpSendError.parseOtpSendFailure(null, { code: 'UNRECOGNIZED' })).kind,
+  'generic',
+)
 
 const sendSource = await read('supabase/functions/auth-send-otp/index.ts')
 const verifySource = await read('supabase/functions/auth-verify-otp/index.ts')
@@ -121,6 +163,10 @@ assert.match(reauthSource, /data\.dev_mode && data\.otp/)
 assert.match(magicLinkSource, /writeCustomerSession\(data\.customer, authToken\)/)
 assert.match(magicLinkSource, /setRememberedLogin\(data\.customer\.whatsapp/)
 assert.match(deviceIdSource, /localStorage\.setItem\(STORAGE_KEY, fallbackId\)/)
+assert.match(deviceIdSource, /normalizeDeviceId\(res\?\.thumbmark\)/)
+assert.match(deviceIdSource, /export function resetDeviceId/)
+assert.match(registrationSource, /sendOtpInFlightRef/)
+assert.match(registrationSource, /parseOtpSendFailure/)
 assert.match(stagingAcceptanceSource, /auth-send-otp', \{ phone, device_id: deviceId \}/)
 
 for (const source of logoutSources) {

@@ -139,6 +139,12 @@ const translations: Record<Language, Record<string, string>> = {
     'register.processFailed': 'Failed to process registration',
     'register.registrationFailed': 'Registration failed',
     'register.resendFailed': 'Failed to resend OTP',
+    'register.otpRateLimited': 'Too many OTP requests. Try again in',
+    'register.otpServiceUnavailable': 'WhatsApp verification is temporarily unavailable. Please try again later.',
+    'register.invalidDevice': 'This device could not be verified. Refresh the page and try again.',
+    'register.networkFailed': 'Network request failed. Check your connection and try again.',
+    'register.retryIn': 'Try again in',
+    'register.seconds': 'seconds.',
 
     // Home
     'home.signOut': 'Sign Out',
@@ -659,6 +665,12 @@ const translations: Record<Language, Record<string, string>> = {
     'register.processFailed': 'Gagal memproses pendaftaran',
     'register.registrationFailed': 'Pendaftaran gagal',
     'register.resendFailed': 'Gagal mengirim ulang OTP',
+    'register.otpRateLimited': 'Terlalu banyak permintaan OTP. Coba lagi dalam',
+    'register.otpServiceUnavailable': 'Layanan verifikasi WhatsApp sedang tidak tersedia. Silakan coba lagi nanti.',
+    'register.invalidDevice': 'Perangkat ini tidak dapat diverifikasi. Muat ulang halaman lalu coba lagi.',
+    'register.networkFailed': 'Permintaan jaringan gagal. Periksa koneksi Anda lalu coba lagi.',
+    'register.retryIn': 'Coba lagi dalam',
+    'register.seconds': 'detik.',
 
     // Home
     'home.signOut': 'Keluar',
@@ -1179,6 +1191,12 @@ const translations: Record<Language, Record<string, string>> = {
     'register.processFailed': '注册处理失败',
     'register.registrationFailed': '注册失败',
     'register.resendFailed': '重新发送 OTP 失败',
+    'register.otpRateLimited': 'OTP 请求过于频繁，请在',
+    'register.otpServiceUnavailable': 'WhatsApp 验证服务暂时不可用，请稍后重试。',
+    'register.invalidDevice': '无法验证此设备，请刷新页面后重试。',
+    'register.networkFailed': '网络请求失败，请检查网络连接后重试。',
+    'register.retryIn': '请在',
+    'register.seconds': '秒后重试。',
 
     // Home
     'home.signOut': '退出登录',
