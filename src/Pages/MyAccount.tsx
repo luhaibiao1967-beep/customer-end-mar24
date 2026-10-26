@@ -9,6 +9,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useColorTokens } from '../contexts/ColorTokensContext';
 import { theme } from '../theme';
 import { markLogoutForPwaPrompt } from '../utils/pwaInstall';
+import { clearCustomerSession, clearRememberedLogin } from '../lib/customerSession';
 import {
   User,
   MapPin,
@@ -83,9 +84,8 @@ export default function MyAccount({ customer }: MyAccountProps) {
 
   const handleSignOut = () => {
     markLogoutForPwaPrompt();
-    sessionStorage.removeItem('customer');
-    sessionStorage.removeItem('auth_token');
-    sessionStorage.removeItem('authenticated');
+    clearCustomerSession();
+    clearRememberedLogin();
     window.dispatchEvent(new Event('session-auth-updated'));
     navigate('/', { replace: true });
   };
