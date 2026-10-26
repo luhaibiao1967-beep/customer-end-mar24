@@ -54,6 +54,7 @@
     "test:i18n": "node scripts/check-i18n.mjs",
     "test:magic-link": "node test-auth.js",
     "test:customer-auth": "node scripts/test-customer-auth-flow.mjs",
+    "test:customer-auth-browser": "node scripts/test-customer-auth-browser.mjs",
     "diagnostics": "node scripts/run-diagnostics.js",
     "test:hello-world": "node scripts/test-hello-world.js"
   },

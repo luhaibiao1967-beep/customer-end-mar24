@@ -33,6 +33,12 @@ export default function CustomerLogin() {
   const { t } = useLanguage()
   const { tokens } = useColorTokens()
   const returnTo = getSafeCustomerReturnTo(searchParams.get('returnTo'))
+  const registerHref = `/register?${new URLSearchParams({
+    whatsapp: normalizeWhatsApp(phoneNumber),
+    ...(deviceId ? { device_id: deviceId } : {}),
+    remember: rememberMe ? '1' : '0',
+    returnTo,
+  }).toString()}`
 
   useEffect(() => {
     const wa = searchParams.get('whatsapp') || searchParams.get('wa') || searchParams.get('phone')
@@ -311,8 +317,8 @@ export default function CustomerLogin() {
               <p style={{ textAlign: 'center', fontSize: '14px', color: '#666', margin: 0 }}>
                 {t('login.noAccount')}{' '}
                 <a
-                  href="/register"
-                  onClick={(e) => { e.preventDefault(); navigate('/register'); }}
+                  href={registerHref}
+                  onClick={(e) => { e.preventDefault(); void handleRegister(); }}
                   style={{ color: tokens.primary, fontWeight: 'bold', textDecoration: 'underline' }}
                 >
                   {t('login.registerHere')}

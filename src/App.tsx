@@ -2,7 +2,7 @@
 // Fixed: sessionStorage, storage event listener
 
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useSearchParams } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import CustomerLogin from './Pages/CustomerLogin';
 import CustomerRegister from './Pages/CustomerRegister';
@@ -26,9 +26,15 @@ import { supabase } from './supabaseClient';
 import { getOrCreateDeviceId } from './lib/deviceId';
 import {
   getRememberedWhatsApp,
+  getSafeCustomerReturnTo,
   readCustomerSession,
   writeCustomerSession,
 } from './lib/customerSession';
+
+function CustomerAuthRedirect() {
+  const [searchParams] = useSearchParams();
+  return <Navigate to={getSafeCustomerReturnTo(searchParams.get('returnTo'))} replace />;
+}
 
 function App() {
   const [loading, setLoading] = useState(true);
@@ -153,23 +159,23 @@ function App() {
           {/* Login - Entry point: enter WhatsApp, old customer gets link, new goes to register */}
           <Route
             path="/"
-            element={customer ? <Navigate to="/customer-home" replace /> : <CustomerLogin />}
+            element={customer ? <CustomerAuthRedirect /> : <CustomerLogin />}
           />
           <Route
             path="/login"
-            element={customer ? <Navigate to="/customer-home" replace /> : <CustomerLogin />}
+            element={customer ? <CustomerAuthRedirect /> : <CustomerLogin />}
           />
 
           {/* Public registration */}
           <Route
             path="/register"
-            element={customer ? <Navigate to="/customer-home" replace /> : <CustomerRegister />}
+            element={customer ? <CustomerAuthRedirect /> : <CustomerRegister />}
           />
 
           {/* Re-authentication via OTP */}
           <Route
             path="/reauth"
-            element={customer ? <Navigate to="/customer-home" replace /> : <CustomerReauth />}
+            element={customer ? <CustomerAuthRedirect /> : <CustomerReauth />}
           />
 
           {/* Protected routes - require authentication via magic link */}
