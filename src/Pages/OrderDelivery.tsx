@@ -8,6 +8,16 @@ import { theme } from '../theme';
 import { Order, OrderItem } from '../Types';
 import './OrderDelivery.css';
 
+async function getFunctionErrorMessage(error: any, fallback: string): Promise<string> {
+  try {
+    const payload = await error?.context?.clone?.().json();
+    if (typeof payload?.error === 'string' && payload.error) return payload.error;
+  } catch {
+    // Fall back to the SDK error when the response body is unavailable.
+  }
+  return error?.message || fallback;
+}
+
 export const OrderDelivery: React.FC = () => {
   const navigate = useNavigate();
   const { orderId } = useParams<{ orderId: string }>();
@@ -28,16 +38,17 @@ export const OrderDelivery: React.FC = () => {
     try {
       setLoading(true);
       const token = sessionStorage.getItem('auth_token');
-      if (!token) throw new Error('Session expired, please login again');
+      if (!token) throw new Error(t('common.sessionExpired'));
       const { data, error } = await supabase.functions.invoke('get-orders', {
         body: { token, order_id: orderId },
       });
       if (error) throw new Error(error.message);
-      if (!data?.success) throw new Error(data?.error || 'Order not found');
+      if (!data?.success) throw new Error(data?.error || t('delivery.orderNotFound'));
       setOrder(data.order);
       setOrderItems(data.order?.order_items || []);
     } catch (err: any) {
-      setError(err.message);
+      console.error('Failed to load delivery details:', err);
+      setError('delivery.loadFailed');
     } finally {
       setLoading(false);
     }
@@ -46,18 +57,21 @@ export const OrderDelivery: React.FC = () => {
   const handleConfirmDelivery = async () => {
     try {
       setConfirming(true);
-      const { error } = await supabase
-        .from('orders')
-        .update({
-          status: 'delivered',
-          delivered_date: new Date().toISOString().split('T')[0],
-        })
-        .eq('id', orderId);
-      if (error) throw error;
+      const token = sessionStorage.getItem('auth_token');
+      if (!token) throw new Error(t('delivery.sessionExpired'));
+      if (!orderId) throw new Error(t('delivery.orderNotFound'));
+
+      const { data, error } = await supabase.functions.invoke('customer-self-service', {
+        body: { token, action: 'confirm_delivery', order_id: orderId },
+      });
+      if (error) throw new Error(await getFunctionErrorMessage(error, t('delivery.confirmFailed')));
+      if (!data?.success) throw new Error(data?.error || t('delivery.confirmFailed'));
+
       alert(t('delivery.confirmSuccess'));
       await fetchOrderDetails();
     } catch (err: any) {
-      alert(`${t('delivery.confirmFailed')}: ${err.message}`);
+      console.error('Failed to confirm delivery:', err);
+      alert(t('delivery.confirmFailed'));
     } finally {
       setConfirming(false);
     }
@@ -65,7 +79,8 @@ export const OrderDelivery: React.FC = () => {
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
-    return new Intl.DateTimeFormat(language === 'en' ? 'en-US' : 'id-ID', {
+    const locale = language === 'zh' ? 'zh-CN' : language === 'en' ? 'en-US' : 'id-ID';
+    return new Intl.DateTimeFormat(locale, {
       year: 'numeric', month: 'long', day: 'numeric', weekday: 'long',
     }).format(date);
   };
@@ -168,7 +183,7 @@ export const OrderDelivery: React.FC = () => {
         <div style={{ ...cardStyle, padding: '40px', textAlign: 'center', maxWidth: '400px', width: '100%' }}>
           <p style={{ fontSize: '48px', margin: '0 0 16px' }}>❌</p>
           <h2 style={{ color: tokens.text, margin: '0 0 8px' }}>{t('delivery.loadFailed')}</h2>
-          <p style={{ color: tokens.muted, marginBottom: '20px' }}>{error || t('delivery.orderNotFound')}</p>
+          <p style={{ color: tokens.muted, marginBottom: '20px' }}>{error ? t(error) : t('delivery.orderNotFound')}</p>
           <button
             onClick={() => navigate('/orders')}
             style={{ padding: '12px 24px', background: tokens.gradientPrimary, color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}
@@ -271,13 +286,13 @@ export const OrderDelivery: React.FC = () => {
                 {order.empty_gallons_returned > 0 && (
                   <div style={{ ...infoRowStyle, borderBottom: order.borrowed_gallons > 0 ? `1px solid ${tokens.divider}` : 'none' }}>
                     <span style={labelStyle}>🔄 {t('delivery.emptyGallons')}</span>
-                    <span style={valueStyle}>{order.empty_gallons_returned} {language === 'en' ? 'pcs' : 'buah'}</span>
+                    <span style={valueStyle}>{order.empty_gallons_returned} {t('common.pieces')}</span>
                   </div>
                 )}
                 {order.borrowed_gallons > 0 && (
                   <div style={{ ...infoRowStyle, borderBottom: 'none' }}>
                     <span style={labelStyle}>📦 {t('delivery.borrowedGallons')}</span>
-                    <span style={valueStyle}>{order.borrowed_gallons} {language === 'en' ? 'pcs' : 'buah'}</span>
+                    <span style={valueStyle}>{order.borrowed_gallons} {t('common.pieces')}</span>
                   </div>
                 )}
               </div>

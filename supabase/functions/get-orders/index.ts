@@ -45,6 +45,7 @@ serve(async (req) => {
         .from('orders')
         .select('*', { count: 'exact', head: true })
         .eq('customer_id', customer.id)
+        .eq('is_active', true)
         .in('status', ACTIVE_ORDER_STATUSES)
       if (isPrePay) {
         countQuery = countQuery.eq('payment_status', 'paid')
@@ -64,6 +65,7 @@ serve(async (req) => {
         .select('*, order_items(*)')
         .eq('id', order_id)
         .eq('customer_id', customer.id)
+        .eq('is_active', true)
         .single()
 
       if (orderError) throw new Error('Failed to fetch order: ' + orderError.message)
@@ -83,8 +85,9 @@ serve(async (req) => {
     // later_pay: may list unpaid (pay on delivery / later QRIS). pre_pay: only paid rows.
     let listQuery = supabase
       .from('orders')
-      .select('id, customer_id, customer_name, customer_address, delivery_date, status, payment_status, total_amount, created_at, delivery_evidence, payment_evidence, borrowed_gallons')
+      .select('id, customer_id, customer_name, customer_address, delivery_date, status, payment_status, total_amount, created_at, delivery_evidence, payment_evidence, borrowed_gallons, qris_charged_idr, midtrans_order_id')
       .eq('customer_id', customer.id)
+      .eq('is_active', true)
 
     if (isPrePay) {
       listQuery = listQuery.eq('payment_status', 'paid')

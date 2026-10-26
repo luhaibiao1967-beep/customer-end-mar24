@@ -2,16 +2,18 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Home, Droplets, Ticket, User } from 'lucide-react';
 import { useColorTokens } from '../contexts/ColorTokensContext';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface BottomNavV0Props {
   customer: { customer_type: string };
 }
 
 const navItems = [
-  { path: '/customer-home', label: 'Home', icon: Home },
-  { path: '/buy-vouchers', label: 'Voucher', icon: Ticket },
-  { path: '/place-order', label: 'Order', icon: Droplets },
-  { path: '/account', label: 'My Account', icon: User },
+  { id: 'home', path: '/customer-home', labelKey: 'nav.home', icon: Home },
+  { id: 'voucher', path: '/buy-vouchers', labelKey: 'nav.vouchers', icon: Ticket },
+  { id: 'order', path: '/place-order', labelKey: 'nav.newOrder', icon: Droplets },
+  { id: 'account', path: '/account', labelKey: 'nav.myAccount', icon: User },
+  { id: 'voucher-test', path: '/buy-vouchers', labelKey: 'nav.test', icon: Ticket, showActive: false },
 ];
 
 export default function BottomNavV0({ customer }: BottomNavV0Props) {
@@ -19,6 +21,7 @@ export default function BottomNavV0({ customer }: BottomNavV0Props) {
   const location = useLocation();
   const isActive = (path: string) => location.pathname === path;
   const { tokens } = useColorTokens();
+  const { t } = useLanguage();
 
   return (
     <nav
@@ -48,11 +51,11 @@ export default function BottomNavV0({ customer }: BottomNavV0Props) {
       >
         {navItems.map((item) => {
           const Icon = item.icon;
-          const active = isActive(item.path);
+          const active = item.showActive !== false && isActive(item.path);
 
           return (
             <button
-              key={item.path}
+              key={item.id}
               onClick={() => navigate(item.path)}
               style={{
                 display: 'flex',
@@ -101,7 +104,7 @@ export default function BottomNavV0({ customer }: BottomNavV0Props) {
                   transition: 'color 0.3s',
                 }}
               >
-                {item.label}
+                {t(item.labelKey)}
               </span>
             </button>
           );

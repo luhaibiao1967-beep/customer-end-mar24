@@ -9,19 +9,36 @@ import { theme } from '../theme'
 import { useLanguage } from '../contexts/LanguageContext'
 import { useColorTokens } from '../contexts/ColorTokensContext'
 import InstallAppModal from '../Components/InstallAppModal'
+import LanguageSwitcher from '../Components/LanguageSwitcher'
 import { canShowPwaInstallPrompt, consumeLogoutPwaPromptFlag } from '../utils/pwaInstall'
+import {
+  getRememberPreference,
+  getRememberedWhatsApp,
+  getSafeCustomerReturnTo,
+  normalizeWhatsApp,
+  setRememberedLogin,
+  writeCustomerSession,
+} from '../lib/customerSession'
 
 export default function CustomerLogin() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const [phoneNumber, setPhoneNumber] = useState('')
+  const [phoneNumber, setPhoneNumber] = useState(() => getRememberedWhatsApp() ?? '')
+  const [rememberMe, setRememberMe] = useState(() => getRememberPreference())
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [status, setStatus] = useState<'idle' | 'new_customer'>('idle')
   const [deviceId, setDeviceId] = useState<string | null>(() => getStoredDeviceId())
   const [pwaInstallOpen, setPwaInstallOpen] = useState(false)
-  const { language, setLanguage, t } = useLanguage()
+  const { t } = useLanguage()
   const { tokens } = useColorTokens()
+  const returnTo = getSafeCustomerReturnTo(searchParams.get('returnTo'))
+  const registerHref = `/register?${new URLSearchParams({
+    whatsapp: normalizeWhatsApp(phoneNumber),
+    ...(deviceId ? { device_id: deviceId } : {}),
+    remember: rememberMe ? '1' : '0',
+    returnTo,
+  }).toString()}`
 
   useEffect(() => {
     const wa = searchParams.get('whatsapp') || searchParams.get('wa') || searchParams.get('phone')
@@ -38,12 +55,7 @@ export default function CustomerLogin() {
     }
   }, [])
 
-  const formatPhoneNumber = (phone: string): string => {
-    let cleaned = phone.replace(/\D/g, '')
-    if (cleaned.startsWith('0')) cleaned = '62' + cleaned.substring(1)
-    if (!cleaned.startsWith('62')) cleaned = '62' + cleaned
-    return '+' + cleaned
-  }
+  const formatPhoneNumber = normalizeWhatsApp
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -67,16 +79,22 @@ export default function CustomerLogin() {
       }
 
       if (data.bound && data.customer && data.auth_token) {
-        sessionStorage.setItem('customer', JSON.stringify(data.customer))
-        sessionStorage.setItem('auth_token', data.auth_token)
-        sessionStorage.setItem('authenticated', 'true')
+        writeCustomerSession(data.customer, data.auth_token)
+        setRememberedLogin(formattedPhone, rememberMe)
         window.dispatchEvent(new Event('session-auth-updated'))
-        navigate('/customer-home', { replace: true })
+        navigate(returnTo, { replace: true })
         return
       }
 
       if (data.needs_otp) {
-        navigate(`/reauth?whatsapp=${encodeURIComponent(formattedPhone)}&device_id=${encodeURIComponent(resolvedDeviceId)}`, { replace: true })
+        setRememberedLogin(formattedPhone, rememberMe)
+        const params = new URLSearchParams({
+          whatsapp: formattedPhone,
+          device_id: resolvedDeviceId,
+          remember: rememberMe ? '1' : '0',
+          returnTo,
+        })
+        navigate(`/reauth?${params.toString()}`, { replace: true })
         return
       }
 
@@ -84,15 +102,16 @@ export default function CustomerLogin() {
         setStatus('new_customer')
       }
     } catch (err: any) {
+      console.error('Customer login failed:', err)
       if (err?.message === '__LOGIN_401__') {
-        setError(t('login.functions401'))
+        setError('login.functions401')
         return
       }
       const fetchFailed =
         err?.name === 'FunctionsFetchError' ||
         (typeof err?.message === 'string' &&
           err.message.includes('Failed to send a request to the Edge Function'))
-      setError(fetchFailed ? t('login.functionsUnreachable') : err.message || 'Terjadi kesalahan')
+      setError(fetchFailed ? 'login.functionsUnreachable' : 'common.unexpectedError')
     } finally {
       setLoading(false)
     }
@@ -100,7 +119,15 @@ export default function CustomerLogin() {
 
   const handleRegister = async () => {
     const id = deviceId ?? getStoredDeviceId() ?? await getOrCreateDeviceId()
-    navigate(`/register?whatsapp=${encodeURIComponent(phoneNumber)}&device_id=${encodeURIComponent(id)}`)
+    const formattedPhone = formatPhoneNumber(phoneNumber)
+    setRememberedLogin(formattedPhone, rememberMe)
+    const params = new URLSearchParams({
+      whatsapp: formattedPhone,
+      device_id: id,
+      remember: rememberMe ? '1' : '0',
+      returnTo,
+    })
+    navigate(`/register?${params.toString()}`)
   }
 
   return (
@@ -129,38 +156,7 @@ export default function CustomerLogin() {
           padding: '12px 20px',
           background: tokens.inputBg,
         }}>
-          <button
-            type="button"
-            onClick={() => setLanguage('id')}
-            style={{
-              padding: '6px 14px',
-              background: language === 'id' ? tokens.gradientPrimary : 'transparent',
-              border: 'none',
-              borderRadius: '16px',
-              color: language === 'id' ? 'white' : tokens.primary,
-              fontWeight: 'bold',
-              cursor: 'pointer',
-              fontSize: '13px',
-            }}
-          >
-            🇮🇩 ID
-          </button>
-          <button
-            type="button"
-            onClick={() => setLanguage('en')}
-            style={{
-              padding: '6px 14px',
-              background: language === 'en' ? tokens.gradientPrimary : 'transparent',
-              border: 'none',
-              borderRadius: '16px',
-              color: language === 'en' ? 'white' : tokens.primary,
-              fontWeight: 'bold',
-              cursor: 'pointer',
-              fontSize: '13px',
-            }}
-          >
-            🇬🇧 EN
-          </button>
+          <LanguageSwitcher />
         </div>
 
         <div style={{
@@ -268,6 +264,24 @@ export default function CustomerLogin() {
                 />
               </div>
 
+              <label style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                margin: '-4px 0 20px',
+                color: tokens.text,
+                fontSize: '14px',
+                cursor: 'pointer',
+              }}>
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(event) => setRememberMe(event.target.checked)}
+                  style={{ width: '18px', height: '18px', accentColor: tokens.primary }}
+                />
+                {t('login.rememberNumber')}
+              </label>
+
               {error && (
                 <div style={{
                   background: '#fee',
@@ -278,7 +292,7 @@ export default function CustomerLogin() {
                   color: '#c00',
                   fontSize: '14px',
                 }}>
-                  ⚠️ {error}
+                  ⚠️ {t(error)}
                 </div>
               )}
 
@@ -303,8 +317,8 @@ export default function CustomerLogin() {
               <p style={{ textAlign: 'center', fontSize: '14px', color: '#666', margin: 0 }}>
                 {t('login.noAccount')}{' '}
                 <a
-                  href="/register"
-                  onClick={(e) => { e.preventDefault(); navigate('/register'); }}
+                  href={registerHref}
+                  onClick={(e) => { e.preventDefault(); void handleRegister(); }}
                   style={{ color: tokens.primary, fontWeight: 'bold', textDecoration: 'underline' }}
                 >
                   {t('login.registerHere')}

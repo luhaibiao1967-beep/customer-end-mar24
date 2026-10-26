@@ -8,15 +8,28 @@ async function getProductVoucherRow(
   customerId: string,
   productId: string,
 ): Promise<{ balance: number; gift_balance: number }> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('customer_product_vouchers')
     .select('balance, gift_balance')
     .eq('customer_id', customerId)
     .eq('product_id', productId)
-    .single()
+    .maybeSingle()
+  if (error) throw new Error('FAILED_TO_VALIDATE_VOUCHER_BALANCE')
+
+  const balance = Number(data?.balance ?? 0)
+  const giftBalance = Number(data?.gift_balance ?? 0)
+  if (
+    !Number.isSafeInteger(balance) ||
+    balance < 0 ||
+    !Number.isSafeInteger(giftBalance) ||
+    giftBalance < 0 ||
+    giftBalance > balance
+  ) {
+    throw new Error('INVALID_VOUCHER_BALANCE')
+  }
   return {
-    balance: data?.balance ?? 0,
-    gift_balance: data?.gift_balance ?? 0,
+    balance,
+    gift_balance: giftBalance,
   }
 }
 
@@ -31,6 +44,63 @@ function splitGiftAndPaidVoucherQty(
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+type CheckoutDisposition = 'discard_key' | 'retry_same_key' | 'manual_reconcile'
+
+function checkoutDispositionForError(message: string): CheckoutDisposition {
+  if (
+    message.includes('CONFLICT') ||
+    message.includes('PREPAY_LATE_PAYMENT') ||
+    message.includes('MIDTRANS_GROSS_AMOUNT_MISMATCH') ||
+    message.includes('MIDTRANS_ORDER_ID_MISMATCH') ||
+    message.includes('PREPAY_CHECKOUT_CUSTOMER_MISMATCH')
+  ) {
+    return 'manual_reconcile'
+  }
+
+  if (
+    message === 'Token required' ||
+    message === 'Order data required' ||
+    message === 'Invalid token' ||
+    message === 'Only pre_pay customers use this payment path' ||
+    message === 'Invalid delivery date' ||
+    message === 'INVALID_PREPAY_CHECKOUT_KEY' ||
+    message === 'INVALID_ORDER_NOTE' ||
+    message === 'ORDER_TOTAL_CHANGED' ||
+    message === 'PAYMENT_AMOUNT_CHANGED' ||
+    message === 'DELIVERY_DATE_TOO_SOON' ||
+    message === 'DELIVERY_DATE_BRANCH_CLOSED' ||
+    message.includes('PREPAY_CHECKOUT_RELEASED') ||
+    message.includes('PREPAY_CHECKOUT_ALREADY_RELEASED') ||
+    message.includes('PREPAY_CHECKOUT_IDENTITY_REQUIRED') ||
+    message.includes('DELIVERY_DATE_REQUIRED') ||
+    message.includes('ORDER_NOTE_TOO_LONG') ||
+    message.includes('INVALID_ORDER_') ||
+    message.includes('INVALID_PRODUCT_DEDUCTION') ||
+    message.includes('INVALID_PAYMENT_AMOUNT') ||
+    message.includes('INVALID_PREPAY_AMOUNT') ||
+    message.includes('INVALID_OR_INACTIVE_PRODUCT') ||
+    message.includes('PAID_VOUCHER_COST_BASIS_MISSING') ||
+    message.includes('VOUCHER_UNIT_AMOUNT_INVALID') ||
+    message.includes('VOUCHER_ITEM_SPLIT_') ||
+    message.includes('INSUFFICIENT_OR_INVALID_VOUCHER_BALANCE') ||
+    message.includes('VOUCHER_BALANCE_CHANGED') ||
+    message.includes('CUSTOMER_NOT_FOUND') ||
+    message.includes('CUSTOMER_IS_') ||
+    message.includes('CUSTOMER_PROFILE_INCOMPLETE') ||
+    message.includes('SERVICE_BRANCH_NOT_FOUND') ||
+    message.includes('DELIVERY_SCHEDULE_INVALID') ||
+    message.startsWith('MIDTRANS_SNAP_REJECTED_')
+  ) {
+    return 'discard_key'
+  }
+
+  // Unknown external/database outcomes may have committed. Retaining the key
+  // is the conservative default and lets a retry reconcile the same checkout.
+  return 'retry_same_key'
 }
 
 function jakartaWeekdayFromYmd(ymd: string): number {
@@ -71,6 +141,7 @@ function validateDeliveryDate(
 }
 
 interface OrderItem {
+  product_id?: string
   product: string
   is_refill: boolean
   quantity: number
@@ -88,132 +159,41 @@ interface VoucherSplitPlan {
   quantity: number
   from_gift: number
   from_paid: number
-  new_balance: number
-  new_gift_balance: number
 }
 
-type PricingBasis = 'purchase_weighted_avg' | 'package_fallback' | 'zero_unknown' | 'gift_zero'
-
-async function resolveVoucherUnitAmount(
-  supabase: SupabaseClient,
-  customerId: string,
-  productId: string,
-): Promise<{ unit_amount: number; pricing_basis: PricingBasis }> {
-  const { data: purchases } = await supabase
-    .from('voucher_purchase_requests')
-    .select('amount_paid, qty')
-    .eq('customer_id', customerId)
-    .eq('product_id', productId)
-    .eq('status', 'confirmed')
-
-  let totalPaid = 0
-  let totalQty = 0
-  for (const r of purchases || []) {
-    totalPaid += r.amount_paid ?? 0
-    totalQty += r.qty ?? 0
-  }
-  if (totalQty > 0) {
-    return {
-      unit_amount: Math.floor(totalPaid / totalQty),
-      pricing_basis: 'purchase_weighted_avg',
-    }
-  }
-
-  const { data: pkgs } = await supabase
-    .from('voucher_packages')
-    .select('price, qty')
-    .eq('product_id', productId)
-    .eq('is_active', true)
-    .order('sort_order', { ascending: true })
-
-  if (pkgs && pkgs.length > 0) {
-    const p = pkgs[0]
-    const q = p.qty > 0 ? p.qty : 1
-    return {
-      unit_amount: Math.floor((p.price ?? 0) / q),
-      pricing_basis: 'package_fallback',
-    }
-  }
-
-  return { unit_amount: 0, pricing_basis: 'zero_unknown' }
+interface CanonicalProduct {
+  id: string
+  name: string
+  price: number
+  is_refill: boolean
 }
 
-function buildItemCashUnits(
-  items: OrderItem[],
-  product_deductions: { product_id: string; quantity: number }[] | undefined,
-): { product_id: string; quantity: number; by_voucher: number; by_qris: number }[] {
-  const remaining = new Map<string, number>()
-  for (const d of product_deductions ?? []) {
-    if (d.quantity > 0) remaining.set(d.product_id, (remaining.get(d.product_id) ?? 0) + d.quantity)
-  }
-  return items.map((it) => {
-    const pid = it.product
-    const r = remaining.get(pid) ?? 0
-    const by_v = Math.min(it.quantity, r)
-    remaining.set(pid, r - by_v)
-    return {
-      product_id: pid,
-      quantity: it.quantity,
-      by_voucher: by_v,
-      by_qris: it.quantity - by_v,
-    }
-  })
+interface ActiveProductCatalog {
+  byId: Map<string, CanonicalProduct>
+  // A null value means more than one active product has the same normalized name.
+  byName: Map<string, CanonicalProduct | null>
 }
 
-async function insertVoucherUsageLines(
-  supabase: SupabaseClient,
-  params: {
-    orderId: string
-    customerId: string
-    branch: string
-    splits: { product_id: string; from_gift: number; from_paid: number }[]
-  },
-): Promise<void> {
-  const { orderId, customerId, branch, splits } = params
-  for (const s of splits) {
-    if (s.from_gift > 0) {
-      const { error } = await supabase.from('voucher_usage_ledger').insert({
-        order_id: orderId,
-        customer_id: customerId,
-        branch,
-        product_id: s.product_id,
-        voucher_qty: s.from_gift,
-        unit_amount: 0,
-        line_amount: 0,
-        pricing_basis: 'gift_zero',
-      })
-      if (error) throw new Error('voucher_usage_ledger insert: ' + error.message)
-    }
-    if (s.from_paid > 0) {
-      const { unit_amount, pricing_basis } = await resolveVoucherUnitAmount(
-        supabase,
-        customerId,
-        s.product_id,
-      )
-      const line_amount = s.from_paid * unit_amount
-      const { error } = await supabase.from('voucher_usage_ledger').insert({
-        order_id: orderId,
-        customer_id: customerId,
-        branch,
-        product_id: s.product_id,
-        voucher_qty: s.from_paid,
-        unit_amount,
-        line_amount,
-        pricing_basis,
-      })
-      if (error) throw new Error('voucher_usage_ledger insert: ' + error.message)
-    }
+interface RequestBody {
+  token: string
+  checkout_key: string
+  order: {
+    delivery_date: string
+    note?: string | null
+    total_amount?: number
   }
+  items: OrderItem[]
+  payment_amount?: number
+  product_deductions?: ProductDeduction[]
 }
 
 async function buildVoucherSplitPlans(
   supabase: SupabaseClient,
   customerId: string,
-  product_deductions: ProductDeduction[] | undefined,
+  productDeductions: ProductDeduction[],
 ): Promise<VoucherSplitPlan[]> {
   const plans: VoucherSplitPlan[] = []
-  for (const deduction of product_deductions || []) {
-    if (!deduction.quantity || deduction.quantity <= 0) continue
+  for (const deduction of productDeductions) {
     const row = await getProductVoucherRow(supabase, customerId, deduction.product_id)
     if (row.balance < deduction.quantity) {
       throw new Error(`Insufficient vouchers for product (need ${deduction.quantity}, have ${row.balance})`)
@@ -224,63 +204,404 @@ async function buildVoucherSplitPlans(
       quantity: deduction.quantity,
       from_gift,
       from_paid,
-      new_balance: row.balance - deduction.quantity,
-      new_gift_balance: row.gift_balance - from_gift,
     })
   }
   return plans
 }
 
-async function validateGiftRowsMatchRealtimeSplits(
+async function loadActiveProductCatalog(
   supabase: SupabaseClient,
+): Promise<ActiveProductCatalog> {
+  const { data: products, error } = await supabase
+    .from('products')
+    .select('id, name, price, is_refill')
+    .eq('status', 'active')
+  if (error) throw new Error('FAILED_TO_LOAD_PRODUCTS')
+
+  const byId = new Map<string, CanonicalProduct>()
+  const byName = new Map<string, CanonicalProduct | null>()
+  for (const raw of products || []) {
+    const id = String(raw.id || '').trim().toLowerCase()
+    const name = String(raw.name || '').trim()
+    const price = Number(raw.price)
+    if (!UUID_RE.test(id) || !name || !Number.isSafeInteger(price) || price < 0) {
+      throw new Error('INVALID_ACTIVE_PRODUCT_DATA')
+    }
+
+    const product: CanonicalProduct = {
+      id,
+      name,
+      price,
+      is_refill: Boolean(raw.is_refill),
+    }
+    byId.set(id, product)
+
+    const nameKey = name.toLowerCase()
+    if (byName.has(nameKey)) {
+      byName.set(nameKey, null)
+    } else {
+      byName.set(nameKey, product)
+    }
+  }
+
+  return { byId, byName }
+}
+
+function normalizeProductDeductions(
+  rawDeductions: ProductDeduction[] | undefined,
+): ProductDeduction[] {
+  if (rawDeductions === undefined) return []
+  if (!Array.isArray(rawDeductions)) throw new Error('INVALID_PRODUCT_DEDUCTIONS')
+
+  const aggregated = new Map<string, number>()
+  for (const raw of rawDeductions) {
+    const productId = typeof raw?.product_id === 'string'
+      ? raw.product_id.trim().toLowerCase()
+      : ''
+    if (
+      !UUID_RE.test(productId) ||
+      !Number.isSafeInteger(raw?.quantity) ||
+      raw.quantity <= 0
+    ) {
+      throw new Error('INVALID_PRODUCT_DEDUCTION')
+    }
+
+    const quantity = (aggregated.get(productId) || 0) + raw.quantity
+    if (!Number.isSafeInteger(quantity)) throw new Error('INVALID_PRODUCT_DEDUCTION')
+    aggregated.set(productId, quantity)
+  }
+
+  return [...aggregated].map(([product_id, quantity]) => ({ product_id, quantity }))
+}
+
+/**
+ * Build the immutable checkout payload before reading any mutable catalog or
+ * voucher state. The database validates product activity, prices, and balances
+ * inside the same transaction that creates the reservation.
+ */
+function normalizeCheckoutItems(items: OrderItem[]): { product_id: string; quantity: number }[] {
+  if (!Array.isArray(items) || items.length === 0 || items.length > 100) {
+    throw new Error('INVALID_ORDER_ITEMS')
+  }
+
+  const aggregated = new Map<string, number>()
+  for (const item of items) {
+    const productId = typeof item?.product_id === 'string'
+      ? item.product_id.trim().toLowerCase()
+      : ''
+    if (
+      !UUID_RE.test(productId) ||
+      !Number.isSafeInteger(item?.quantity) ||
+      item.quantity <= 0
+    ) {
+      throw new Error('INVALID_ORDER_ITEM')
+    }
+
+    const quantity = checkedQuantityAdd(aggregated.get(productId) || 0, item.quantity)
+    aggregated.set(productId, quantity)
+  }
+
+  return [...aggregated]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([product_id, quantity]) => ({ product_id, quantity }))
+}
+
+function resolveActiveProduct(
+  item: OrderItem,
+  catalog: ActiveProductCatalog,
+): CanonicalProduct {
+  const explicitProductId = (item as { product_id?: unknown }).product_id
+  if (explicitProductId !== undefined && explicitProductId !== null) {
+    if (typeof explicitProductId !== 'string') throw new Error('INVALID_ORDER_PRODUCT')
+    const productId = explicitProductId.trim().toLowerCase()
+    if (!UUID_RE.test(productId)) throw new Error('INVALID_ORDER_PRODUCT')
+    const product = catalog.byId.get(productId)
+    if (!product) throw new Error('INVALID_ORDER_PRODUCT')
+    return product
+  }
+
+  const identifier = String((item as { product?: unknown }).product || '').trim()
+  if (!identifier) throw new Error('INVALID_ORDER_PRODUCT')
+  if (UUID_RE.test(identifier)) {
+    const product = catalog.byId.get(identifier.toLowerCase())
+    if (!product) throw new Error('INVALID_ORDER_PRODUCT')
+    return product
+  }
+
+  const product = catalog.byName.get(identifier.toLowerCase())
+  if (product === null) throw new Error('AMBIGUOUS_ORDER_PRODUCT')
+  if (!product) throw new Error('INVALID_ORDER_PRODUCT')
+  return product
+}
+
+function checkedQuantityAdd(current: number, addition: number): number {
+  const result = current + addition
+  if (!Number.isSafeInteger(result)) throw new Error('INVALID_ORDER_QUANTITY')
+  return result
+}
+
+function checkedMoneyAdd(current: number, unitAmount: number, quantity: number): number {
+  const lineAmount = unitAmount * quantity
+  const result = current + lineAmount
+  if (!Number.isSafeInteger(lineAmount) || !Number.isSafeInteger(result)) {
+    throw new Error('INVALID_ORDER_TOTAL')
+  }
+  return result
+}
+
+function validateOrderItemsAndCalculateAmounts(
   items: OrderItem[],
   plans: VoucherSplitPlan[],
-): Promise<void> {
-  if (!plans.length) return
-  const productIds = plans.map((p) => p.product_id)
-  const { data: products } = await supabase
-    .from('products')
-    .select('id, name')
-    .in('id', productIds)
-  const byId = new Map<string, string>()
-  for (const p of products || []) byId.set(p.id, (p.name || '').trim().toLowerCase())
+  catalog: ActiveProductCatalog,
+): { totalAmount: number; qrisAmount: number; normalizedItems: OrderItem[] } {
+  if (!Array.isArray(items) || items.length === 0) throw new Error('INVALID_ORDER_ITEMS')
 
-  const observedGiftByProduct = new Map<string, number>()
-  for (const p of plans) observedGiftByProduct.set(p.product_id, 0)
+  const quantities = new Map<string, {
+    product: CanonicalProduct
+    total: number
+  }>()
+
   for (const item of items) {
-    if ((item.quantity ?? 0) <= 0) continue
-    if ((item.unit_price ?? 0) !== 0) continue
-    const key = String(item.product || '').trim().toLowerCase()
-    if (!key) continue
-    for (const p of plans) {
-      const pname = byId.get(p.product_id) || ''
-      if (key === p.product_id.toLowerCase() || (pname && key === pname)) {
-        observedGiftByProduct.set(
-          p.product_id,
-          (observedGiftByProduct.get(p.product_id) ?? 0) + item.quantity,
-        )
-      }
+    // Product identity and quantity are the only client-owned line inputs.
+    // Price, discount, name, and refill flags are rebuilt from the active catalog.
+    if (
+      !item ||
+      !Number.isSafeInteger(item.quantity) ||
+      item.quantity <= 0
+    ) {
+      throw new Error('INVALID_ORDER_ITEM')
+    }
+
+    const product = resolveActiveProduct(item, catalog)
+    const row = quantities.get(product.id) || { product, total: 0 }
+    row.total = checkedQuantityAdd(row.total, item.quantity)
+    quantities.set(product.id, row)
+  }
+
+  const plansByProduct = new Map(plans.map((plan) => [plan.product_id, plan]))
+  for (const plan of plans) {
+    if (!quantities.has(plan.product_id)) throw new Error('VOUCHER_ITEM_SPLIT_CHANGED')
+  }
+
+  const normalizedItems: OrderItem[] = []
+  let totalAmount = 0
+  let qrisAmount = 0
+
+  for (const [productId, row] of quantities) {
+    const plan = plansByProduct.get(productId)
+    const voucherQty = plan?.quantity || 0
+    const expectedGiftQty = plan?.from_gift || 0
+    const paidVoucherQty = plan?.from_paid || 0
+
+    if (row.product.price === 0 && voucherQty > 0) {
+      throw new Error('VOUCHER_ITEM_SPLIT_CHANGED')
+    }
+    if (
+      voucherQty > row.total ||
+      expectedGiftQty > row.total ||
+      paidVoucherQty > row.total - expectedGiftQty
+    ) {
+      throw new Error('VOUCHER_ITEM_SPLIT_CHANGED')
+    }
+
+    const pricedQty = row.total - expectedGiftQty
+    const qrisQty = row.total - voucherQty
+    totalAmount = checkedMoneyAdd(totalAmount, row.product.price, pricedQty)
+    qrisAmount = checkedMoneyAdd(qrisAmount, row.product.price, qrisQty)
+
+    if (expectedGiftQty > 0) {
+      normalizedItems.push({
+        product_id: productId,
+        product: row.product.name,
+        is_refill: row.product.is_refill,
+        quantity: expectedGiftQty,
+        unit_price: 0,
+        discount: 0,
+      })
+    }
+    if (pricedQty > 0) {
+      normalizedItems.push({
+        product_id: productId,
+        product: row.product.name,
+        is_refill: row.product.is_refill,
+        quantity: pricedQty,
+        unit_price: row.product.price,
+        discount: 0,
+      })
     }
   }
 
-  for (const p of plans) {
-    const observed = observedGiftByProduct.get(p.product_id) ?? 0
-    if (observed !== p.from_gift) {
-      throw new Error('VOUCHER_GIFT_SPLIT_MISMATCH')
-    }
+  if (qrisAmount > totalAmount) throw new Error('INVALID_PAYMENT_AMOUNT')
+  return { totalAmount, qrisAmount, normalizedItems }
+}
+
+function assertOptionalAmountMatches(
+  supplied: unknown,
+  expected: number,
+  mismatchError: string,
+): void {
+  if (supplied === undefined || supplied === null) return
+  if (!Number.isSafeInteger(supplied) || supplied < 0 || supplied !== expected) {
+    throw new Error(mismatchError)
   }
+}
+
+function asJsonObject(value: unknown, errorCode: string): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(errorCode)
+  }
+  return value as Record<string, unknown>
+}
+
+function requiredString(value: unknown, errorCode: string): string {
+  if (typeof value !== 'string' || !value.trim()) throw new Error(errorCode)
+  return value.trim()
+}
+
+function requiredSafeInteger(value: unknown, errorCode: string): number {
+  const parsed = Number(value)
+  if (!Number.isSafeInteger(parsed)) throw new Error(errorCode)
+  return parsed
+}
+
+type PrepayReleaseReason =
+  | 'snap_create_failed'
+  | 'payment_expired'
+  | 'payment_cancelled'
+  | 'payment_denied'
+  | 'payment_failed'
+
+interface VerifiedMidtransStatus {
+  body: Record<string, unknown>
+  grossAmount: number | null
+  paid: boolean
+  transactionStatus: string
+}
+
+function parseGrossAmount(raw: unknown): number | null {
+  const amount = typeof raw === 'number'
+    ? raw
+    : typeof raw === 'string' && raw.trim() !== ''
+      ? Number(raw)
+      : Number.NaN
+  return Number.isSafeInteger(amount) && amount >= 0 ? amount : null
+}
+
+function parseMidtransTime(body: Record<string, unknown>): string {
+  const raw = body.settlement_time ?? body.transaction_time
+  if (typeof raw === 'string' && raw.trim()) {
+    const parsed = Date.parse(raw)
+    if (!Number.isNaN(parsed)) return new Date(parsed).toISOString()
+  }
+  return new Date().toISOString()
+}
+
+function releaseReasonForMidtransStatus(status: string): PrepayReleaseReason | null {
+  if (status === 'expire') return 'payment_expired'
+  if (status === 'cancel') return 'payment_cancelled'
+  if (status === 'deny') return 'payment_denied'
+  if (status === 'failure') return 'payment_failed'
+  return null
+}
+
+async function fetchVerifiedMidtransStatus(
+  midtransOrderId: string,
+  serverKey: string,
+  midtransEnv: string,
+): Promise<VerifiedMidtransStatus | null> {
+  const base = midtransEnv === 'production'
+    ? 'https://api.midtrans.com/v2'
+    : 'https://api.sandbox.midtrans.com/v2'
+
+  let response: Response
+  try {
+    response = await fetch(`${base}/${encodeURIComponent(midtransOrderId)}/status`, {
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': `Basic ${btoa(serverKey + ':')}`,
+      },
+    })
+  } catch (error) {
+    console.error('Midtrans status lookup failed:', error)
+    throw new Error('PREPAY_STATUS_UNKNOWN_RETRY_SAME_CHECKOUT')
+  }
+
+  if (response.status === 404) return null
+  if (!response.ok) throw new Error(`PREPAY_STATUS_UNKNOWN_HTTP_${response.status}`)
+
+  let body: Record<string, unknown>
+  try {
+    body = asJsonObject(await response.json(), 'INVALID_MIDTRANS_STATUS_RESPONSE')
+  } catch (error) {
+    console.error('Midtrans status response was invalid:', response.status, error)
+    throw new Error('PREPAY_STATUS_UNKNOWN_RETRY_SAME_CHECKOUT')
+  }
+  if (body.order_id !== midtransOrderId) throw new Error('MIDTRANS_ORDER_ID_MISMATCH')
+
+  const transactionStatus = typeof body.transaction_status === 'string'
+    ? body.transaction_status.trim().toLowerCase()
+    : ''
+  if (!transactionStatus) throw new Error('INVALID_MIDTRANS_STATUS_RESPONSE')
+  const fraudStatus = typeof body.fraud_status === 'string'
+    ? body.fraud_status.trim().toLowerCase()
+    : ''
+  const paid = transactionStatus === 'settlement' ||
+    (transactionStatus === 'capture' && fraudStatus === 'accept')
+  const grossAmount = parseGrossAmount(body.gross_amount)
+  if ((paid || releaseReasonForMidtransStatus(transactionStatus)) && grossAmount === null) {
+    throw new Error('MIDTRANS_GROSS_AMOUNT_INVALID')
+  }
+
+  return { body, grossAmount, paid, transactionStatus }
+}
+
+async function cancelPendingMidtransTransaction(
+  midtransOrderId: string,
+  serverKey: string,
+  midtransEnv: string,
+): Promise<void> {
+  const base = midtransEnv === 'production'
+    ? 'https://api.midtrans.com/v2'
+    : 'https://api.sandbox.midtrans.com/v2'
+  try {
+    await fetch(`${base}/${encodeURIComponent(midtransOrderId)}/cancel`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'Authorization': `Basic ${btoa(serverKey + ':')}`,
+      },
+    })
+  } catch (error) {
+    console.error('Midtrans cancel request outcome unknown:', error)
+  }
+}
+
+function buildCheckoutItems(
+  normalizedItems: OrderItem[],
+): { product_id: string; quantity: number }[] {
+  const quantities = new Map<string, number>()
+  for (const item of normalizedItems) {
+    const productId = String(item.product_id || '').trim().toLowerCase()
+    if (!UUID_RE.test(productId)) throw new Error('INVALID_ORDER_PRODUCT')
+    const quantity = checkedQuantityAdd(quantities.get(productId) || 0, item.quantity)
+    quantities.set(productId, quantity)
+  }
+  return [...quantities]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([product_id, quantity]) => ({ product_id, quantity }))
 }
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
-    const { token, order, items, payment_amount, product_deductions } = await req.json()
-    if (!token) throw new Error('Token required')
-    if (!order || !items || items.length === 0) throw new Error('Order data required')
-
-    // payment_amount is the QRIS charge (shortfall after vouchers); defaults to full order total
-    const qrisAmount = payment_amount ?? order.total_amount
+    const body: RequestBody = await req.json()
+    const { token, checkout_key, order, items, payment_amount, product_deductions } = body
+    if (typeof token !== 'string' || !token.trim()) throw new Error('Token required')
+    const checkoutKey = typeof checkout_key === 'string' ? checkout_key.trim().toLowerCase() : ''
+    if (!UUID_RE.test(checkoutKey)) throw new Error('INVALID_PREPAY_CHECKOUT_KEY')
+    if (!order || !Array.isArray(items) || items.length === 0) throw new Error('Order data required')
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
@@ -300,144 +621,417 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey)
 
     // Validate token
-    const { data: customer } = await supabase
+    const { data: customer, error: customerError } = await supabase
       .from('customers')
       .select('id, name, address, whatsapp, branch, discount, customer_type')
-      .eq('auth_token', token)
-      .single()
-    if (!customer) throw new Error('Invalid token')
-    if (customer.customer_type !== 'pre_pay') throw new Error('Only pre_pay customers use this payment path')
-
-    const { data: branchRow } = await supabase
-      .from('branches')
-      .select('order_cutoff_hour, closed_weekdays')
-      .eq('name', customer.branch)
+      .eq('auth_token', token.trim())
       .maybeSingle()
-    const cutoffHour = branchRow?.order_cutoff_hour ?? 16
-    const closedW = Array.isArray(branchRow?.closed_weekdays) ? (branchRow!.closed_weekdays as number[]) : []
-    const dErr = validateDeliveryDate(order.delivery_date, cutoffHour, closedW)
-    if (dErr) throw new Error(dErr)
+    if (customerError) {
+      throw new Error('CUSTOMER_LOOKUP_FAILED: ' + customerError.message)
+    }
+    if (!customer) throw new Error('Invalid token')
+    if (
+      typeof order.delivery_date !== 'string' ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(order.delivery_date)
+    ) {
+      throw new Error('Invalid delivery date')
+    }
 
-    const splitPlans = await buildVoucherSplitPlans(supabase, customer.id, product_deductions)
-    await validateGiftRowsMatchRealtimeSplits(supabase, items, splitPlans)
+    // The request identity must stay stable after the first transaction reserves
+    // vouchers. Do not read current customer type, branch schedule, catalog, or
+    // balances before the idempotent database lookup. The RPC validates all of
+    // those mutable values only when it creates the reservation; an existing
+    // checkout must remain recoverable even if they change later.
+    const checkoutItems = normalizeCheckoutItems(items)
+    const normalizedDeductions = normalizeProductDeductions(product_deductions)
+    if (order.note != null && typeof order.note !== 'string') {
+      throw new Error('INVALID_ORDER_NOTE')
+    }
+    const checkoutArgs = {
+      p_customer_id: customer.id,
+      p_checkout_key: checkoutKey,
+      p_delivery_date: order.delivery_date,
+      p_note: order.note == null ? null : order.note,
+      p_items: checkoutItems,
+      p_product_deductions: normalizedDeductions,
+    }
 
-    // Must be set before Snap + before any webhook can fire (avoids race: webhook could not find order → missing hq_midtrans_settlements).
-    const midtransOrderId = `pop_${customer.id.slice(0, 8)}_${Date.now()}`
-
-    // Create order with payment_status 'unpaid'
-    const { data: newOrder, error: orderError } = await supabase
-      .from('orders')
-      .insert({
-        customer_id: customer.id,
-        customer_name: customer.name,
-        customer_address: customer.address,
-        customer_whatsapp: customer.whatsapp,
-        customer_discount: customer.discount || 0,
-        branch: customer.branch,
-        delivery_date: order.delivery_date,
-        total_amount: order.total_amount,
-        status: 'pending',
-        payment_status: 'unpaid',
-        midtrans_order_id: midtransOrderId,
-        note: order.note || null,
-        empty_gallons_returned: 0,
-        borrowed_gallons: 0,
-        created_by: null,
-        created_by_display: customer.name,
-        is_active: true,
-      })
-      .select()
-      .single()
-    if (orderError) throw new Error('Failed to create order: ' + orderError.message)
-
-    // Create order items
-    const { error: itemsError } = await supabase.from('order_items').insert(
-      items.map((item: OrderItem) => ({ ...item, order_id: newOrder.id }))
+    // The database owns the transaction boundary: order, items, voucher
+    // reservation, breakdown, and ledger either all commit or all roll back.
+    const { data: checkoutRaw, error: checkoutError } = await supabase.rpc(
+      'create_customer_prepay_checkout',
+      checkoutArgs,
     )
-    if (itemsError) {
-      const { error: rbErr } = await supabase.from('order_items').delete().eq('order_id', newOrder.id)
-      if (rbErr) console.error('Rollback failed (order_items on itemsError):', rbErr.message)
-      const { error: rbOrdErr } = await supabase.from('orders').delete().eq('id', newOrder.id)
-      if (rbOrdErr) console.error('Rollback failed (orders on itemsError):', rbOrdErr.message)
-      throw new Error('Failed to create order items: ' + itemsError.message)
+    if (checkoutError) throw new Error(checkoutError.message || 'PREPAY_CHECKOUT_CREATE_FAILED')
+
+    const checkout = asJsonObject(checkoutRaw, 'INVALID_PREPAY_CHECKOUT_RESPONSE')
+    const orderId = requiredString(checkout.order_id, 'INVALID_PREPAY_CHECKOUT_RESPONSE')
+    const midtransOrderId = requiredString(
+      checkout.midtrans_order_id,
+      'INVALID_PREPAY_CHECKOUT_RESPONSE',
+    )
+    const authoritativeTotal = requiredSafeInteger(
+      checkout.total_amount,
+      'INVALID_PREPAY_CHECKOUT_RESPONSE',
+    )
+    const authoritativeQris = requiredSafeInteger(
+      checkout.qris_charged_idr,
+      'INVALID_PREPAY_CHECKOUT_RESPONSE',
+    )
+    const paymentStatus = requiredString(
+      checkout.payment_status,
+      'INVALID_PREPAY_CHECKOUT_RESPONSE',
+    )
+    const isActive = checkout.is_active
+    const wasCreated = checkout.created === true
+    const existingSnapToken = typeof checkout.snap_token === 'string'
+      ? checkout.snap_token.trim()
+      : ''
+
+    if (
+      !UUID_RE.test(orderId) ||
+      midtransOrderId !== `pop_${checkoutKey.replaceAll('-', '')}` ||
+      authoritativeTotal < authoritativeQris ||
+      authoritativeQris <= 0 ||
+      (paymentStatus !== 'unpaid' && paymentStatus !== 'paid') ||
+      typeof isActive !== 'boolean' ||
+      typeof checkout.created !== 'boolean'
+    ) {
+      throw new Error('INVALID_PREPAY_CHECKOUT_RESPONSE')
     }
 
-    for (const plan of splitPlans) {
-      const { error: dErr } = await supabase.from('customer_product_vouchers').upsert({
-        customer_id: customer.id,
-        product_id: plan.product_id,
-        balance: plan.new_balance,
-        gift_balance: plan.new_gift_balance,
+    const releaseCheckout = async (reason: PrepayReleaseReason) => {
+      const { data: releasedRaw, error: releaseError } = await supabase.rpc(
+        'release_customer_prepay_checkout',
+        {
+          p_customer_id: customer.id,
+          p_order_id: orderId,
+          p_reason: reason,
+        },
+      )
+      if (releaseError) throw new Error(releaseError.message || 'PREPAY_CHECKOUT_RELEASE_FAILED')
+      const released = asJsonObject(releasedRaw, 'PREPAY_CHECKOUT_RELEASE_FAILED')
+      if (released.released !== true) throw new Error('PREPAY_CHECKOUT_RELEASE_FAILED')
+    }
+
+    const settleVerifiedCheckout = async (
+      verified: VerifiedMidtransStatus,
+    ): Promise<Response> => {
+      if (!verified.paid || verified.grossAmount !== authoritativeQris) {
+        throw new Error('MIDTRANS_GROSS_AMOUNT_MISMATCH')
+      }
+      const transactionId = requiredString(
+        verified.body.transaction_id,
+        'MIDTRANS_TRANSACTION_ID_MISSING',
+      )
+      const paymentType = requiredString(
+        verified.body.payment_type,
+        'MIDTRANS_PAYMENT_TYPE_MISSING',
+      )
+      const { data: settlementRaw, error: settlementError } = await supabase.rpc(
+        'settle_customer_prepay_checkout',
+        {
+          p_midtrans_order_id: midtransOrderId,
+          p_gross_amount: authoritativeQris,
+          p_midtrans_transaction_id: transactionId,
+          p_transaction_status: verified.transactionStatus,
+          p_payment_type: paymentType,
+          p_raw_notification: verified.body,
+          p_settled_at: parseMidtransTime(verified.body),
+        },
+      )
+      if (settlementError) throw new Error(settlementError.message || 'PREPAY_SETTLEMENT_FAILED')
+      const settlement = asJsonObject(settlementRaw, 'PREPAY_SETTLEMENT_FAILED')
+      if (settlement.late_payment === true) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            paid: false,
+            error: 'PREPAY_LATE_PAYMENT_REQUIRES_REFUND',
+            checkout_disposition: 'manual_reconcile',
+            order_id: orderId,
+            midtrans_order_id: midtransOrderId,
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 },
+        )
+      }
+      if (settlement.settled !== true) throw new Error('PREPAY_SETTLEMENT_FAILED')
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          paid: true,
+          checkout_disposition: 'discard_key',
+          order_id: orderId,
+          midtrans_order_id: midtransOrderId,
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 },
+      )
+    }
+
+    const releaseFromVerifiedFailure = async (
+      verified: VerifiedMidtransStatus,
+    ): Promise<Response | null> => {
+      const reason = releaseReasonForMidtransStatus(verified.transactionStatus)
+      if (!reason) return null
+      if (verified.grossAmount !== authoritativeQris) {
+        throw new Error('MIDTRANS_GROSS_AMOUNT_MISMATCH')
+      }
+      await releaseCheckout(reason)
+      return new Response(
+        JSON.stringify({
+          success: false,
+          paid: false,
+          error: 'PREPAY_CHECKOUT_RELEASED',
+          transaction_status: verified.transactionStatus,
+          checkout_disposition: 'discard_key',
+          order_id: orderId,
+          midtrans_order_id: midtransOrderId,
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 },
+      )
+    }
+
+    // Protect the tiny catalog race between the Edge pre-check and the locked
+    // database transaction. A newly-created mismatched reservation is safely
+    // released before any Midtrans request is sent.
+    if (wasCreated) {
+      try {
+        assertOptionalAmountMatches(order.total_amount, authoritativeTotal, 'ORDER_TOTAL_CHANGED')
+        assertOptionalAmountMatches(payment_amount, authoritativeQris, 'PAYMENT_AMOUNT_CHANGED')
+      } catch (amountError) {
+        await releaseCheckout('snap_create_failed')
+        throw amountError
+      }
+    }
+
+    if (paymentStatus === 'paid') {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          paid: true,
+          checkout_disposition: 'discard_key',
+          order_id: orderId,
+          midtrans_order_id: midtransOrderId,
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 },
+      )
+    }
+    if (isActive !== true || checkout.released_at != null) {
+      throw new Error('PREPAY_CHECKOUT_RELEASED')
+    }
+
+    if (existingSnapToken) {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          paid: false,
+          checkout_disposition: 'retry_same_key',
+          snap_token: existingSnapToken,
+          client_key: clientKey,
+          snap_js_url: snapJsUrl,
+          order_id: orderId,
+          midtrans_order_id: midtransOrderId,
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 },
+      )
+    }
+
+    // The database transaction may have committed while the Edge response or
+    // Snap token persistence was lost. On a same-key retry, reconcile Midtrans
+    // before attempting to create another transaction with the same order id.
+    if (!wasCreated) {
+      let verified = await fetchVerifiedMidtransStatus(midtransOrderId, serverKey, midtransEnv)
+      if (verified?.paid) return await settleVerifiedCheckout(verified)
+      if (verified) {
+        const released = await releaseFromVerifiedFailure(verified)
+        if (released) return released
+      }
+
+      if (verified?.transactionStatus === 'pending') {
+        // A pending transaction without a recoverable local Snap token cannot
+        // be resumed safely. Cancel it at Midtrans, then trust only a fresh
+        // Status API read before restoring reserved vouchers.
+        await cancelPendingMidtransTransaction(midtransOrderId, serverKey, midtransEnv)
+        verified = await fetchVerifiedMidtransStatus(midtransOrderId, serverKey, midtransEnv)
+        if (verified?.paid) return await settleVerifiedCheckout(verified)
+        if (verified) {
+          const released = await releaseFromVerifiedFailure(verified)
+          if (released) return released
+        }
+        throw new Error('PREPAY_PENDING_SESSION_UNAVAILABLE_RETRY_SAME_CHECKOUT')
+      }
+
+      if (verified) {
+        throw new Error('PREPAY_STATUS_UNKNOWN_RETRY_SAME_CHECKOUT')
+      }
+      // A verified 404 means no Midtrans transaction exists for this id. It is
+      // safe to continue with the original idempotency key and create Snap.
+    }
+
+    // Midtrans is external to the database transaction. Network/5xx and
+    // duplicate-id responses are deliberately treated as unknown outcomes:
+    // keep the reservation and require a retry with the same checkout key.
+    let mtResponse: Response
+    try {
+      mtResponse = await fetch(snapUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Basic ${btoa(serverKey + ':')}`,
+        },
+        body: JSON.stringify({
+          transaction_details: {
+            order_id: midtransOrderId,
+            gross_amount: authoritativeQris,
+          },
+          item_details: [{
+            id: orderId,
+            price: authoritativeQris,
+            quantity: 1,
+            name: 'Order Payment',
+          }],
+          customer_details: { first_name: customer.name, phone: customer.whatsapp },
+          enabled_payments: ['other_qris'],
+          notification_url: `${supabaseUrl}/functions/v1/midtrans-webhook`,
+        }),
       })
-      if (dErr) throw new Error('Failed to deduct vouchers: ' + dErr.message)
+    } catch (fetchError) {
+      console.error('Midtrans Snap request outcome unknown:', fetchError)
+      throw new Error('PREPAY_SNAP_CREATE_STATUS_UNKNOWN_RETRY_SAME_CHECKOUT')
     }
 
-    const prepay_breakdown = {
-      catalog_total_idr: order.total_amount,
-      qris_idr: qrisAmount,
-      voucher_splits: splitPlans.map((p) => ({
-        product_id: p.product_id,
-        from_gift: p.from_gift,
-        from_paid: p.from_paid,
-      })),
-      item_cash_units: buildItemCashUnits(items, product_deductions),
+    let mtRaw: string
+    try {
+      mtRaw = await mtResponse.text()
+    } catch (readError) {
+      console.error('Unable to read Midtrans Snap response:', mtResponse.status, readError)
+      throw new Error('PREPAY_SNAP_CREATE_STATUS_UNKNOWN_RETRY_SAME_CHECKOUT')
     }
-    const { error: breakdownErr } = await supabase
-      .from('orders')
-      .update({
-        qris_charged_idr: qrisAmount,
-        prepay_breakdown,
+    let mtData: Record<string, unknown> = {}
+    if (mtRaw) {
+      try {
+        mtData = asJsonObject(JSON.parse(mtRaw), 'INVALID_MIDTRANS_RESPONSE')
+      } catch (parseError) {
+        console.error('Midtrans Snap response was not valid JSON:', mtResponse.status, parseError)
+        throw new Error('PREPAY_SNAP_CREATE_STATUS_UNKNOWN_RETRY_SAME_CHECKOUT')
+      }
+    }
+
+    const snapToken = typeof mtData.token === 'string' ? mtData.token.trim() : ''
+    const redirectUrl = typeof mtData.redirect_url === 'string' ? mtData.redirect_url.trim() : null
+    if (!mtResponse.ok || !snapToken) {
+      console.error('Midtrans Snap rejected or incomplete:', {
+        http_status: mtResponse.status,
+        status_code: mtData.status_code ?? null,
+        status_message: mtData.status_message ?? null,
       })
-      .eq('id', newOrder.id)
-    if (breakdownErr) throw new Error('Failed to save prepay breakdown: ' + breakdownErr.message)
+      // Only these statuses prove Snap rejected the request before creating a
+      // transaction. Timeout/throttle/conflict-style 4xx responses remain
+      // unknown and must retain the reservation for same-key reconciliation.
+      const deterministicClientRejection = [400, 401, 403, 404, 405, 422]
+        .includes(mtResponse.status) && !snapToken
 
-    // Create Midtrans Snap transaction (QRIS only) — charge only the shortfall amount
-    const mtResponse = await fetch(snapUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Basic ${btoa(serverKey + ':')}`,
-      },
-      body: JSON.stringify({
-        transaction_details: { order_id: midtransOrderId, gross_amount: qrisAmount },
-        item_details: [{ id: newOrder.id, price: qrisAmount, quantity: 1, name: 'Order Payment' }],
-        customer_details: { first_name: customer.name, phone: customer.whatsapp },
-        enabled_payments: ['other_qris'],
-        notification_url: `${supabaseUrl}/functions/v1/midtrans-webhook`,
-      }),
-    })
-
-    const mtData = await mtResponse.json()
-    if (!mtData.token) {
-      // Rollback: delete order_items first (FK), then order
-      const { error: rbItemsErr } = await supabase.from('order_items').delete().eq('order_id', newOrder.id)
-      if (rbItemsErr) console.error('Rollback failed (order_items on Midtrans failure):', rbItemsErr.message)
-      const { error: rbOrderErr } = await supabase.from('orders').delete().eq('id', newOrder.id)
-      if (rbOrderErr) console.error('Rollback failed (orders on Midtrans failure):', rbOrderErr.message)
-      throw new Error('Midtrans error: ' + JSON.stringify(mtData))
+      if (deterministicClientRejection) {
+        await releaseCheckout('snap_create_failed')
+        throw new Error(`MIDTRANS_SNAP_REJECTED_${mtResponse.status}`)
+      }
+      throw new Error('PREPAY_SNAP_CREATE_STATUS_UNKNOWN_RETRY_SAME_CHECKOUT')
     }
 
-    if (splitPlans.length > 0) {
-      await insertVoucherUsageLines(supabase, {
-        orderId: newOrder.id,
-        customerId: customer.id,
-        branch: customer.branch ?? '',
-        splits: splitPlans.map((p) => ({
-          product_id: p.product_id,
-          from_gift: p.from_gift,
-          from_paid: p.from_paid,
-        })),
+    let storedRaw: unknown = null
+    let storeError: { message?: string } | null = null
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const stored = await supabase.rpc('store_customer_prepay_snap_session', {
+        p_customer_id: customer.id,
+        p_checkout_key: checkoutKey,
+        p_snap_token: snapToken,
+        p_redirect_url: redirectUrl,
       })
+      storedRaw = stored.data
+      storeError = stored.error
+      if (!storeError) break
+    }
+
+    if (storeError) {
+      // A concurrent request may have stored the canonical token, or the first
+      // store may have committed while its response was lost. Re-read the same
+      // idempotent checkout before asking the client to retry.
+      const reread = await supabase.rpc('create_customer_prepay_checkout', checkoutArgs)
+      if (!reread.error) {
+        const current = asJsonObject(reread.data, 'INVALID_PREPAY_CHECKOUT_RESPONSE')
+        const canonicalToken = typeof current.snap_token === 'string'
+          ? current.snap_token.trim()
+          : ''
+        if (
+          canonicalToken &&
+          current.order_id === orderId &&
+          current.midtrans_order_id === midtransOrderId &&
+          current.is_active === true &&
+          current.released_at == null &&
+          (current.payment_status === 'unpaid' || current.payment_status === 'paid')
+        ) {
+          return new Response(
+            JSON.stringify({
+              success: true,
+              paid: current.payment_status === 'paid',
+              checkout_disposition: current.payment_status === 'paid'
+                ? 'discard_key'
+                : 'retry_same_key',
+              snap_token: canonicalToken,
+              client_key: clientKey,
+              snap_js_url: snapJsUrl,
+              order_id: orderId,
+              midtrans_order_id: midtransOrderId,
+            }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 },
+          )
+        }
+      }
+      console.error('Unable to persist Midtrans Snap session:', storeError)
+      throw new Error('PREPAY_SNAP_SESSION_SAVE_UNKNOWN_RETRY_SAME_CHECKOUT')
+    }
+
+    const storedSession = asJsonObject(storedRaw, 'INVALID_PREPAY_SNAP_SESSION_RESPONSE')
+    const storedToken = requiredString(
+      storedSession.snap_token,
+      'INVALID_PREPAY_SNAP_SESSION_RESPONSE',
+    )
+    if (
+      storedSession.stored !== true ||
+      storedSession.order_id !== orderId ||
+      storedSession.checkout_key !== checkoutKey ||
+      storedSession.midtrans_order_id !== midtransOrderId ||
+      storedSession.is_active !== true ||
+      storedToken !== snapToken
+    ) {
+      throw new Error('INVALID_PREPAY_SNAP_SESSION_RESPONSE')
     }
 
     return new Response(
-      JSON.stringify({ success: true, snap_token: mtData.token, client_key: clientKey, snap_js_url: snapJsUrl, order_id: newOrder.id, midtrans_order_id: midtransOrderId }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+      JSON.stringify({
+        success: true,
+        paid: storedSession.payment_status === 'paid',
+        checkout_disposition: storedSession.payment_status === 'paid'
+          ? 'discard_key'
+          : 'retry_same_key',
+        snap_token: storedToken,
+        client_key: clientKey,
+        snap_js_url: snapJsUrl,
+        order_id: orderId,
+        midtrans_order_id: midtransOrderId,
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 },
     )
   } catch (error: any) {
     console.error('submit-prepay-order error:', error)
+    const message = error instanceof Error ? error.message : 'PREPAY_CHECKOUT_UNKNOWN_ERROR'
     return new Response(
-      JSON.stringify({ success: false, error: error.message }),
+      JSON.stringify({
+        success: false,
+        error: message,
+        checkout_disposition: checkoutDispositionForError(message),
+      }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
     )
   }

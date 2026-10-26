@@ -5,6 +5,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useColorTokens } from '../contexts/ColorTokensContext';
 import LanguageSwitcher from './LanguageSwitcher';
 import { markLogoutForPwaPrompt } from '../utils/pwaInstall';
+import { clearCustomerSession, clearRememberedLogin } from '../lib/customerSession';
 
 interface TopNavV0Props {
   customerName?: string;
@@ -21,7 +22,8 @@ export default function TopNavV0({ customerName, onSignOut, loading }: TopNavV0P
     if (onSignOut) {
       onSignOut();
     } else {
-      sessionStorage.clear();
+      clearCustomerSession();
+      clearRememberedLogin();
       markLogoutForPwaPrompt();
       window.dispatchEvent(new Event('session-auth-updated'));
       navigate('/', { replace: true });

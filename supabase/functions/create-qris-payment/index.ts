@@ -10,9 +10,12 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
-    const { token, type, package_id, order_ids, product_id, qty } = await req.json()
+    const { token, type, package_id, product_id, qty } = await req.json()
     if (!token) throw new Error('Token required')
-    if (!type) throw new Error('type required: voucher | voucher_custom | order')
+    if (!type) throw new Error('type required: voucher | voucher_custom')
+    if (type === 'order') {
+      throw new Error('LEGACY_ORDER_PAYMENT_DISABLED_USE_CREATE_ORDER_PAYMENT')
+    }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -27,7 +30,7 @@ serve(async (req) => {
     // Validate token
     const { data: customer } = await supabase
       .from('customers')
-      .select('id, name, whatsapp, customer_type')
+      .select('id, name, whatsapp')
       .eq('auth_token', token)
       .single()
     if (!customer) throw new Error('Invalid token')
@@ -97,35 +100,6 @@ serve(async (req) => {
         status: 'pending',
       })
       if (insertError) throw new Error('Failed to save purchase request: ' + insertError.message)
-
-    } else if (type === 'order') {
-      if (customer.customer_type === 'pre_pay') {
-        throw new Error('Pre-pay customers must pay when placing an order; use prepay Snap flow')
-      }
-      if (!order_ids || order_ids.length === 0) throw new Error('order_ids required')
-
-      const { data: orders } = await supabase
-        .from('orders')
-        .select('id, total_amount')
-        .in('id', order_ids)
-        .eq('customer_id', customer.id)
-        .eq('payment_status', 'unpaid')
-      if (!orders || orders.length === 0) throw new Error('No valid unpaid orders found')
-
-      grossAmount = orders.reduce((sum: number, o: any) => sum + o.total_amount, 0)
-      orderId = `op_${customer.id.slice(0, 8)}_${Date.now()}`
-      itemDetails = orders.map((o: any) => ({
-        id: o.id,
-        price: o.total_amount,
-        quantity: 1,
-        name: `Order #${o.id.slice(0, 8)}`,
-      }))
-
-      // Tag orders with midtrans_order_id
-      await supabase
-        .from('orders')
-        .update({ midtrans_order_id: orderId })
-        .in('id', order_ids)
 
     } else {
       throw new Error('Invalid type')

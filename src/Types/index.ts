@@ -24,6 +24,7 @@ export interface Product {
 export interface OrderItem {
   id: string;
   order_id: string;
+  product_id?: string | null;
   product: string;
   is_refill: boolean;
   quantity: number;

@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { theme } from '../theme';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface QrisPaymentModalProps {
   qrCodeUrl: string;
@@ -25,6 +26,7 @@ export default function QrisPaymentModal({
   onSuccess,
   onClose,
 }: QrisPaymentModalProps) {
+  const { t } = useLanguage();
   const [secondsLeft, setSecondsLeft] = useState(600); // 10 min countdown
   const [checking, setChecking] = useState(false);
   const [paid, setPaid] = useState(false);
@@ -105,7 +107,7 @@ export default function QrisPaymentModal({
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
           <div>
             <p style={{ margin: 0, fontSize: '17px', fontWeight: '700', color: theme.text }}>
-              📱 Scan QRIS to Pay
+              📱 {t('qris.scanToPay')}
             </p>
             <p style={{ margin: '4px 0 0', fontSize: '13px', color: theme.textMuted }}>
               {formatCurrency(amount)}
@@ -126,10 +128,10 @@ export default function QrisPaymentModal({
           <div style={{ textAlign: 'center', padding: '24px 0' }}>
             <div style={{ fontSize: '64px', marginBottom: '12px' }}>✅</div>
             <p style={{ fontSize: '20px', fontWeight: 'bold', color: theme.success, margin: '0 0 6px' }}>
-              Payment Confirmed!
+              {t('qris.paymentConfirmed')}
             </p>
             <p style={{ fontSize: '14px', color: theme.textMuted, margin: 0 }}>
-              Thank you. Your payment has been received.
+              {t('qris.paymentReceived')}
             </p>
           </div>
         ) : expired ? (
@@ -137,10 +139,10 @@ export default function QrisPaymentModal({
           <div style={{ textAlign: 'center', padding: '24px 0' }}>
             <div style={{ fontSize: '48px', marginBottom: '12px' }}>⏰</div>
             <p style={{ fontSize: '18px', fontWeight: 'bold', color: theme.error, margin: '0 0 6px' }}>
-              QR Code Expired
+              {t('qris.expired')}
             </p>
             <p style={{ fontSize: '14px', color: theme.textMuted, margin: '0 0 20px' }}>
-              Please try again to generate a new QR code.
+              {t('qris.generateAgain')}
             </p>
             <button
               onClick={onClose}
@@ -150,7 +152,7 @@ export default function QrisPaymentModal({
                 fontSize: '15px', fontWeight: 'bold', cursor: 'pointer',
               }}
             >
-              Close
+              {t('common.close')}
             </button>
           </div>
         ) : (
@@ -164,7 +166,7 @@ export default function QrisPaymentModal({
               }}>
                 <img
                   src={qrCodeUrl}
-                  alt="QRIS Payment Code"
+                  alt={t('qris.paymentCode')}
                   style={{ width: '220px', height: '220px', display: 'block' }}
                 />
               </div>
@@ -173,7 +175,7 @@ export default function QrisPaymentModal({
             {/* Countdown */}
             <div style={{ textAlign: 'center', marginBottom: '14px' }}>
               <p style={{ margin: 0, fontSize: '12px', color: theme.textMuted }}>
-                QR expires in
+                {t('qris.expiresIn')}
               </p>
               <p style={{
                 margin: '4px 0 0', fontSize: '22px', fontWeight: 'bold',
@@ -196,7 +198,7 @@ export default function QrisPaymentModal({
                 animation: 'pulse 1.5s infinite',
               }} />
               <span style={{ fontSize: '12px', color: theme.textMuted }}>
-                {checking ? 'Checking payment...' : 'Waiting for payment...'}
+                {checking ? t('qris.checking') : t('qris.waiting')}
               </span>
             </div>
 
@@ -204,15 +206,15 @@ export default function QrisPaymentModal({
 
             {/* Instructions */}
             <div style={{ fontSize: '12px', color: theme.textMuted, lineHeight: '1.7', textAlign: 'center' }}>
-              <p style={{ margin: 0 }}>Open your banking / e-wallet app and scan the QR code above.</p>
-              <p style={{ margin: '4px 0 0' }}>Payment will be confirmed automatically.</p>
+              <p style={{ margin: 0 }}>{t('qris.scanInstructions')}</p>
+              <p style={{ margin: '4px 0 0' }}>{t('qris.autoConfirm')}</p>
             </div>
 
             {/* Sandbox testing helper — shows QR string for simulator */}
             {qrString && import.meta.env.VITE_MIDTRANS_ENV !== 'production' && (
               <div style={{ marginTop: '12px', background: '#fff8e1', border: '1px solid #ffe082', borderRadius: '8px', padding: '10px' }}>
                 <p style={{ margin: '0 0 6px', fontSize: '11px', color: '#f57f17', fontWeight: '600' }}>
-                  🧪 Sandbox: copy QR String for simulator
+                  🧪 {t('qris.sandboxCopy')}
                 </p>
                 <div
                   onClick={() => navigator.clipboard.writeText(qrString)}
@@ -222,11 +224,11 @@ export default function QrisPaymentModal({
                     background: 'white', border: '1px solid #ddd', borderRadius: '6px',
                     padding: '6px', maxHeight: '48px', overflow: 'hidden',
                   }}
-                  title="Click to copy"
+                  title={t('qris.clickToCopy')}
                 >
                   {qrString}
                 </div>
-                <p style={{ margin: '4px 0 0', fontSize: '10px', color: '#999', textAlign: 'right' }}>tap to copy</p>
+                <p style={{ margin: '4px 0 0', fontSize: '10px', color: '#999', textAlign: 'right' }}>{t('qris.tapToCopy')}</p>
               </div>
             )}
           </>

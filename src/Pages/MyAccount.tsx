@@ -9,6 +9,9 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useColorTokens } from '../contexts/ColorTokensContext';
 import { theme } from '../theme';
 import { markLogoutForPwaPrompt } from '../utils/pwaInstall';
+import { getPaymentTermTranslationKey } from '../utils/paymentTerm';
+import { fetchCustomerVouchers } from '../lib/customerVouchers';
+import { clearCustomerSession, clearRememberedLogin } from '../lib/customerSession';
 import {
   User,
   MapPin,
@@ -43,6 +46,16 @@ interface MyAccountProps {
   customer: Customer;
 }
 
+async function getFunctionErrorMessage(error: any, fallback: string): Promise<string> {
+  try {
+    const payload = await error?.context?.clone?.().json();
+    if (typeof payload?.error === 'string' && payload.error) return payload.error;
+  } catch {
+    // Fall back to the SDK error when the response body is unavailable.
+  }
+  return error?.message || fallback;
+}
+
 export default function MyAccount({ customer }: MyAccountProps) {
   const navigate = useNavigate();
   const { t } = useLanguage();
@@ -72,6 +85,9 @@ export default function MyAccount({ customer }: MyAccountProps) {
   };
 
   const isPrePay = (customer.customer_type || '').toLowerCase() === 'pre_pay';
+  const [paymentTerm, setPaymentTerm] = useState(customer.payment_term || '');
+  const [creditLimit, setCreditLimit] = useState<number | null>(customer.credit_limit ?? null);
+  const paymentTermLabel = t(getPaymentTermTranslationKey(paymentTerm));
 
   const [editingAddress, setEditingAddress] = useState(false);
   const [addressInput, setAddressInput] = useState(customer.address);
@@ -83,23 +99,22 @@ export default function MyAccount({ customer }: MyAccountProps) {
 
   const handleSignOut = () => {
     markLogoutForPwaPrompt();
-    sessionStorage.removeItem('customer');
-    sessionStorage.removeItem('auth_token');
-    sessionStorage.removeItem('authenticated');
+    clearCustomerSession();
+    clearRememberedLogin();
     window.dispatchEvent(new Event('session-auth-updated'));
     navigate('/', { replace: true });
   };
 
   useEffect(() => {
+    const token = sessionStorage.getItem('auth_token');
     if (customer.customer_type === 'pre_pay') {
-      supabase
-        .from('customer_product_vouchers')
-        .select('product_id, balance, products(name)')
-        .eq('customer_id', customer.id)
-        .then(({ data }) => setProductVouchers((data as any) || []));
+      if (token) {
+        fetchCustomerVouchers(token)
+          .then((vouchers) => setProductVouchers(vouchers))
+          .catch(() => setProductVouchers([]));
+      }
     }
 
-    const token = sessionStorage.getItem('auth_token');
     if (token) {
       supabase.functions
         .invoke('get-orders', { body: { token, active_order_count_only: true } })
@@ -107,29 +122,54 @@ export default function MyAccount({ customer }: MyAccountProps) {
           if (data?.success && typeof data.active_order_count === 'number') {
             setActiveOrderCount(data.active_order_count);
           }
+      });
+    }
+
+    if (!isPrePay && token) {
+      supabase.functions
+        .invoke('auth-validate-token', { body: { token } })
+        .then(({ data, error }) => {
+          if (error || !data?.success || !data.customer) return;
+
+          const freshCustomer = data.customer as Customer;
+          setPaymentTerm(freshCustomer.payment_term || customer.payment_term || '');
+          setCreditLimit(freshCustomer.credit_limit ?? customer.credit_limit ?? null);
+
+          sessionStorage.setItem(
+            'customer',
+            JSON.stringify({ ...customer, ...freshCustomer }),
+          );
+          window.dispatchEvent(new Event('session-auth-updated'));
         });
     }
-  }, [customer.id]);
+  }, [customer.id, isPrePay]);
 
   const handleSaveAddress = async () => {
-    if (!addressInput.trim()) return;
+    const address = addressInput.trim();
+    if (!address) return;
     setSavingAddress(true);
     try {
-      const { error } = await supabase
-        .from('customers')
-        .update({ address: addressInput.trim() })
-        .eq('id', customer.id);
-      if (error) throw error;
+      const token = sessionStorage.getItem('auth_token');
+      if (!token) throw new Error(t('common.sessionExpired'));
+
+      const { data, error } = await supabase.functions.invoke('customer-self-service', {
+        body: { token, action: 'update_address', address },
+      });
+      if (error) throw new Error(await getFunctionErrorMessage(error, t('account.updateFailed')));
+      if (!data?.success) throw new Error(t('account.updateFailed'));
+
       toast.success(t('account.addressUpdated'));
       setEditingAddress(false);
+      setAddressInput(data.address || address);
       const stored = sessionStorage.getItem('customer');
       if (stored) {
         const parsed = JSON.parse(stored);
-        sessionStorage.setItem('customer', JSON.stringify({ ...parsed, address: addressInput.trim() }));
+        sessionStorage.setItem('customer', JSON.stringify({ ...parsed, address: data.address || address }));
       }
       window.dispatchEvent(new Event('session-auth-updated'));
     } catch (err: any) {
-      toast.error(t('account.updateFailed') + err.message);
+      console.error('Failed to update customer address:', err);
+      toast.error(t('account.updateFailed') + t('common.error'));
     } finally {
       setSavingAddress(false);
     }
@@ -163,7 +203,8 @@ export default function MyAccount({ customer }: MyAccountProps) {
           {/* Log Out — top right */}
           <button
             onClick={handleSignOut}
-            title="Log Out"
+            title={t('account.logout')}
+            aria-label={t('account.logout')}
             style={{
               position: 'absolute', top: 16, right: 16, zIndex: 10,
               width: 36, height: 36, borderRadius: '50%',
@@ -211,6 +252,17 @@ export default function MyAccount({ customer }: MyAccountProps) {
                 }}>
                   {customer.customer_type === 'pre_pay' ? t('account.prepaid') : t('account.postpaid')}
                 </span>
+                {!isPrePay && (
+                  <span style={{
+                    display: 'inline-block', marginLeft: 6,
+                    padding: '4px 14px', borderRadius: 20,
+                    background: COLOR.primaryBg,
+                    border: `1px solid ${COLOR.primaryBorder}`,
+                    color: COLOR.primary, fontSize: 11, fontWeight: 700,
+                  }}>
+                    {paymentTermLabel}
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -250,14 +302,14 @@ export default function MyAccount({ customer }: MyAccountProps) {
           {/* Orders */}
           <div>
             <div style={card}>
-              <p style={{ margin: 0, padding: '12px 16px 0', fontSize: 11, color: COLOR.primary, fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: '0.08em' }}>Orders</p>
+              <p style={{ margin: 0, padding: '12px 16px 0', fontSize: 11, color: COLOR.primary, fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: '0.08em' }}>{t('account.ordersSection')}</p>
               {/* My Orders */}
               <button
                 onClick={() => navigate('/orders')}
                 style={{ ...menuRow, borderBottom: `1px solid ${COLOR.divider}` }}
               >
                 <div style={iconBox}><Droplets size={18} color={COLOR.primary} /></div>
-                <span style={{ flex: 1, color: COLOR.text, fontWeight: 500, fontSize: 15 }}>My Orders</span>
+                <span style={{ flex: 1, color: COLOR.text, fontWeight: 500, fontSize: 15 }}>{t('nav.myOrders')}</span>
                 {activeOrderCount !== null && activeOrderCount > 0 && (
                   <span style={{
                     padding: '2px 8px', borderRadius: 20,
@@ -275,7 +327,7 @@ export default function MyAccount({ customer }: MyAccountProps) {
                   style={{ ...menuRow, borderBottom: `1px solid ${COLOR.divider}` }}
                 >
                   <div style={iconBox}><Ticket size={18} color={COLOR.primary} /></div>
-                  <span style={{ flex: 1, color: COLOR.text, fontWeight: 500, fontSize: 15 }}>My Vouchers</span>
+                  <span style={{ flex: 1, color: COLOR.text, fontWeight: 500, fontSize: 15 }}>{t('account.myVouchers')}</span>
                   {totalVouchers > 0 && (
                     <span style={{
                       padding: '2px 8px', borderRadius: 20,
@@ -290,7 +342,7 @@ export default function MyAccount({ customer }: MyAccountProps) {
               {/* Order History */}
               <button onClick={() => navigate('/orders')} style={menuRow}>
                 <div style={iconBox}><ClipboardList size={18} color={COLOR.primary} /></div>
-                <span style={{ flex: 1, color: COLOR.text, fontWeight: 500, fontSize: 15 }}>Order History</span>
+                <span style={{ flex: 1, color: COLOR.text, fontWeight: 500, fontSize: 15 }}>{t('account.orderHistory')}</span>
                 <ChevronRight size={18} color={COLOR.muted} />
               </button>
             </div>
@@ -299,7 +351,7 @@ export default function MyAccount({ customer }: MyAccountProps) {
           {/* Settings */}
           <div>
             <div style={card}>
-              <p style={{ margin: 0, padding: '12px 16px 0', fontSize: 11, color: COLOR.primary, fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: '0.08em' }}>Settings</p>
+              <p style={{ margin: 0, padding: '12px 16px 0', fontSize: 11, color: COLOR.primary, fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: '0.08em' }}>{t('account.settings')}</p>
               {/* Theme Toggle */}
               <div style={{ borderBottom: `1px solid ${COLOR.divider}` }}>
                 <div style={{ ...menuRow, cursor: 'default' }}>
@@ -307,7 +359,7 @@ export default function MyAccount({ customer }: MyAccountProps) {
                     {isDark ? <Moon size={18} color={COLOR.primary} /> : <Sun size={18} color={COLOR.primary} />}
                   </div>
                   <span style={{ flex: 1, color: COLOR.text, fontWeight: 500, fontSize: 15 }}>
-                    {isDark ? 'Dark Mode' : 'Light Mode'}
+                    {isDark ? t('account.darkMode') : t('account.lightMode')}
                   </span>
                   <button
                     onClick={toggleTheme}
@@ -337,7 +389,7 @@ export default function MyAccount({ customer }: MyAccountProps) {
                   <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 6 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                       <div style={iconBox}><MapPin size={18} color={COLOR.primary} /></div>
-                      <span style={{ color: COLOR.text, fontWeight: 500, fontSize: 15 }}>Delivery Address</span>
+                      <span style={{ color: COLOR.text, fontWeight: 500, fontSize: 15 }}>{t('account.deliveryAddress')}</span>
                     </div>
                     <input
                       value={addressInput}
@@ -387,7 +439,7 @@ export default function MyAccount({ customer }: MyAccountProps) {
                   >
                     <div style={iconBox}><MapPin size={18} color={COLOR.primary} /></div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ color: COLOR.text, fontWeight: 500, fontSize: 15, margin: 0 }}>Delivery Address</p>
+                      <p style={{ color: COLOR.text, fontWeight: 500, fontSize: 15, margin: 0 }}>{t('account.deliveryAddress')}</p>
                       <p style={{ color: COLOR.muted, fontSize: 12, margin: '3px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {addressInput}
                       </p>
@@ -397,12 +449,26 @@ export default function MyAccount({ customer }: MyAccountProps) {
                 )}
               </div>
 
+              {!isPrePay && (
+                <div style={{ ...menuRow, cursor: 'default', borderBottom: `1px solid ${COLOR.divider}` }}>
+                  <div style={iconBox}><ClipboardList size={18} color={COLOR.primary} /></div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ color: COLOR.text, fontWeight: 500, fontSize: 15, margin: 0 }}>
+                      {t('account.billingTerm')}
+                    </p>
+                    <p style={{ color: COLOR.muted, fontSize: 12, margin: '3px 0 0' }}>
+                      {paymentTermLabel}
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* Service Branch — pre_pay can change in app; later_pay is read-only */}
               {isPrePay ? (
                 <button onClick={() => navigate('/select-branch')} style={menuRow}>
                   <div style={iconBox}><Building2 size={18} color={COLOR.primary} /></div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ color: COLOR.text, fontWeight: 500, fontSize: 15, margin: 0 }}>Service Branch</p>
+                    <p style={{ color: COLOR.text, fontWeight: 500, fontSize: 15, margin: 0 }}>{t('account.serviceBranch')}</p>
                     <p style={{ color: COLOR.muted, fontSize: 12, margin: '3px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {customer.branch === 'Pending' ? t('account.pendingSetup') : customer.branch || t('account.notAssigned')}
                     </p>
@@ -413,7 +479,7 @@ export default function MyAccount({ customer }: MyAccountProps) {
                 <div style={{ ...menuRow, cursor: 'default' }}>
                   <div style={iconBox}><Building2 size={18} color={COLOR.primary} /></div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ color: COLOR.text, fontWeight: 500, fontSize: 15, margin: 0 }}>Service Branch</p>
+                    <p style={{ color: COLOR.text, fontWeight: 500, fontSize: 15, margin: 0 }}>{t('account.serviceBranch')}</p>
                     <p style={{ color: COLOR.muted, fontSize: 12, margin: '3px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {customer.branch === 'Pending' ? t('account.pendingSetup') : customer.branch || t('account.notAssigned')}
                     </p>
@@ -427,7 +493,7 @@ export default function MyAccount({ customer }: MyAccountProps) {
           </div>
 
           {/* Credit Limit (later_pay only) */}
-          {customer.customer_type !== 'pre_pay' && customer.credit_limit != null && (
+          {!isPrePay && creditLimit != null && (
             <div>
               <div style={card}>
                 <p style={{ margin: 0, padding: '12px 16px 0', fontSize: 11, color: COLOR.primary, fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: '0.08em' }}>{t('home.creditLimit')}</p>
@@ -435,14 +501,14 @@ export default function MyAccount({ customer }: MyAccountProps) {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                     <span style={{ color: COLOR.muted, fontSize: 13 }}>{t('home.creditUsed')}</span>
                     <span style={{ color: COLOR.text, fontSize: 13, fontWeight: 700 }}>
-                      — / {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(customer.credit_limit)}
+                      — / {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(creditLimit)}
                     </span>
                   </div>
                   <div style={{ height: 6, borderRadius: 99, background: COLOR.divider, overflow: 'hidden' }}>
                     <div style={{ height: '100%', width: '0%', borderRadius: 99, background: COLOR.gradientPrimary }} />
                   </div>
                   <p style={{ color: COLOR.muted, fontSize: 11, margin: '6px 0 0' }}>
-                    {t('home.creditLimit')}: {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(customer.credit_limit)}
+                    {t('home.creditLimit')}: {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(creditLimit)}
                   </p>
                 </div>
               </div>
@@ -452,7 +518,7 @@ export default function MyAccount({ customer }: MyAccountProps) {
           {/* Contact */}
           <div>
             <div style={card}>
-              <p style={{ margin: 0, padding: '12px 16px 0', fontSize: 11, color: COLOR.primary, fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: '0.08em' }}>Contact</p>
+              <p style={{ margin: 0, padding: '12px 16px 0', fontSize: 11, color: COLOR.primary, fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: '0.08em' }}>{t('account.contact')}</p>
               <div style={{ ...menuRow, cursor: 'default' }}>
                 <div style={iconBox}><MessageCircle size={18} color={COLOR.primary} /></div>
                 <div>
@@ -466,7 +532,7 @@ export default function MyAccount({ customer }: MyAccountProps) {
           {/* Version */}
           <div style={{ textAlign: 'center', paddingTop: 8, paddingBottom: 8 }}>
             <p style={{ color: COLOR.muted, fontSize: 11, margin: 0 }}>VIVIDAQUA v1.0.0</p>
-            <p style={{ color: COLOR.muted, fontSize: 11, margin: '4px 0 0' }}>The Purest Water</p>
+            <p style={{ color: COLOR.muted, fontSize: 11, margin: '4px 0 0' }}>{t('account.tagline')}</p>
           </div>
         </div>
       </div>

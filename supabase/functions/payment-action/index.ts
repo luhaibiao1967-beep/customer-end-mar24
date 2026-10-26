@@ -33,11 +33,16 @@ serve(async (req) => {
     if (action === 'upload') {
       if (!file_base64) throw new Error('file required')
 
-      const targetIds: string[] = (order_ids as string[] | undefined)?.length
+      const requestedTargetIds: string[] = (order_ids as string[] | undefined)?.length
         ? order_ids
         : order_id ? [order_id] : []
 
-      if (targetIds.length === 0) throw new Error('order_id or order_ids required')
+      const targetIds = [...new Set(requestedTargetIds)].sort()
+
+      if (targetIds.length === 0 || targetIds.length > 100) {
+        throw new Error('order_id or order_ids required')
+      }
+      if (targetIds.length !== requestedTargetIds.length) throw new Error('Duplicate order id')
 
       // Verify all orders belong to customer
       const { data: orders, error: ordersErr } = await supabase
@@ -46,7 +51,7 @@ serve(async (req) => {
         .in('id', targetIds)
         .eq('customer_id', customer.id)
 
-      if (ordersErr || !orders?.length) throw new Error('Orders not found')
+      if (ordersErr || !orders || orders.length !== targetIds.length) throw new Error('Orders not found')
 
       // Decode base64 to binary
       const base64Data = file_base64.includes(',') ? file_base64.split(',')[1] : file_base64
@@ -66,13 +71,22 @@ serve(async (req) => {
 
       if (uploadError) throw new Error('Upload failed: ' + uploadError.message)
 
-      const { error: updateError } = await supabase
-        .from('orders')
-        .update({ payment_evidence: filePath })
-        .in('id', targetIds)
-        .eq('customer_id', customer.id)
+      const { data: updateData, error: updateError } = await supabase.rpc(
+        'set_customer_payment_evidence_atomic',
+        {
+          p_customer_id: customer.id,
+          p_order_ids: targetIds,
+          p_payment_evidence: filePath,
+        },
+      )
 
-      if (updateError) throw new Error('Failed to update orders: ' + updateError.message)
+      if (updateError || updateData?.updated !== true || updateData?.updated_count !== targetIds.length) {
+        const { error: cleanupError } = await supabase.storage
+          .from('payment-evidence')
+          .remove([filePath])
+        if (cleanupError) console.error('payment-action cleanup failed:', cleanupError.message)
+        throw new Error('Failed to update orders: ' + (updateError?.message || 'invalid atomic response'))
+      }
 
       return new Response(
         JSON.stringify({ success: true, path: filePath, updated: targetIds.length }),
