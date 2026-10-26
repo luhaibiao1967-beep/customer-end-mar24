@@ -27,7 +27,7 @@ const browser = await chromium.launch({
 });
 const results = [];
 
-async function runCase(name, scenario, { authenticated = false, remember = false, trustedDevice = true, registrationBranch = customer.branch, mockMaps = false } = {}) {
+async function runCase(name, scenario, { authenticated = false, remember = false, trustedDevice = true, newCustomer = false, registrationBranch = customer.branch, mockMaps = false } = {}) {
   const context = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 1000, height: 900 } });
   context.setDefaultTimeout(15_000);
   const requests = [];
@@ -86,7 +86,9 @@ async function runCase(name, scenario, { authenticated = false, remember = false
         if (functionName === 'auth-send-otp') response = { success: true, expires_in: 60 };
         if (functionName === 'auth-verify-otp') response = { ...session, customer: { ...customer, branch: registrationBranch } };
         if (functionName === 'auth-check-device-login') {
-          response = trustedDevice
+          response = newCustomer
+            ? { success: true, bound: false, new_customer: true }
+            : trustedDevice
             ? { ...session, bound: true }
             : { success: true, bound: false, needs_otp: true };
         }
@@ -119,6 +121,59 @@ async function runCase(name, scenario, { authenticated = false, remember = false
 function pathOf(page) { return new URL(page.url()).pathname; }
 
 try {
+  await runCase('direct registration without a return target selects a branch and opens the order page', async ({ page, requests }) => {
+    await page.goto(`${baseUrl.origin}/register`);
+    await page.getByPlaceholder('John Doe').fill(customer.name);
+    await page.getByPlaceholder('Jl. Sudirman No. 123, South Jakarta').fill(customer.address);
+    await page.locator('input[type="tel"]').fill(customer.whatsapp);
+    await page.locator('form button[type="submit"]').click();
+    await page.getByPlaceholder('000000').fill('9876');
+    await page.locator('form button[type="submit"]').click();
+    await page.waitForURL(url => ['/place-order', '/customer-home'].includes(url.pathname));
+    assert.equal(pathOf(page), '/place-order');
+    await page.getByRole('heading', { name: /Choose Your Water Branch/ }).waitFor();
+    await page.getByText(customer.branch, { exact: true }).click();
+    await page.getByRole('button', { name: /Confirm.*MOCK TEST BRANCH/ }).click();
+    await page.getByRole('heading', { name: /New Delivery/ }).waitFor();
+    await page.waitForTimeout(700);
+    assert.equal(pathOf(page), '/place-order');
+    assert.equal(requests.filter(r => r.functionName === 'auth-verify-otp').length, 1);
+    assert.equal(requests.filter(r => r.functionName === 'update-customer-branch').length, 1);
+  }, { registrationBranch: 'Pending', mockMaps: true });
+
+  for (const entry of ['/', '/login']) {
+    await runCase(`registration footer from ordinary ${entry} defaults to ordering`, async ({ page }) => {
+      await page.goto(`${baseUrl.origin}${entry}`);
+      const link = page.locator('a[href^="/register?"]');
+      assert.equal(new URL(await link.getAttribute('href'), baseUrl).searchParams.get('returnTo'), '/place-order');
+      await link.click();
+      await page.waitForURL(url => url.pathname === '/register');
+      assert.equal(new URL(page.url()).searchParams.get('returnTo'), '/place-order');
+    });
+  }
+
+  await runCase('new number register action from ordinary login defaults to ordering', async ({ page }) => {
+    await page.goto(`${baseUrl.origin}/`);
+    await page.locator('input[type="tel"]').fill(customer.whatsapp);
+    await page.locator('form button[type="submit"]').click();
+    await page.getByRole('button', { name: 'Register Now', exact: true }).click();
+    await page.waitForURL(url => url.pathname === '/register');
+    assert.equal(new URL(page.url()).searchParams.get('returnTo'), '/place-order');
+  }, { newCustomer: true });
+
+  await runCase('registration back-to-login and verification links preserve the order target', async ({ page }) => {
+    await page.goto(`${baseUrl.origin}/register?returnTo=%2Fplace-order&remember=0`);
+    const verificationLink = page.locator('a[href^="/reauth?"]');
+    assert.equal(new URL(await verificationLink.getAttribute('href'), baseUrl).searchParams.get('returnTo'), '/place-order');
+    await page.locator('a[href^="/?"]').click();
+    await page.waitForURL(url => url.pathname === '/');
+    assert.equal(new URL(page.url()).searchParams.get('returnTo'), '/place-order');
+    await page.locator('a[href^="/register?"]').click();
+    await page.waitForURL(url => url.pathname === '/register');
+    assert.equal(new URL(page.url()).searchParams.get('returnTo'), '/place-order');
+    assert.equal(new URL(page.url()).searchParams.get('remember'), '0');
+  });
+
   await runCase('footer registration preserves the order target, phone, device, and remember opt-out', async ({ page, requests }) => {
     await page.goto(`${baseUrl.origin}/place-order`);
     await page.waitForURL(url => url.pathname === '/' && url.searchParams.get('returnTo') === '/place-order');
@@ -192,8 +247,24 @@ try {
   }
 
   await runCase('authenticated entry without a return target defaults to customer home', async ({ page }) => {
-    await page.goto(`${baseUrl.origin}/register`);
+    await page.goto(`${baseUrl.origin}/login`);
     await page.waitForURL(url => url.pathname === '/customer-home');
+  }, { authenticated: true });
+
+  await runCase('authenticated registration without a target defaults to ordering', async ({ page }) => {
+    await page.goto(`${baseUrl.origin}/register`);
+    await page.waitForURL(url => url.pathname === '/place-order');
+  }, { authenticated: true });
+
+  await runCase('an explicit safe registration target is retained', async ({ page }) => {
+    await page.goto(`${baseUrl.origin}/register?returnTo=%2Fcustomer-home`);
+    await page.waitForURL(url => url.pathname === '/customer-home');
+  }, { authenticated: true });
+
+  await runCase('an unsafe registration target falls back to ordering', async ({ page }) => {
+    await page.goto(`${baseUrl.origin}/register?returnTo=https%3A%2F%2Fexample.invalid`);
+    await page.waitForURL(url => url.pathname === '/place-order');
+    assert.equal(new URL(page.url()).origin, baseUrl.origin);
   }, { authenticated: true });
 
   for (const unsafeTarget of ['https://example.invalid/', '//example.invalid/', '/not-a-customer-route']) {

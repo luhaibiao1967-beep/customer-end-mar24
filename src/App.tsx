@@ -31,9 +31,9 @@ import {
   writeCustomerSession,
 } from './lib/customerSession';
 
-function CustomerAuthRedirect() {
+function CustomerAuthRedirect({ fallback = '/customer-home' }: { fallback?: string }) {
   const [searchParams] = useSearchParams();
-  return <Navigate to={getSafeCustomerReturnTo(searchParams.get('returnTo'))} replace />;
+  return <Navigate to={getSafeCustomerReturnTo(searchParams.get('returnTo'), fallback)} replace />;
 }
 
 function App() {
@@ -163,7 +163,7 @@ function App() {
           {/* Public registration */}
           <Route
             path="/register"
-            element={customer ? <CustomerAuthRedirect /> : <CustomerRegister />}
+            element={customer ? <CustomerAuthRedirect fallback="/place-order" /> : <CustomerRegister />}
           />
 
           {/* Re-authentication via OTP */}

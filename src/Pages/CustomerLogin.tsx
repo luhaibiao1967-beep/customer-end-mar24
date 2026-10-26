@@ -23,7 +23,9 @@ export default function CustomerLogin() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const [phoneNumber, setPhoneNumber] = useState(() => getRememberedWhatsApp() ?? '')
-  const [rememberMe, setRememberMe] = useState(() => getRememberPreference())
+  const [rememberMe, setRememberMe] = useState(() => searchParams.get('remember') == null
+    ? getRememberPreference()
+    : searchParams.get('remember') === '1')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [status, setStatus] = useState<'idle' | 'new_customer'>('idle')
@@ -32,11 +34,14 @@ export default function CustomerLogin() {
   const { language, setLanguage, t } = useLanguage()
   const { tokens } = useColorTokens()
   const returnTo = getSafeCustomerReturnTo(searchParams.get('returnTo'))
+  // A new registration starts an order unless the entry supplied a safe target.
+  // The ordinary login's derived home default must not override this default.
+  const registrationReturnTo = getSafeCustomerReturnTo(searchParams.get('returnTo'), '/place-order')
   const registerHref = `/register?${new URLSearchParams({
     whatsapp: normalizeWhatsApp(phoneNumber),
     ...(deviceId ? { device_id: deviceId } : {}),
     remember: rememberMe ? '1' : '0',
-    returnTo,
+    returnTo: registrationReturnTo,
   }).toString()}`
 
   useEffect(() => {
@@ -123,7 +128,7 @@ export default function CustomerLogin() {
       whatsapp: formattedPhone,
       device_id: id,
       remember: rememberMe ? '1' : '0',
-      returnTo,
+      returnTo: registrationReturnTo,
     })
     navigate(`/register?${params.toString()}`)
   }

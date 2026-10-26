@@ -62,7 +62,15 @@ export default function CustomerRegister() {
   const rememberLogin = searchParams.get('remember') == null
     ? getRememberPreference()
     : searchParams.get('remember') === '1';
-  const returnTo = getSafeCustomerReturnTo(searchParams.get('returnTo'));
+  const returnTo = getSafeCustomerReturnTo(searchParams.get('returnTo'), '/place-order');
+  const authNavigationParams = new URLSearchParams({
+    returnTo,
+    remember: rememberLogin ? '1' : '0',
+    ...(formData.whatsapp ? { whatsapp: normalizeWhatsApp(formData.whatsapp) } : {}),
+    ...(deviceId ? { device_id: deviceId } : {}),
+  });
+  const loginHref = `/?${authNavigationParams.toString()}`;
+  const reauthHref = `/reauth?${authNavigationParams.toString()}`;
 
   useEffect(() => {
     if (!deviceId) getOrCreateDeviceId().then(setDeviceId);
@@ -442,8 +450,8 @@ export default function CustomerRegister() {
               )}
               <p style={{ fontSize: '13px', color: '#999', margin: 0, textAlign: 'center' }}>
                 <a
-                  href="/"
-                  onClick={(e) => { e.preventDefault(); navigate('/'); }}
+                  href={loginHref}
+                  onClick={(e) => { e.preventDefault(); navigate(loginHref); }}
                   style={{ color: theme.primary, textDecoration: 'underline' }}
                 >
                   {t('register.backToLogin')}
@@ -647,8 +655,8 @@ export default function CustomerRegister() {
                 <p style={{ fontSize: '13px', color: '#999', margin: '0 0 4px 0' }}>
                   {t('register.lostLink')}{' '}
                   <a
-                    href="/reauth"
-                    onClick={(e) => { e.preventDefault(); navigate('/reauth'); }}
+                    href={reauthHref}
+                    onClick={(e) => { e.preventDefault(); navigate(reauthHref); }}
                     style={{ color: theme.primary, textDecoration: 'underline' }}
                   >
                     {t('register.getNewLink')}
@@ -656,8 +664,8 @@ export default function CustomerRegister() {
                 </p>
                 <p style={{ fontSize: '13px', color: '#999', margin: 0 }}>
                   <a
-                    href="/"
-                    onClick={(e) => { e.preventDefault(); navigate('/'); }}
+                    href={loginHref}
+                    onClick={(e) => { e.preventDefault(); navigate(loginHref); }}
                     style={{ color: theme.primary, textDecoration: 'underline' }}
                   >
                     {t('register.backToLogin')}
