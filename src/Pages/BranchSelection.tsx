@@ -27,8 +27,8 @@ interface Branch {
   name: string;
   address: string;
   phone: string;
-  latitude: number;
-  longitude: number;
+  latitude: number | null;
+  longitude: number | null;
   service_radius_km: number;
   internal_demo?: boolean;
 }
@@ -113,13 +113,18 @@ export default function BranchSelection({ customer, mode = 'setup' }: Props) {
       .select('id, name, address, phone, latitude, longitude, service_radius_km, internal_demo')
       .eq('status', 'active')
       .then(({ data }) => {
-        const valid = (data || []).filter(
-          (b) => b.latitude != null && b.longitude != null
-        ) as Branch[];
-        const visible = valid.filter((b) => !b.internal_demo || isDemoViewer);
+        const visible = ((data || []) as Branch[]).filter(
+          (b) => !b.internal_demo || isDemoViewer
+        );
         setBranches(visible.map((b) => ({ ...b, service_radius_km: b.service_radius_km ?? 10, distance: 0 })));
-        // Center map on first branch
-        if (visible.length > 0) setMapCenter({ lat: visible[0].latitude, lng: visible[0].longitude });
+        // Coordinates are optional in older branch records. Keep those branches
+        // selectable and only use coordinate-backed branches to center the map.
+        const firstMappedBranch = visible.find(
+          (b) => b.latitude != null && b.longitude != null
+        );
+        if (firstMappedBranch?.latitude != null && firstMappedBranch.longitude != null) {
+          setMapCenter({ lat: firstMappedBranch.latitude, lng: firstMappedBranch.longitude });
+        }
         setLoadingBranches(false);
       });
   }, [customer.service_branch, customer.branch]);
@@ -130,7 +135,12 @@ export default function BranchSelection({ customer, mode = 'setup' }: Props) {
     setMapCenter(coords);
     setBranches((prev) =>
       prev
-        .map((b) => ({ ...b, distance: haversineKm(coords.lat, coords.lng, b.latitude, b.longitude) }))
+        .map((b) => ({
+          ...b,
+          distance: b.latitude != null && b.longitude != null
+            ? haversineKm(coords.lat, coords.lng, b.latitude, b.longitude)
+            : Number.POSITIVE_INFINITY,
+        }))
         .sort((a, b) => a.distance - b.distance)
     );
     setSelectedBranch(null);
@@ -149,7 +159,7 @@ export default function BranchSelection({ customer, mode = 'setup' }: Props) {
 
   // ─── Nearby = within radius, or all if none qualify ────────────────────
   const nearbyBranches = customerCoords
-    ? branches.filter((b) => b.distance <= b.service_radius_km)
+    ? branches.filter((b) => Number.isFinite(b.distance) && b.distance <= b.service_radius_km)
     : [];
   const displayBranches = nearbyBranches.length > 0 ? nearbyBranches : branches;
   const showingAll = nearbyBranches.length === 0;
@@ -306,16 +316,18 @@ export default function BranchSelection({ customer, mode = 'setup' }: Props) {
           {customerCoords && (
             <Marker position={customerCoords} icon={CUSTOMER_ICON} title="Your location" />
           )}
-          {displayBranches.map((branch) => (
+          {displayBranches.filter(
+            (branch) => branch.latitude != null && branch.longitude != null
+          ).map((branch) => (
             <Marker
               key={branch.id}
-              position={{ lat: branch.latitude, lng: branch.longitude }}
+              position={{ lat: branch.latitude!, lng: branch.longitude! }}
               icon={BRANCH_ICON(selectedBranch?.id === branch.id)}
               title={branch.name}
               onClick={() => {
                 setSelectedBranch(branch);
                 setActiveMarker(branch.id);
-                setMapCenter({ lat: branch.latitude, lng: branch.longitude });
+                setMapCenter({ lat: branch.latitude!, lng: branch.longitude! });
               }}
             >
               {activeMarker === branch.id && (
@@ -353,7 +365,9 @@ export default function BranchSelection({ customer, mode = 'setup' }: Props) {
                 onClick={() => {
                   setSelectedBranch(branch);
                   setActiveMarker(branch.id);
-                  setMapCenter({ lat: branch.latitude, lng: branch.longitude });
+                  if (branch.latitude != null && branch.longitude != null) {
+                    setMapCenter({ lat: branch.latitude, lng: branch.longitude });
+                  }
                 }}
                 style={{
                   background: tokens.card,
@@ -380,7 +394,7 @@ export default function BranchSelection({ customer, mode = 'setup' }: Props) {
                     )}
                   </div>
                   <div style={{ textAlign: 'right', minWidth: '68px', paddingLeft: '8px' }}>
-                    {branch.distance > 0 && (
+                    {Number.isFinite(branch.distance) && branch.distance > 0 && (
                       <p style={{ margin: '0 0 4px', fontSize: '13px', fontWeight: '600', color: isSelected ? tokens.primary : tokens.muted }}>
                         {branch.distance.toFixed(1)} km
                       </p>

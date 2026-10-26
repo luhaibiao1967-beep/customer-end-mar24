@@ -1,15 +1,37 @@
 // src/Pages/CustomerRegister.tsx - Bilingual with button disable after success
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { FunctionsHttpError } from '@supabase/supabase-js';
-import { getOrCreateDeviceId } from '../lib/deviceId';
+import { getOrCreateDeviceId, normalizeDeviceId, resetDeviceId } from '../lib/deviceId';
+import {
+  otpSendFailureTranslationKey,
+  parseOtpSendFailure,
+  type OtpSendFailure,
+} from '../lib/otpSendError';
 import { theme } from '../theme';
 import { useJsApiLoader, Autocomplete } from '@react-google-maps/api';
 import { useLanguage } from '../contexts/LanguageContext';
+import {
+  getRememberPreference,
+  getSafeCustomerReturnTo,
+  normalizeWhatsApp,
+  setRememberedLogin,
+  writeCustomerSession,
+} from '../lib/customerSession';
 
 const MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string;
 const REGISTER_LIBRARIES: ('places')[] = ['places'];
+
+class OtpSendRequestError extends Error {
+  failure: OtpSendFailure;
+
+  constructor(failure: OtpSendFailure) {
+    super('OTP request failed');
+    this.name = 'OtpSendRequestError';
+    this.failure = failure;
+  }
+}
 
 export default function CustomerRegister() {
   const navigate = useNavigate();
@@ -27,13 +49,28 @@ export default function CustomerRegister() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [messageDetail, setMessageDetail] = useState('');
   const [countdown, setCountdown] = useState(0);
+  const [sendRetryAfter, setSendRetryAfter] = useState(0);
   const [registrationSuccess, setRegistrationSuccess] = useState(false);
   const [devMagicLink, setDevMagicLink] = useState('');
   const [alreadyRegistered, setAlreadyRegistered] = useState(false);
   const [waMeUrl, setWaMeUrl] = useState('');
+  const sendOtpInFlightRef = useRef(false);
 
-  const [deviceId, setDeviceId] = useState<string | null>(() => searchParams.get('device_id'));
+  const [deviceId, setDeviceId] = useState<string | null>(() => normalizeDeviceId(searchParams.get('device_id')));
+  const rememberLogin = searchParams.get('remember') == null
+    ? getRememberPreference()
+    : searchParams.get('remember') === '1';
+  const returnTo = getSafeCustomerReturnTo(searchParams.get('returnTo'), '/place-order');
+  const authNavigationParams = new URLSearchParams({
+    returnTo,
+    remember: rememberLogin ? '1' : '0',
+    ...(formData.whatsapp ? { whatsapp: normalizeWhatsApp(formData.whatsapp) } : {}),
+    ...(deviceId ? { device_id: deviceId } : {}),
+  });
+  const loginHref = `/?${authNavigationParams.toString()}`;
+  const reauthHref = `/reauth?${authNavigationParams.toString()}`;
 
   useEffect(() => {
     if (!deviceId) getOrCreateDeviceId().then(setDeviceId);
@@ -51,64 +88,85 @@ export default function CustomerRegister() {
     }
   }, [countdown]);
 
-  const formatPhoneNumber = (phone: string): string => {
-    let cleaned = phone.replace(/\D/g, '');
-    if (cleaned.startsWith('0')) {
-      cleaned = '62' + cleaned.substring(1);
+  useEffect(() => {
+    if (sendRetryAfter <= 0) return;
+    const timer = setTimeout(() => setSendRetryAfter(seconds => Math.max(0, seconds - 1)), 1000);
+    return () => clearTimeout(timer);
+  }, [sendRetryAfter]);
+
+  const formatPhoneNumber = normalizeWhatsApp;
+
+  const invokeSendOtp = async (phone: string, resolvedDeviceId: string) => {
+    const { data, error: functionError } = await supabase.functions.invoke('auth-send-otp', {
+      body: { phone, device_id: resolvedDeviceId }
+    });
+
+    if (functionError || !data?.success) {
+      const failure = await parseOtpSendFailure(functionError, data);
+      console.error('OTP request rejected:', {
+        code: failure.code,
+        kind: failure.kind,
+        message: failure.message,
+      });
+      throw new OtpSendRequestError(failure);
     }
-    if (!cleaned.startsWith('62')) {
-      cleaned = '62' + cleaned;
+    return data;
+  };
+
+  const applyOtpSendFailure = (
+    failure: OtpSendFailure,
+    fallback: 'register.processFailed' | 'register.resendFailed',
+  ) => {
+    if (failure.retryAfter > 0) setSendRetryAfter(failure.retryAfter);
+    if (failure.kind === 'invalid_device') {
+      // Clear the rejected binding, but wait for an explicit user retry.
+      resetDeviceId();
+      setDeviceId(null);
     }
-    return '+' + cleaned;
+    setError(otpSendFailureTranslationKey(failure, fallback));
   };
 
   const handleSubmitForm = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (sendOtpInFlightRef.current || sendRetryAfter > 0) return;
+    sendOtpInFlightRef.current = true;
     setLoading(true);
     setError('');
     setMessage('');
+    setMessageDetail('');
     setAlreadyRegistered(false);
 
     try {
       if (!formData.name || !formData.address || !formData.whatsapp) {
-        throw new Error(t('register.errorRequired'));
+        throw new Error('register.errorRequired');
       }
 
       const formattedWhatsApp = formatPhoneNumber(formData.whatsapp);
-      const resolvedDeviceId = deviceId ?? await getOrCreateDeviceId();
-
-      const { data: checkData } = await supabase.functions.invoke('auth-check-device-login', {
-        body: { phone: formattedWhatsApp, device_id: resolvedDeviceId || 'dummy' },
-      });
-      if (checkData?.bound || checkData?.needs_otp) {
-        setError(t('register.numberRegistered'));
-        setLoading(false);
-        return;
+      if (!formattedWhatsApp) {
+        throw new Error('register.invalidWhatsApp');
       }
+      const resolvedDeviceId = normalizeDeviceId(deviceId) ?? await getOrCreateDeviceId();
+      const data = await invokeSendOtp(formattedWhatsApp, resolvedDeviceId);
 
-      const { data, error: functionError } = await supabase.functions.invoke('auth-send-otp', {
-        body: { phone: formattedWhatsApp, device_id: resolvedDeviceId }
-      });
-
-      if (functionError) {
-        let errMsg = data?.error || functionError.message;
-        if (functionError instanceof FunctionsHttpError && functionError.context) {
-          try {
-            const body = await functionError.context.json();
-            errMsg = body?.error || errMsg;
-          } catch (_) {}
-        }
-        throw new Error(errMsg);
-      }
-      if (!data?.success) throw new Error(data?.error || 'OTP send failed');
-
-      setMessage(`📱 ${language === 'id' ? 'Kode OTP telah dikirim ke WhatsApp' : 'OTP code has been sent to WhatsApp'} ${formattedWhatsApp}`);
+      const isTestOtp = Boolean(data.dev_mode && data.otp);
+      setMessage(isTestOtp ? 'register.testOtpCode' : 'register.otpSentToWhatsApp');
+      setMessageDetail(isTestOtp ? String(data.otp) : formattedWhatsApp);
       setStep('otp');
       setCountdown(300);
-      setLoading(false);
     } catch (err: any) {
       console.error('Registration error:', err);
-      setError(err.message || 'Failed to process registration');
+      if (err instanceof OtpSendRequestError) {
+        applyOtpSendFailure(err.failure, 'register.processFailed');
+        return;
+      }
+      const safeErrorKeys = new Set([
+        'register.errorRequired',
+        'register.invalidWhatsApp',
+        'register.processFailed',
+      ]);
+      setError(safeErrorKeys.has(err?.message) ? err.message : 'register.processFailed');
+    } finally {
+      sendOtpInFlightRef.current = false;
       setLoading(false);
     }
   };
@@ -119,10 +177,14 @@ export default function CustomerRegister() {
 
     setLoading(true);
     setError('');
-    setMessage(t('register.creatingAccount'));
+    setMessage('register.creatingAccount');
+    setMessageDetail('');
 
     try {
       const formattedWhatsApp = formatPhoneNumber(formData.whatsapp);
+      if (!formattedWhatsApp) {
+        throw new Error('register.invalidWhatsApp');
+      }
       const resolvedDeviceId = deviceId ?? await getOrCreateDeviceId();
 
       const { data, error: functionError } = await supabase.functions.invoke('auth-verify-otp', {
@@ -136,67 +198,86 @@ export default function CustomerRegister() {
         }
       });
 
-      console.log('Registration response:', { data, functionError });
-
       if (functionError) {
         let errMsg = data?.error || functionError.message;
+        let errCode = data?.code;
         if (functionError instanceof FunctionsHttpError && functionError.context) {
           try {
             const body = await functionError.context.json();
             errMsg = body?.error || errMsg;
+            errCode = body?.code || errCode;
           } catch (_) {}
         }
-        throw new Error(errMsg);
+        console.error('OTP verification rejected:', { errCode, errMsg });
+        const invalidOtp = errCode === 'INVALID_OR_EXPIRED_OTP' || errCode === 'OTP_INPUT_REQUIRED';
+        throw new Error(invalidOtp ? 'reauth.invalidOtp' : 'register.registrationFailed');
       }
-      if (!data?.success) throw new Error(data?.error || 'Verification failed');
+      if (!data?.success) {
+        console.error('OTP verification rejected:', data);
+        const invalidOtp = data?.code === 'INVALID_OR_EXPIRED_OTP' || data?.code === 'OTP_INPUT_REQUIRED';
+        throw new Error(invalidOtp ? 'reauth.invalidOtp' : 'register.registrationFailed');
+      }
+      if (!data.customer || !data.auth_token) {
+        throw new Error('register.sessionUnavailable');
+      }
 
+      writeCustomerSession(data.customer, data.auth_token);
+      setRememberedLogin(formattedWhatsApp, rememberLogin);
       setRegistrationSuccess(true);
-      setMessage(t('register.successMessage'));
-      if (data.magic_link) {
-        setDevMagicLink(data.magic_link);
-      }
+      setMessage('register.registrationRedirecting');
+      setMessageDetail('');
+      window.dispatchEvent(new Event('session-auth-updated'));
       setLoading(false);
+      setTimeout(() => navigate(returnTo, { replace: true }), 500);
 
     } catch (err: any) {
       console.error('❌ Registration error:', err);
-      setError(err.message || 'Registration failed');
+      const safeErrorKeys = new Set([
+        'register.invalidWhatsApp',
+        'register.sessionUnavailable',
+        'register.registrationFailed',
+        'reauth.invalidOtp',
+      ]);
+      setError(safeErrorKeys.has(err?.message) ? err.message : 'register.registrationFailed');
       setLoading(false);
     }
   };
 
   const handleResendOTP = async () => {
-    if (countdown > 0 || registrationSuccess) return;
+    if (countdown > 0 || sendRetryAfter > 0 || registrationSuccess || sendOtpInFlightRef.current) return;
 
+    sendOtpInFlightRef.current = true;
     setLoading(true);
     setError('');
-    setMessage(language === 'id' ? 'Mengirim ulang OTP...' : 'Resending OTP...');
+    setMessage('register.resendingOtp');
+    setMessageDetail('');
 
     try {
       const formattedWhatsApp = formatPhoneNumber(formData.whatsapp);
-      const resolvedDeviceId = deviceId ?? await getOrCreateDeviceId();
-
-      const { data, error: functionError } = await supabase.functions.invoke('auth-send-otp', {
-        body: { phone: formattedWhatsApp, device_id: resolvedDeviceId }
-      });
-
-      if (functionError) {
-        let errMsg = data?.error || functionError.message;
-        if (functionError instanceof FunctionsHttpError && functionError.context) {
-          try {
-            const body = await functionError.context.json();
-            errMsg = body?.error || errMsg;
-          } catch (_) {}
-        }
-        throw new Error(errMsg);
+      if (!formattedWhatsApp) {
+        throw new Error('register.invalidWhatsApp');
       }
-      if (!data?.success) throw new Error(data?.error || 'Resend failed');
+      const resolvedDeviceId = normalizeDeviceId(deviceId) ?? await getOrCreateDeviceId();
+      const data = await invokeSendOtp(formattedWhatsApp, resolvedDeviceId);
 
-      setMessage(`📱 ${t('register.newOtpSent')}`);
+      const isTestOtp = Boolean(data.dev_mode && data.otp);
+      setMessage(isTestOtp ? 'register.testOtpCode' : 'register.newOtpSent');
+      setMessageDetail(isTestOtp ? String(data.otp) : '');
       setCountdown(300);
       setOtpCode('');
-      setLoading(false);
     } catch (err: any) {
-      setError(err.message || 'Failed to resend OTP');
+      console.error('OTP resend failed:', err);
+      if (err instanceof OtpSendRequestError) {
+        applyOtpSendFailure(err.failure, 'register.resendFailed');
+        return;
+      }
+      const safeErrorKeys = new Set([
+        'register.invalidWhatsApp',
+        'register.resendFailed',
+      ]);
+      setError(safeErrorKeys.has(err?.message) ? err.message : 'register.resendFailed');
+    } finally {
+      sendOtpInFlightRef.current = false;
       setLoading(false);
     }
   };
@@ -294,10 +375,10 @@ export default function CustomerRegister() {
             <img src={`${import.meta.env.BASE_URL}logo.png`} alt="VividAqua" style={{ width: '180px', height: '180px', objectFit: 'contain' }} />
           </div>
           <h1 style={{ fontSize: '28px', fontWeight: 'bold', margin: '0 0 10px 0' }}>
-            {registrationSuccess ? t('register.registrationComplete') : alreadyRegistered ? (language === 'id' ? 'Sudah Terdaftar' : 'Already Registered') : t('register.title')}
+            {registrationSuccess ? t('register.registrationComplete') : alreadyRegistered ? t('register.alreadyRegistered') : t('register.title')}
           </h1>
           <p style={{ margin: 0, opacity: 0.9 }}>
-            {registrationSuccess ? t('register.successTitle') : alreadyRegistered ? (language === 'id' ? 'Link masuk dikirim ke WhatsApp Anda' : 'Login link sent to your WhatsApp') : t('register.subtitle')}
+            {registrationSuccess ? t('register.successTitle') : alreadyRegistered ? t('register.loginLinkSent') : t('register.subtitle')}
           </p>
         </div>
 
@@ -369,8 +450,8 @@ export default function CustomerRegister() {
               )}
               <p style={{ fontSize: '13px', color: '#999', margin: 0, textAlign: 'center' }}>
                 <a
-                  href="/"
-                  onClick={(e) => { e.preventDefault(); navigate('/'); }}
+                  href={loginHref}
+                  onClick={(e) => { e.preventDefault(); navigate(loginHref); }}
                   style={{ color: theme.primary, textDecoration: 'underline' }}
                 >
                   {t('register.backToLogin')}
@@ -535,27 +616,33 @@ export default function CustomerRegister() {
                   color: '#c00',
                   fontSize: '14px'
                 }}>
-                  ⚠️ {error}
+                  ⚠️ {t(error)}{error === 'register.otpRateLimited' && sendRetryAfter > 0
+                    ? ` ${sendRetryAfter} ${t('register.seconds')}`
+                    : ''}
                 </div>
               )}
 
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || sendRetryAfter > 0}
                 style={{
                   width: '100%',
                   padding: '14px',
-                  background: loading ? theme.disabled : theme.gradientPrimary,
+                  background: (loading || sendRetryAfter > 0) ? theme.disabled : theme.gradientPrimary,
                   color: 'white',
                   border: 'none',
                   borderRadius: '8px',
                   fontSize: '16px',
                   fontWeight: 'bold',
-                  cursor: loading ? 'not-allowed' : 'pointer',
+                  cursor: (loading || sendRetryAfter > 0) ? 'not-allowed' : 'pointer',
                   marginBottom: '15px'
                 }}
               >
-                {loading ? `⏳ ${t('register.buttonSending')}` : `${t('register.buttonNext')} →`}
+                {loading
+                  ? `⏳ ${t('register.buttonSending')}`
+                  : sendRetryAfter > 0
+                    ? `${t('register.retryIn')} ${sendRetryAfter} ${t('register.seconds')}`
+                    : `${t('register.buttonNext')} →`}
               </button>
 
               <div style={{ textAlign: 'center' }}>
@@ -568,8 +655,8 @@ export default function CustomerRegister() {
                 <p style={{ fontSize: '13px', color: '#999', margin: '0 0 4px 0' }}>
                   {t('register.lostLink')}{' '}
                   <a
-                    href="/reauth"
-                    onClick={(e) => { e.preventDefault(); navigate('/reauth'); }}
+                    href={reauthHref}
+                    onClick={(e) => { e.preventDefault(); navigate(reauthHref); }}
                     style={{ color: theme.primary, textDecoration: 'underline' }}
                   >
                     {t('register.getNewLink')}
@@ -577,8 +664,8 @@ export default function CustomerRegister() {
                 </p>
                 <p style={{ fontSize: '13px', color: '#999', margin: 0 }}>
                   <a
-                    href="/"
-                    onClick={(e) => { e.preventDefault(); navigate('/'); }}
+                    href={loginHref}
+                    onClick={(e) => { e.preventDefault(); navigate(loginHref); }}
                     style={{ color: theme.primary, textDecoration: 'underline' }}
                   >
                     {t('register.backToLogin')}
@@ -622,13 +709,13 @@ export default function CustomerRegister() {
                   textAlign: 'center',
                   lineHeight: '1.6'
                 }}>
-                  {registrationSuccess && '✅'} {message}
+                  {registrationSuccess && '✅'} {t(message)}{messageDetail ? `: ${messageDetail}` : ''}
                   {registrationSuccess && (
                     <div style={{ marginTop: '15px', padding: '12px', background: 'white', borderRadius: '8px', fontSize: '13px' }}>
                       📱 <strong>{t('register.nextStep')}</strong><br/>
                       {devMagicLink ? (
                         <>
-                          {language === 'id' ? 'Atau klik link di bawah untuk langsung masuk:' : 'Or click the link below to enter directly:'}
+                          {t('register.devDirectLink')}
                           <br/>
                           <a
                             href={devMagicLink}
@@ -693,7 +780,9 @@ export default function CustomerRegister() {
                   color: '#c00',
                   fontSize: '14px'
                 }}>
-                  ⚠️ {error}
+                  ⚠️ {t(error)}{error === 'register.otpRateLimited' && sendRetryAfter > 0
+                    ? ` ${sendRetryAfter} ${t('register.seconds')}`
+                    : ''}
                 </div>
               )}
 
@@ -723,17 +812,21 @@ export default function CustomerRegister() {
                     <button
                       type="button"
                       onClick={handleResendOTP}
-                      disabled={countdown > 0 || loading}
+                      disabled={countdown > 0 || sendRetryAfter > 0 || loading}
                       style={{
                         background: 'none',
                         border: 'none',
-                        color: countdown > 0 ? '#999' : theme.primary,
+                        color: (countdown > 0 || sendRetryAfter > 0) ? '#999' : theme.primary,
                         fontSize: '14px',
-                        cursor: countdown > 0 ? 'not-allowed' : 'pointer',
-                        textDecoration: countdown > 0 ? 'none' : 'underline'
+                        cursor: (countdown > 0 || sendRetryAfter > 0) ? 'not-allowed' : 'pointer',
+                        textDecoration: (countdown > 0 || sendRetryAfter > 0) ? 'none' : 'underline'
                       }}
                     >
-                      {countdown > 0 ? `${t('register.resendIn')} ${formatCountdown(countdown)}` : `🔄 ${t('register.resendOtp')}`}
+                      {countdown > 0
+                        ? `${t('register.resendIn')} ${formatCountdown(countdown)}`
+                        : sendRetryAfter > 0
+                          ? `${t('register.retryIn')} ${sendRetryAfter} ${t('register.seconds')}`
+                          : `🔄 ${t('register.resendOtp')}`}
                     </button>
                   </div>
 
@@ -745,6 +838,7 @@ export default function CustomerRegister() {
                         setOtpCode('');
                         setError('');
                         setMessage('');
+                        setMessageDetail('');
                         setCountdown(0);
                       }}
                       style={{

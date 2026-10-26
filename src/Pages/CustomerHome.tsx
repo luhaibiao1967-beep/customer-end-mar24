@@ -13,6 +13,7 @@ import { Ticket, Droplets, ChevronRight } from 'lucide-react';
 import { theme } from '../theme';
 import { useColorTokens } from '../contexts/ColorTokensContext';
 import { markLogoutForPwaPrompt } from '../utils/pwaInstall';
+import { clearCustomerSession, clearRememberedLogin } from '../lib/customerSession';
 import { filterAndSortOrderableProducts } from '../utils/orderableProducts';
 
 const APP_URL = 'https://vividaqua.online/';
@@ -330,9 +331,8 @@ export default function CustomerHome({ customer }: CustomerHomeProps) {
   const handleSignOut = () => {
     setLoading(true);
     markLogoutForPwaPrompt();
-    sessionStorage.removeItem('customer');
-    sessionStorage.removeItem('auth_token');
-    sessionStorage.removeItem('authenticated');
+    clearCustomerSession();
+    clearRememberedLogin();
     window.dispatchEvent(new Event('session-auth-updated'));
     navigate('/', { replace: true });
   };
