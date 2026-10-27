@@ -2,16 +2,17 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Home, Droplets, Ticket, User } from 'lucide-react';
 import { useColorTokens } from '../contexts/ColorTokensContext';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface BottomNavV0Props {
   customer: { customer_type: string };
 }
 
 const navItems = [
-  { path: '/customer-home', label: 'Home', icon: Home },
-  { path: '/buy-vouchers', label: 'Voucher', icon: Ticket },
-  { path: '/place-order', label: 'Order', icon: Droplets },
-  { path: '/account', label: 'My Account', icon: User },
+  { path: '/customer-home', labelKey: 'nav.home', icon: Home },
+  { path: '/buy-vouchers', labelKey: 'nav.vouchers', icon: Ticket },
+  { path: '/place-order', labelKey: 'nav.newOrder', icon: Droplets },
+  { path: '/account', labelKey: 'nav.myAccount', icon: User },
 ];
 
 export default function BottomNavV0({ customer }: BottomNavV0Props) {
@@ -19,6 +20,7 @@ export default function BottomNavV0({ customer }: BottomNavV0Props) {
   const location = useLocation();
   const isActive = (path: string) => location.pathname === path;
   const { tokens } = useColorTokens();
+  const { t } = useLanguage();
 
   return (
     <nav
@@ -101,7 +103,7 @@ export default function BottomNavV0({ customer }: BottomNavV0Props) {
                   transition: 'color 0.3s',
                 }}
               >
-                {item.label}
+                {t(item.labelKey)}
               </span>
             </button>
           );

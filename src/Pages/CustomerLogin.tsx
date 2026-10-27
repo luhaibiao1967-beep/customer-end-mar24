@@ -9,6 +9,7 @@ import { theme } from '../theme'
 import { useLanguage } from '../contexts/LanguageContext'
 import { useColorTokens } from '../contexts/ColorTokensContext'
 import InstallAppModal from '../Components/InstallAppModal'
+import LanguageSwitcher from '../Components/LanguageSwitcher'
 import { canShowPwaInstallPrompt, consumeLogoutPwaPromptFlag } from '../utils/pwaInstall'
 import {
   getRememberPreference,
@@ -31,7 +32,7 @@ export default function CustomerLogin() {
   const [status, setStatus] = useState<'idle' | 'new_customer'>('idle')
   const [deviceId, setDeviceId] = useState<string | null>(() => getStoredDeviceId())
   const [pwaInstallOpen, setPwaInstallOpen] = useState(false)
-  const { language, setLanguage, t } = useLanguage()
+  const { t } = useLanguage()
   const { tokens } = useColorTokens()
   const returnTo = getSafeCustomerReturnTo(searchParams.get('returnTo'))
   // A new registration starts an order unless the entry supplied a safe target.
@@ -106,15 +107,16 @@ export default function CustomerLogin() {
         setStatus('new_customer')
       }
     } catch (err: any) {
+      console.error('Customer login failed:', err)
       if (err?.message === '__LOGIN_401__') {
-        setError(t('login.functions401'))
+        setError('login.functions401')
         return
       }
       const fetchFailed =
         err?.name === 'FunctionsFetchError' ||
         (typeof err?.message === 'string' &&
           err.message.includes('Failed to send a request to the Edge Function'))
-      setError(fetchFailed ? t('login.functionsUnreachable') : (language === 'id' ? 'Terjadi kesalahan. Silakan coba lagi.' : 'Something went wrong. Please try again.'))
+      setError(fetchFailed ? 'login.functionsUnreachable' : 'common.unexpectedError')
     } finally {
       setLoading(false)
     }
@@ -159,38 +161,7 @@ export default function CustomerLogin() {
           padding: '12px 20px',
           background: tokens.inputBg,
         }}>
-          <button
-            type="button"
-            onClick={() => setLanguage('id')}
-            style={{
-              padding: '6px 14px',
-              background: language === 'id' ? tokens.gradientPrimary : 'transparent',
-              border: 'none',
-              borderRadius: '16px',
-              color: language === 'id' ? 'white' : tokens.primary,
-              fontWeight: 'bold',
-              cursor: 'pointer',
-              fontSize: '13px',
-            }}
-          >
-            🇮🇩 ID
-          </button>
-          <button
-            type="button"
-            onClick={() => setLanguage('en')}
-            style={{
-              padding: '6px 14px',
-              background: language === 'en' ? tokens.gradientPrimary : 'transparent',
-              border: 'none',
-              borderRadius: '16px',
-              color: language === 'en' ? 'white' : tokens.primary,
-              fontWeight: 'bold',
-              cursor: 'pointer',
-              fontSize: '13px',
-            }}
-          >
-            🇬🇧 EN
-          </button>
+          <LanguageSwitcher />
         </div>
 
         <div style={{
@@ -316,9 +287,7 @@ export default function CustomerLogin() {
                   }}
                   style={{ width: '18px', height: '18px', accentColor: tokens.primary }}
                 />
-                {language === 'id'
-                  ? 'Ingat nomor saya di perangkat ini'
-                  : 'Remember my number on this device'}
+                {t('login.rememberNumber')}
               </label>
 
               {error && (
@@ -331,7 +300,7 @@ export default function CustomerLogin() {
                   color: '#c00',
                   fontSize: '14px',
                 }}>
-                  ⚠️ {error}
+                  ⚠️ {t(error)}
                 </div>
               )}
 

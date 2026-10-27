@@ -1,3 +1,4 @@
+import { getProductDisplayName, getProductDisplayUnit } from '../utils/productLocalization';
 // src/Pages/PlaceOrder.tsx - Add New Delivery Order
 import { useState, useEffect, Fragment } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -155,6 +156,26 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const localizedError = (() => {
+    switch (error) {
+      case 'placeOrder.failedLoadProducts':
+        return t('placeOrder.failedLoadProducts') + t('common.unexpectedError');
+      case 'placeOrder.failedLoadOrder':
+        return t('placeOrder.failedLoadOrder') + t('common.unexpectedError');
+      case 'placeOrder.failedSubmit':
+        return t('placeOrder.failedSubmit') + t('common.unexpectedError');
+      case 'PAYMENT_NOT_VERIFIED':
+        return t('placeOrder.paymentFailedPrefix') + t('placeOrder.paymentNotVerified');
+      case 'PAYMENT_GENERIC_ERROR':
+        return t('placeOrder.paymentFailedPrefix') + t('common.unexpectedError');
+      case 'placeOrder.selectProductError':
+        return t('placeOrder.selectProductError');
+      case 'placeOrder.selectDateError':
+        return t('placeOrder.selectDateError');
+      default:
+        return error ? t(error) : '';
+    }
+  })();
   const [showSuccess, setShowSuccess] = useState(false);
 
   // Fresh customer data
@@ -428,7 +449,8 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
 
       setProducts(filtered);
     } catch (err: any) {
-      setError(t('placeOrder.failedLoadProducts') + err.message);
+      console.error('Failed to load products:', err);
+      setError('placeOrder.failedLoadProducts');
     } finally {
       setLoading(false);
       // Fetch vouchers after products loaded
@@ -439,14 +461,14 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
   const loadEditOrder = async (orderId: string) => {
     try {
       const token = sessionStorage.getItem('auth_token');
-      if (!token) throw new Error('Session expired');
+      if (!token) throw new Error(t('common.sessionExpired'));
 
       const { data, error } = await supabase.functions.invoke('get-orders', {
         body: { token, order_id: orderId },
       });
 
       if (error) throw new Error(error.message);
-      if (!data?.success) throw new Error(data?.error || 'Failed to load order');
+      if (!data?.success) throw new Error(data?.error || t('placeOrder.failedLoadOrder'));
 
       const order = data.order;
       setDeliveryDate(order.delivery_date);
@@ -462,7 +484,8 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
       }
       setCart(newCart);
     } catch (err: any) {
-      setError(t('placeOrder.failedLoadOrder') + err.message);
+      console.error('Failed to load editable order:', err);
+      setError('placeOrder.failedLoadOrder');
     }
   };
 
@@ -506,11 +529,11 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
 
   const handleSubmit = async () => {
     if (cartItems.length === 0) {
-      setError(t('placeOrder.selectProductError'));
+      setError('placeOrder.selectProductError');
       return;
     }
     if (!deliveryDate) {
-      setError(t('placeOrder.selectDateError'));
+      setError('placeOrder.selectDateError');
       return;
     }
     if (branchSchedule) {
@@ -602,15 +625,16 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
 
       setShowSuccess(true);
     } catch (err: any) {
-      setError('Failed to submit: ' + err.message);
+      console.error('Failed to submit order:', err);
+      setError('placeOrder.failedSubmit');
     } finally {
       setSubmitting(false);
     }
   };
 
   const handlePayWithQris = async () => {
-    if (cartItems.length === 0) { setError(t('placeOrder.selectProductError')); return; }
-    if (!deliveryDate) { setError(t('placeOrder.selectDateError')); return; }
+    if (cartItems.length === 0) { setError('placeOrder.selectProductError'); return; }
+    if (!deliveryDate) { setError('placeOrder.selectDateError'); return; }
     if (branchSchedule) {
       const min = getMinimumDeliveryDate(
         new Date(),
@@ -687,9 +711,10 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
           navigate('/customer-home');
         },
         onError: (result: any) => {
+          console.error('Order payment failed:', result);
           paymentCompleted = true;
           setSubmitting(false);
-          setError(`${t('placeOrder.paymentFailedPrefix')}${result?.status_message || t('common.error')}`);
+          setError('PAYMENT_GENERIC_ERROR');
         },
         onClose: () => {
           setSubmitting(false);
@@ -700,8 +725,9 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
         },
       });
     } catch (err: any) {
+      console.error('Prepaid order checkout failed:', err);
       setSubmitting(false);
-      setError('Failed to submit: ' + err.message);
+      setError('placeOrder.failedSubmit');
     }
   };
 
@@ -710,9 +736,11 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
     : getMinimumDeliveryDate(new Date(), 16, []);
 
   const wdShort =
-    language === 'en'
-      ? ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-      : ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+    language === 'zh'
+      ? ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+      : language === 'en'
+        ? ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+        : ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
   const closedDayLabels =
     branchSchedule && branchSchedule.closed_weekdays.length > 0
       ? [...branchSchedule.closed_weekdays].sort((a, b) => a - b).map((w) => wdShort[w]).join(', ')
@@ -800,7 +828,7 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
                 .filter(p => productVouchers.has(p.id))
                 .map(p => (
                   <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
-                    <span style={{ color: tokens.text }}>{p.name}</span>
+                    <span style={{ color: tokens.text }}>{getProductDisplayName(p.name, language)}</span>
                     <span style={{ fontWeight: 'bold', color: (productVouchers.get(p.id) ?? 0) > 0 ? tokens.primary : theme.error }}>
                       {productVouchers.get(p.id) ?? 0}
                     </span>
@@ -887,13 +915,13 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
                   <Fragment key={product.id}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', background: qty > 0 ? tokens.primaryBg : 'transparent', borderRadius: qty > 0 ? '10px' : '0', border: qty > 0 ? `2px solid ${tokens.primary}` : 'none', margin: qty > 0 ? '4px 0' : '0' }}>
                     <div style={{ flex: 1 }}>
-                      <p style={{ margin: 0, fontWeight: '600', fontSize: '14px', color: tokens.text }}>{product.name}</p>
+                      <p style={{ margin: 0, fontWeight: '600', fontSize: '14px', color: tokens.text }}>{getProductDisplayName(product.name, language)}</p>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px', flexWrap: 'wrap' }}>
                         <span style={{ fontSize: '13px', color: tokens.muted }}>
-                          {formatCurrency(unitPrice)} / {product.unit}
+                          {formatCurrency(unitPrice)} / {getProductDisplayUnit(product.unit, language)}
                           {!isPrePay && product.is_refill && freshDiscount > 0 && (
                             <span style={{ marginLeft: '6px', color: theme.success, fontSize: '11px' }}>
-                              (disc. {formatCurrency(freshDiscount)})
+                              ({t('placeOrder.disc')} {formatCurrency(freshDiscount)})
                             </span>
                           )}
                         </span>
@@ -947,10 +975,10 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
                       <Fragment key={product.id}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', background: qty > 0 ? tokens.primaryBg : 'transparent', borderRadius: qty > 0 ? '10px' : '0', border: qty > 0 ? `2px solid ${tokens.primary}` : 'none', margin: qty > 0 ? '4px 0' : '0' }}>
                         <div style={{ flex: 1 }}>
-                          <p style={{ margin: 0, fontWeight: '600', fontSize: '14px', color: tokens.text }}>{product.name}</p>
+                          <p style={{ margin: 0, fontWeight: '600', fontSize: '14px', color: tokens.text }}>{getProductDisplayName(product.name, language)}</p>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px', flexWrap: 'wrap' }}>
                             <span style={{ fontSize: '13px', color: tokens.muted }}>
-                              {formatCurrency(unitPrice)} / {product.unit}
+                              {formatCurrency(unitPrice)} / {getProductDisplayUnit(product.unit, language)}
                             </span>
                           </div>
                         </div>
@@ -1042,7 +1070,7 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
               return (
                 <div key={item.product.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: tokens.muted, marginBottom: '6px' }}>
                   <span>
-                    {item.product.name} × {item.quantity}
+                    {getProductDisplayName(item.product.name, language)} × {item.quantity}
                     {vb && vb.byGift > 0 ? (
                       <span style={{ fontSize: '11px', opacity: 0.85 }}> ({vb.byGift} {t('placeOrder.giftTicket')})</span>
                     ) : null}
@@ -1066,7 +1094,7 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
               const available = productVouchers.get(item.product.id) ?? 0;
               return (
                 <div key={item.product.id} style={{ marginBottom: '10px', padding: '10px 12px', background: tokens.primaryBg, borderRadius: '10px', border: `1px solid ${tokens.primaryBorder}` }}>
-                  <p style={{ margin: '0 0 6px 0', fontWeight: '600', fontSize: '13px', color: tokens.text }}>{item.product.name} × {item.quantity}</p>
+                  <p style={{ margin: '0 0 6px 0', fontWeight: '600', fontSize: '13px', color: tokens.text }}>{getProductDisplayName(item.product.name, language)} × {item.quantity}</p>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: tokens.muted, marginBottom: '3px' }}>
                     <span>🎫 {t('placeOrder.currentVouchers')}: <strong style={{ color: tokens.primary }}>{available}</strong></span>
                     {byVoucher > 0 && <span style={{ color: tokens.primary }}>{t('placeOrder.coveredBy')} {byVoucher}</span>}
@@ -1151,7 +1179,7 @@ export default function PlaceOrder({ customer }: PlaceOrderProps) {
         {/* Error */}
         {error && error !== 'UNPAID_ORDERS' && error !== 'PRE_PAY_REQUIRES_PAYMENT' && error !== 'CREDIT_LIMIT_EXCEEDED' && error !== 'DELIVERY_DATE_TOO_SOON' && error !== 'DELIVERY_DATE_BRANCH_CLOSED' && (
           <div style={{ background: '#fdecea', border: `2px solid ${theme.error}`, borderRadius: '12px', padding: '14px 16px', color: theme.error, fontSize: '14px' }}>
-            ⚠️ {error}
+            ⚠️ {localizedError}
           </div>
         )}
 
