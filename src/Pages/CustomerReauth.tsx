@@ -4,6 +4,7 @@ import { FunctionsHttpError } from '@supabase/supabase-js'
 import { supabase } from '../supabaseClient'
 import { getOrCreateDeviceId, normalizeDeviceId } from '../lib/deviceId'
 import { theme } from '../theme'
+import LanguageSwitcher from '../Components/LanguageSwitcher'
 import { useLanguage } from '../contexts/LanguageContext'
 import {
   getRememberPreference,
@@ -148,6 +149,9 @@ export default function CustomerReauth() {
       background: theme.gradientPrimary,
       padding: '20px'
     }}>
+      <div style={{ position: 'fixed', top: '16px', right: '16px', zIndex: 10 }}>
+        <LanguageSwitcher variant="inline" />
+      </div>
       <div style={{
         background: 'white',
         borderRadius: '20px',

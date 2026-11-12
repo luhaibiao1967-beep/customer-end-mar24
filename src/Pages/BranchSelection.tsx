@@ -197,7 +197,7 @@ export default function BranchSelection({ customer, mode = 'setup' }: Props) {
       );
     }
     window.dispatchEvent(new Event('session-auth-updated'));
-    toast.success(`Branch set to ${selectedBranch.name}!`);
+    toast.success(t('branch.setSuccess').replace('{name}', selectedBranch.name));
     if (mode === 'edit') {
       navigate(-1);
     }
@@ -271,7 +271,7 @@ export default function BranchSelection({ customer, mode = 'setup' }: Props) {
           💧 {t('branch.title')}
         </h1>
         <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '13px', margin: 0 }}>
-          Hi {customer.name}! {t('branch.greeting')}
+          {t('branch.greetingName').replace('{name}', customer.name)} {t('branch.greeting')}
         </p>
       </div>
 
@@ -314,7 +314,7 @@ export default function BranchSelection({ customer, mode = 'setup' }: Props) {
           options={{ disableDefaultUI: true, zoomControl: true }}
         >
           {customerCoords && (
-            <Marker position={customerCoords} icon={CUSTOMER_ICON} title="Your location" />
+            <Marker position={customerCoords} icon={CUSTOMER_ICON} title={t('branch.yourLocation')} />
           )}
           {displayBranches.filter(
             (branch) => branch.latitude != null && branch.longitude != null
@@ -396,7 +396,7 @@ export default function BranchSelection({ customer, mode = 'setup' }: Props) {
                   <div style={{ textAlign: 'right', minWidth: '68px', paddingLeft: '8px' }}>
                     {Number.isFinite(branch.distance) && branch.distance > 0 && (
                       <p style={{ margin: '0 0 4px', fontSize: '13px', fontWeight: '600', color: isSelected ? tokens.primary : tokens.muted }}>
-                        {branch.distance.toFixed(1)} km
+                        {branch.distance.toFixed(1)} {t('branch.kmAway')}
                       </p>
                     )}
                     {isSelected && (

@@ -1,3 +1,4 @@
+import { getProductDisplayName, getProductDisplayUnit, getVoucherPackageDisplayLabel, getCatalogDisplayDescription } from '../utils/productLocalization';
 // src/Pages/BuyVouchers.tsx
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -68,6 +69,7 @@ interface VoucherUsageRow {
 
 // ─── Expandable info panel (image + description) ────────────────────────────
 function InfoPanel({ description, imageUrl }: { description: string | null; imageUrl: string | null }) {
+  const { language } = useLanguage();
   if (!description && !imageUrl) return null;
   return (
     <div style={{
@@ -91,7 +93,7 @@ function InfoPanel({ description, imageUrl }: { description: string | null; imag
       )}
       {description && (
         <p style={{ margin: 0, fontSize: '13px', color: '#555', lineHeight: '1.6' }}>
-          {description}
+          {getCatalogDisplayDescription(description, language)}
         </p>
       )}
     </div>
@@ -176,6 +178,7 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
 
   const loadData = async () => {
     try {
+
       const [pkgRes, vRes, prodRes] = await Promise.all([
         supabase
           .from('voucher_packages')
@@ -259,12 +262,15 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
     setPaying(pkg.id);
     try {
       const token = sessionStorage.getItem('auth_token');
-      if (!token) throw new Error('Session expired');
+      if (!token) {
+        toast.error(t('common.sessionExpired'));
+        return;
+      }
       const { data, error } = await supabase.functions.invoke('create-voucher-payment', {
         body: { token, package_id: pkg.id },
       });
       if (error) throw new Error(error.message);
-      if (!data?.success) throw new Error(data?.error || 'Failed to create payment');
+      if (!data?.success) throw new Error(data?.error || t('vouchers.createPaymentFailed'));
       await loadSnapScript(data.client_key, data.snap_js_url);
       const orderId = data.midtrans_order_id;
       (window as any).snap.pay(data.snap_token, {
@@ -285,11 +291,15 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
           fetchHistory();
         },
         onPending: () => { toast(t('vouchers.paymentPending'), { duration: 6000 }); },
-        onError: (result: any) => { toast.error(t('vouchers.paymentFailed') + (result?.status_message || 'Unknown error')); },
+        onError: (result: any) => {
+          console.error('Voucher payment failed:', result);
+          toast.error(t('vouchers.paymentFailed') + t('common.unexpectedError'));
+        },
         onClose: () => { /* user dismissed */ },
       });
     } catch (err: any) {
-      toast.error(t('vouchers.paymentError') + err.message);
+      console.error('Voucher checkout failed:', err);
+      toast.error(t('vouchers.paymentError') + t('vouchers.createPaymentFailed'));
     } finally {
       setPaying(null);
     }
@@ -300,12 +310,15 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
     setPaying(`custom_${product.id}`);
     try {
       const token = sessionStorage.getItem('auth_token');
-      if (!token) throw new Error('Session expired');
+      if (!token) {
+        toast.error(t('common.sessionExpired'));
+        return;
+      }
       const { data, error } = await supabase.functions.invoke('create-voucher-payment', {
         body: { token, product_id: product.id, qty },
       });
       if (error) throw new Error(error.message);
-      if (!data?.success) throw new Error(data?.error || 'Failed to create payment');
+      if (!data?.success) throw new Error(data?.error || t('vouchers.createPaymentFailed'));
       await loadSnapScript(data.client_key, data.snap_js_url);
       const orderId = data.midtrans_order_id;
       (window as any).snap.pay(data.snap_token, {
@@ -326,11 +339,15 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
           fetchHistory();
         },
         onPending: () => { toast(t('vouchers.paymentPending'), { duration: 6000 }); },
-        onError: (result: any) => { toast.error(t('vouchers.paymentFailed') + (result?.status_message || 'Unknown error')); },
+        onError: (result: any) => {
+          console.error('Custom voucher payment failed:', result);
+          toast.error(t('vouchers.paymentFailed') + t('common.unexpectedError'));
+        },
         onClose: () => { /* user dismissed */ },
       });
     } catch (err: any) {
-      toast.error(t('vouchers.paymentError') + err.message);
+      console.error('Custom voucher checkout failed:', err);
+      toast.error(t('vouchers.paymentError') + t('vouchers.createPaymentFailed'));
     } finally {
       setPaying(null);
     }
@@ -341,7 +358,7 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
   const productIdsWithPackages = new Set(packages.map(p => p.product_id));
   const otherProducts = products.filter(p => !productIdsWithPackages.has(p.id));
 
-  const locale = language === 'id' ? 'id-ID' : 'en-GB';
+  const locale = language === 'zh' ? 'zh-CN' : language === 'id' ? 'id-ID' : 'en-GB';
   const fmtWhen = (iso: string) => {
     try {
       return new Date(iso).toLocaleString(locale, { dateStyle: 'short', timeStyle: 'short' });
@@ -398,7 +415,7 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
             <p style={{ margin: '0 0 10px 0', fontSize: '12px', color: tokens.muted, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{t('vouchers.currentBalance')}</p>
             {Array.from(currentVouchers.entries()).map(([productId, balance]) => (
               <div key={productId} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0' }}>
-                <span style={{ fontSize: '13px', color: tokens.text }}>{productNames.get(productId) ?? '—'}</span>
+                <span style={{ fontSize: '13px', color: tokens.text }}>{getProductDisplayName(productNames.get(productId), language)}</span>
                 <span style={{ fontSize: '22px', fontWeight: 'bold', color: tokens.primary }}>{balance}</span>
               </div>
             ))}
@@ -429,7 +446,7 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
                       </p>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
                         <div style={{ flex: 1 }}>
-                          <p style={{ margin: 0, fontSize: '16px', fontWeight: 'bold', color: tokens.text }}>{singlePkg.products?.name} — {t('vouchers.perVoucher')}</p>
+                          <p style={{ margin: 0, fontSize: '16px', fontWeight: 'bold', color: tokens.text }}>{getProductDisplayName(singlePkg.products?.name, language)} — {t('vouchers.perVoucher')}</p>
                           <p style={{ margin: '4px 0 0', fontSize: '12px', color: tokens.muted }}>{formatCurrency(singlePkg.price)} {t('vouchers.perVoucherPrice')}</p>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -474,13 +491,13 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
                             background: tokens.gradientPrimary, color: 'white',
                             letterSpacing: '0.03em',
                           }}>
-                            {isHot ? '🔥 Hot Sales' : pkg.label}
+                            {isHot ? `🔥 ${t('vouchers.hotSales')}` : getVoucherPackageDisplayLabel(pkg.label, language)}
                           </span>
                         )}
                         <p style={{ margin: 0, fontSize: '22px', fontWeight: '900', color: tokens.text }}>{pkg.qty}</p>
-                        <p style={{ margin: '2px 0 6px', fontSize: '11px', color: tokens.muted }}>Vouchers · {pkg.products?.name}</p>
+                        <p style={{ margin: '2px 0 6px', fontSize: '11px', color: tokens.muted }}>{t('vouchers.tickets')} · {getProductDisplayName(pkg.products?.name, language)}</p>
                         <p style={{ margin: '0 0 2px', fontSize: '16px', fontWeight: '700', color: tokens.primary }}>{formatCurrency(pkg.price)}</p>
-                        <p style={{ margin: '0 0 12px', fontSize: '10px', color: tokens.muted }}>{formatCurrency(Math.round(pkg.price / pkg.qty))}/voucher</p>
+                        <p style={{ margin: '0 0 12px', fontSize: '10px', color: tokens.muted }}>{formatCurrency(Math.round(pkg.price / pkg.qty))}{t('vouchers.perVoucherPrice')}</p>
                         {hasInfo && <div style={{ marginBottom: '8px' }}><InfoButton expanded={expanded} onClick={() => toggleExpand(pkg.id)} /></div>}
                         {expanded && <InfoPanel description={pkg.description} imageUrl={pkg.image_url} />}
                         <button
@@ -521,8 +538,8 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
                       )}
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
                         <div style={{ flex: 1 }}>
-                          <p style={{ margin: 0, fontSize: '16px', fontWeight: 'bold', color: tokens.text }}>{product.name}</p>
-                          <p style={{ margin: '4px 0 0', fontSize: '12px', color: tokens.muted }}>{formatCurrency(product.price)} / {product.unit}</p>
+                          <p style={{ margin: 0, fontSize: '16px', fontWeight: 'bold', color: tokens.text }}>{getProductDisplayName(product.name, language)}</p>
+                          <p style={{ margin: '4px 0 0', fontSize: '12px', color: tokens.muted }}>{formatCurrency(product.price)} / {getProductDisplayUnit(product.unit, language)}</p>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                           <p style={{ margin: 0, fontSize: '17px', fontWeight: 'bold', color: tokens.primary }}>
@@ -591,7 +608,7 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                         <div>
-                          <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: tokens.text }}>{row.product_name ?? '—'}</p>
+                          <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: tokens.text }}>{getProductDisplayName(row.product_name, language)}</p>
                           <p style={{ margin: '4px 0 0', fontSize: 12, color: tokens.muted }}>{fmtWhen(row.created_at)}</p>
                         </div>
                         <div style={{ textAlign: 'right' }}>
@@ -640,7 +657,7 @@ export default function BuyVouchers({ customer }: BuyVouchersProps) {
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                           <div>
-                            <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: tokens.text }}>{row.product_name ?? '—'}</p>
+                            <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: tokens.text }}>{getProductDisplayName(row.product_name, language)}</p>
                             <p style={{ margin: '4px 0 0', fontSize: 12, color: tokens.muted }}>{fmtWhen(row.created_at)}</p>
                           </div>
                           <div style={{ textAlign: 'right' }}>

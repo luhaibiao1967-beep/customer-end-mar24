@@ -12,6 +12,7 @@ import {
 import { theme } from '../theme';
 import { useJsApiLoader, Autocomplete } from '@react-google-maps/api';
 import { useLanguage } from '../contexts/LanguageContext';
+import LanguageSwitcher from '../Components/LanguageSwitcher';
 import {
   getRememberPreference,
   getSafeCustomerReturnTo,
@@ -36,7 +37,7 @@ class OtpSendRequestError extends Error {
 export default function CustomerRegister() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { language, setLanguage, t } = useLanguage();
+  const { t } = useLanguage();
   const [step, setStep] = useState<'form' | 'otp'>('form');
   const [formData, setFormData] = useState({
     name: '',
@@ -319,42 +320,9 @@ export default function CustomerRegister() {
           padding: '4px',
           boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
         }}>
-          <button
-            onClick={() => setLanguage('id')}
-            disabled={registrationSuccess}
-            style={{
-              padding: '6px 14px',
-              background: language === 'id' ? theme.gradientPrimary : 'transparent',
-              border: 'none',
-              borderRadius: '16px',
-              color: language === 'id' ? 'white' : theme.primary,
-              fontWeight: 'bold',
-              cursor: registrationSuccess ? 'not-allowed' : 'pointer',
-              fontSize: '13px',
-              opacity: registrationSuccess ? 0.5 : 1,
-              transition: 'all 0.3s ease'
-            }}
-          >
-            ID
-          </button>
-          <button
-            onClick={() => setLanguage('en')}
-            disabled={registrationSuccess}
-            style={{
-              padding: '6px 14px',
-              background: language === 'en' ? theme.gradientPrimary : 'transparent',
-              border: 'none',
-              borderRadius: '16px',
-              color: language === 'en' ? 'white' : theme.primary,
-              fontWeight: 'bold',
-              cursor: registrationSuccess ? 'not-allowed' : 'pointer',
-              fontSize: '13px',
-              opacity: registrationSuccess ? 0.5 : 1,
-              transition: 'all 0.3s ease'
-            }}
-          >
-            EN
-          </button>
+          <div style={{ pointerEvents: registrationSuccess ? 'none' : 'auto', opacity: registrationSuccess ? 0.5 : 1 }}>
+            <LanguageSwitcher />
+          </div>
         </div>
 
         {/* Header */}
