@@ -1,6 +1,6 @@
 // V0-styled Bottom Navigation
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Home, Droplets, Ticket, User } from 'lucide-react';
+import { Home, Droplets, Ticket, User, Building2 } from 'lucide-react';
 import { useColorTokens } from '../contexts/ColorTokensContext';
 import { useLanguage } from '../contexts/LanguageContext';
 
@@ -13,6 +13,7 @@ const navItems = [
   { path: '/buy-vouchers', labelKey: 'nav.vouchers', icon: Ticket },
   { path: '/place-order', labelKey: 'nav.newOrder', icon: Droplets },
   { path: '/account', labelKey: 'nav.myAccount', icon: User },
+  { path: '/company', labelKey: 'nav.company', icon: Building2 },
 ];
 
 export default function BottomNavV0({ customer }: BottomNavV0Props) {
@@ -55,6 +56,8 @@ export default function BottomNavV0({ customer }: BottomNavV0Props) {
           return (
             <button
               key={item.path}
+              type="button"
+              aria-current={active ? 'page' : undefined}
               onClick={() => navigate(item.path)}
               style={{
                 display: 'flex',
@@ -66,7 +69,8 @@ export default function BottomNavV0({ customer }: BottomNavV0Props) {
                 background: 'none',
                 border: 'none',
                 cursor: 'pointer',
-                minWidth: '60px',
+                minWidth: 0,
+                flex: '1 1 0',
               }}
             >
               {/* Icon circle */}

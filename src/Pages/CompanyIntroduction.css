@@ -1,0 +1,90 @@
+.company-page { position: relative; color: var(--company-text); background: var(--company-background); min-height: 100dvh; padding: 0 24px 110px; }
+.company-page * { box-sizing: border-box; }
+.company-page a { text-decoration: none; }
+.company-header { max-width: 1040px; margin: 0 auto; padding: 22px 0; display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+.company-back { color: var(--company-primary); display: inline-flex; gap: 6px; align-items: center; font-size: 14px; font-weight: 650; min-height: 44px; }
+.company-brand img { display: block; object-fit: contain; height: 33px; width: 144px; }
+.company-main { max-width: 1040px; margin: 0 auto; }
+.company-hero { border-radius: 28px; overflow: hidden; background: linear-gradient(125deg, #006971 0%, #008fac 58%, #3bc3ce 100%); color: white; display: grid; grid-template-columns: 1.2fr 1fr; position: relative; }
+.company-hero-copy { padding: 58px 0 38px 48px; position: relative; z-index: 1; }
+.company-eyebrow { font-size: 11px; letter-spacing: .15em; font-weight: 700; color: #b8f4f1; margin: 0 0 22px; }
+.company-page h1 { white-space: pre-line; font-size: clamp(36px, 4.2vw, 55px); line-height: 1.15; letter-spacing: -.035em; font-weight: 750; margin: 0 0 22px; color: white; }
+.company-introduction { color: #e1f7f6; line-height: 1.85; max-width: 450px; font-size: 15px; margin: 0 0 28px; }
+.company-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 22px; }
+.company-button { display: inline-flex; align-items: center; justify-content: center; gap: 14px; border-radius: 12px; min-height: 46px; padding: 12px 19px; font-weight: 700; font-size: 14px; }
+.company-button-solid { color: #00616b; background: white; box-shadow: 0 5px 15px #003f5320; }
+.company-text-link { color: white; font-size: 13px; display: inline-flex; align-items: center; gap: 9px; padding: 8px 0; border-bottom: 1px solid #ffffff66; }
+.company-hero-art { min-width: 0; position: relative; display: flex; align-items: center; justify-content: center; padding: 25px 10px 10px; isolation: isolate; }
+.company-hero-art img { position: relative; width: 95%; height: auto; max-height: 405px; object-fit: contain; transform: rotate(-7deg); z-index: 1; filter: drop-shadow(0 24px 24px #004b6450); }
+.company-orbit { position: absolute; width: 85%; aspect-ratio: 1; border-radius: 50%; border: 1px solid #d9ffff3b; background: #b2f7ff16; z-index: 0; }
+.company-orbit-two { width: 66%; background: #caffff15; }
+.company-pillars { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 0 32px; padding: 20px 12px; border-top: 1px solid #ffffff40; }
+.company-pillars > span { display: flex; align-items: center; gap: 10px; font-size: 12px; line-height: 1.5; }
+.company-pillar-number { color: #a5eeeb; font-size: 11px; letter-spacing: .08em; }
+.company-story { display: grid; grid-template-columns: 1fr 1fr; gap: 60px; padding: 68px 16px 58px; scroll-margin-top: 20px; }
+.company-section-label { font-size: 11px; letter-spacing: .14em; font-weight: 750; color: var(--company-primary); margin: 0 0 14px; }
+.company-page h2 { font-size: clamp(25px, 3vw, 34px); line-height: 1.35; letter-spacing: -.025em; white-space: pre-line; font-weight: 700; color: var(--company-text); margin: 0 0 18px; }
+.company-story-body p, .company-section-description { font-size: 14px; line-height: 1.9; color: var(--company-muted); margin: 0 0 16px; }
+.company-story-body p:last-child { margin-bottom: 0; }
+.company-services { margin-bottom: 58px; }
+.company-service-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 26px; }
+.company-service-card { padding: 27px; border: 1px solid var(--company-border); background: var(--company-card); border-radius: 20px; }
+.company-service-icon { width: 46px; height: 46px; border-radius: 13px; display: inline-flex; align-items: center; justify-content: center; color: var(--company-primary); background: var(--company-tint); margin-bottom: 26px; }
+.company-service-card h3 { font-size: 18px; line-height: 1.45; font-weight: 700; margin: 0 0 12px; }
+.company-service-card p { color: var(--company-muted); font-size: 13px; line-height: 1.85; margin: 0; }
+.company-gallery { margin-bottom: 58px; }
+.company-gallery-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 24px; }
+.company-gallery-grid figure { margin: 0; border-radius: 20px; overflow: hidden; border: 1px solid var(--company-border); background: var(--company-tint); }
+.company-gallery-grid img { width: 100%; height: 300px; object-fit: cover; object-position: center 46%; display: block; transition: transform .25s ease; }
+.company-contact { background: var(--company-card); border: 1px solid var(--company-border); padding: 36px; border-radius: 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 45px; }
+.company-contact p:not(.company-section-label) { color: var(--company-muted); font-size: 13px; line-height: 1.9; margin: 0; }
+.company-contact-details { align-self: center; display: flex; flex-direction: column; gap: 24px; min-width: 0; }
+.company-contact-row { display: flex; align-items: flex-start; gap: 14px; color: var(--company-primary); min-width: 0; }
+.company-contact-row > svg { flex-shrink: 0; margin-top: 4px; }
+.company-contact-row > span { flex: 1; min-width: 0; }
+.company-contact-label { color: var(--company-muted); font-size: 11px; display: block; margin-bottom: 7px; }
+.company-contact-row strong { font-size: 17px; color: var(--company-text); font-weight: 650; }
+.company-contact-row address { font-style: normal; font-size: 13px; line-height: 1.8; color: var(--company-text); overflow-wrap: anywhere; }
+.company-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 11px; padding: 25px 4px 0; color: var(--company-muted); }
+.company-footer a { color: var(--company-primary); display: inline-flex; align-items: center; gap: 6px; min-height: 44px; }
+.company-page a:focus-visible { outline: 3px solid #f7c35f; outline-offset: 5px; border-radius: 7px; }
+@media (max-width: 640px) {
+  .company-page { padding: 0 16px 105px; }
+  .company-header { gap: 12px; padding: 14px 0; }
+  .company-back { font-size: 12px; gap: 3px; }
+  .company-brand img { width: 112px; height: 26px; }
+  .company-hero { grid-template-columns: 1fr; border-radius: 23px; }
+  .company-hero-copy { padding: 34px 26px 0; }
+  .company-eyebrow { font-size: 9px; letter-spacing: .1em; margin-bottom: 18px; }
+  .company-page h1 { font-size: clamp(31px, 8.3vw, 43px); margin-bottom: 18px; }
+  .company-introduction { font-size: 13px; line-height: 1.85; margin-bottom: 22px; }
+  .company-actions { gap: 17px; }
+  .company-button { font-size: 13px; min-height: 45px; padding: 11px 14px; }
+  .company-text-link { font-size: 12px; }
+  .company-hero-art { height: 260px; padding: 0; margin: 6px 0 -6px; }
+  .company-hero-art img { width: 260px; height: 270px; }
+  .company-orbit-one { width: 245px; }
+  .company-orbit-two { width: 195px; }
+  .company-pillars { margin: 0 20px; padding: 17px 0 20px; gap: 12px; }
+  .company-pillars > span { flex-direction: column; align-items: flex-start; gap: 5px; font-size: 10px; }
+  .company-pillar-number { font-size: 10px; }
+  .company-story { grid-template-columns: 1fr; gap: 10px; padding: 42px 4px 35px; }
+  .company-page h2 { font-size: 26px; }
+  .company-story-body p { font-size: 13px; }
+  .company-services, .company-gallery { margin-bottom: 38px; }
+  .company-service-grid { grid-template-columns: 1fr; gap: 12px; margin-top: 20px; }
+  .company-service-card { padding: 23px; }
+  .company-service-icon { margin-bottom: 15px; }
+  .company-service-card h3 { font-size: 17px; margin-bottom: 8px; }
+  .company-gallery-grid { gap: 8px; }
+  .company-gallery-grid figure { border-radius: 13px; }
+  .company-gallery-grid img { height: 185px; }
+  .company-contact { grid-template-columns: 1fr; gap: 25px; padding: 25px; border-radius: 20px; }
+}
+@media (max-width: 350px) {
+  .company-header { flex-wrap: wrap; }
+  .company-header > div { margin-left: auto; }
+  .company-hero-copy { padding: 28px 21px 0; }
+  .company-gallery-grid img { height: 160px; }
+}
+@media (prefers-reduced-motion: reduce) { .company-gallery-grid img { transition: none; } }

@@ -1,7 +1,7 @@
 // src/Pages/CustomerLogin.tsx - Device binding + WhatsApp login
 // 设备绑定：已绑定则静默登录，未绑定则 OTP 或注册
 import React, { useState, useEffect } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { FunctionsHttpError } from '@supabase/supabase-js'
 import { supabase } from '../supabaseClient'
 import { getOrCreateDeviceId, getStoredDeviceId } from '../lib/deviceId'
@@ -336,7 +336,9 @@ export default function CustomerLogin() {
           )}
         </div>
 
-        {/* 调试：当前连接的 Supabase 项目 */}
+        <p style={{ textAlign: 'center', margin: '20px 0 0', fontSize: '13px' }}>
+          <Link to="/company" style={{ color: tokens.primary, textDecoration: 'underline', textUnderlineOffset: '4px' }}>{t('nav.company')}</Link>
+        </p>
       </div>
 
       <InstallAppModal open={pwaInstallOpen} onClose={() => setPwaInstallOpen(false)} />
