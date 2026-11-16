@@ -5,16 +5,19 @@ import BottomNavV0 from '../Components/BottomNavV0';
 import LanguageSwitcher from '../Components/LanguageSwitcher';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useColorTokens } from '../contexts/ColorTokensContext';
-import { companyContact, companyProfiles } from '../content/companyProfile';
+import { useCompanyContent } from '../content/useCompanyContent';
+import { COMPANY_BUCKET, companyImageUrl, companyPhoneHref } from '../content/companySchema';
+import { supabase } from '../supabaseClient';
 import './CompanyIntroduction.css';
 
 const serviceIcons = [Droplets, Smartphone, Recycle];
-const assets = `${import.meta.env.BASE_URL}company/`;
 
 export default function CompanyIntroduction({ customer }: { customer: { customer_type: string } | null }) {
   const { language } = useLanguage();
   const { tokens, isDark } = useColorTokens();
-  const copy = companyProfiles[language];
+  const content = useCompanyContent();
+  const copy = content.profiles[language];
+  const imageUrl = (path: string) => companyImageUrl(path, key => supabase.storage.from(COMPANY_BUCKET).getPublicUrl(key).data.publicUrl);
   const home = customer ? '/customer-home' : '/';
 
   useEffect(() => { window.scrollTo(0, 0); }, []);
@@ -56,7 +59,7 @@ export default function CompanyIntroduction({ customer }: { customer: { customer
           <div className="company-hero-art">
             <span className="company-orbit company-orbit-one" aria-hidden="true" />
             <span className="company-orbit company-orbit-two" aria-hidden="true" />
-            <img src={`${assets}mascot.webp`} alt={copy.heroAlt} width="640" height="679" fetchPriority="high" />
+            <img src={imageUrl(content.images.hero)} alt={copy.heroAlt} width="640" height="679" fetchPriority="high" />
           </div>
           <div className="company-pillars">{copy.pillars.map((pillar, index) => <span key={pillar}><span className="company-pillar-number" aria-hidden="true">0{index + 1}</span>{pillar}</span>)}</div>
         </section>
@@ -81,14 +84,14 @@ export default function CompanyIntroduction({ customer }: { customer: { customer
           <p className="company-section-label">{copy.galleryLabel}</p>
           <h2 id="company-gallery-title">{copy.galleryTitle}</h2>
           <p className="company-section-description">{copy.galleryBody}</p>
-          <div className="company-gallery-grid">{['workshop-1.webp', 'workshop-2.webp', 'workshop-3.webp'].map((image, index) => <figure key={image}><img src={`${assets}${image}`} alt={`${copy.galleryAlt} ${index + 1}`} width="400" height="480" loading="lazy" /></figure>)}</div>
+          <div className="company-gallery-grid">{content.images.gallery.map((image, index) => <figure key={image}><img src={imageUrl(image)} alt={`${copy.galleryAlt} ${index + 1}`} width="400" height="480" loading="lazy" /></figure>)}</div>
         </section>
 
         <section className="company-contact" aria-labelledby="company-contact-title">
           <div><p className="company-section-label">{copy.contactLabel}</p><h2 id="company-contact-title">{copy.contactTitle}</h2><p>{copy.contactBody}</p></div>
           <div className="company-contact-details">
-            <a href={companyContact.phoneHref} className="company-contact-row"><Phone size={20} aria-hidden="true" /><span><span className="company-contact-label">{copy.phoneLabel}</span><strong>{companyContact.phone}</strong></span><ArrowUpRight size={18} aria-hidden="true" /></a>
-            <div className="company-contact-row"><MapPin size={20} aria-hidden="true" /><span><span className="company-contact-label">{copy.addressLabel}</span><address>{companyContact.address}</address></span></div>
+            <a href={companyPhoneHref(content.contact.phone)} className="company-contact-row"><Phone size={20} aria-hidden="true" /><span><span className="company-contact-label">{copy.phoneLabel}</span><strong>{content.contact.phone}</strong></span><ArrowUpRight size={18} aria-hidden="true" /></a>
+            <div className="company-contact-row"><MapPin size={20} aria-hidden="true" /><span><span className="company-contact-label">{copy.addressLabel}</span><address>{content.contact.address}</address></span></div>
           </div>
         </section>
 

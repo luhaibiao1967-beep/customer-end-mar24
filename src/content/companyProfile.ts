@@ -1,32 +1,4 @@
-import type { Language } from '../contexts/LanguageContext';
-
-interface CompanyProfile {
-  pageTitle: string;
-  eyebrow: string;
-  headline: string;
-  introduction: string;
-  order: string;
-  discover: string;
-  heroAlt: string;
-  pillars: [string, string, string];
-  aboutLabel: string;
-  aboutTitle: string;
-  aboutBody: string;
-  mission: string;
-  servicesLabel: string;
-  servicesTitle: string;
-  services: { title: string; body: string }[];
-  galleryLabel: string;
-  galleryTitle: string;
-  galleryBody: string;
-  galleryAlt: string;
-  contactLabel: string;
-  contactTitle: string;
-  contactBody: string;
-  phoneLabel: string;
-  addressLabel: string;
-  back: string;
-}
+import type { CompanyLanguage as Language, CompanyProfile } from './companySchema';
 
 // Editorial introduction based on the supplied company profiles. Keep business
 // pricing, medical claims, franchise terms and future traceability out of this page.
