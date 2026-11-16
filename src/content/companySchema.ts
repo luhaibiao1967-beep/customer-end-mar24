@@ -7,6 +7,36 @@ export const COMPANY_TEXT_FIELDS = [
   'contactTitle', 'contactBody', 'phoneLabel', 'addressLabel', 'back',
 ] as const;
 export type CompanyTextField = typeof COMPANY_TEXT_FIELDS[number];
+export const MAX_COMPANY_ACTIVITIES = 20;
+export const MAX_ACTIVITY_IMAGES = 6;
+export interface CompanyActivity {
+  id: string;
+  date: string;
+  published: boolean;
+  translations: Record<CompanyLanguage, { title: string; body: string }>;
+  images: string[];
+}
+export function activityTranslation(activity: CompanyActivity, language: CompanyLanguage) {
+  for (const key of [language, 'id', 'en', 'zh'] as CompanyLanguage[]) {
+    const copy = activity.translations[key];
+    if (copy.title.trim() && copy.body.trim()) return { ...copy, language: key };
+  }
+  return null;
+}
+export function isActivityDate(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^[1-9][0-9]{3}-[0-9]{2}-[0-9]{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+export function isCompanyActivity(value: unknown): value is CompanyActivity {
+  if (!object(value) || typeof value.id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(value.id) || !isActivityDate(value.date) || typeof value.published !== 'boolean' || !object(value.translations)) return false;
+  if (!Array.isArray(value.images) || value.images.length > MAX_ACTIVITY_IMAGES || !value.images.every(isCompanyImagePath) || new Set(value.images).size !== value.images.length) return false;
+  if (!(['zh', 'en', 'id'] as const).every(language => { const copy = (value.translations as Record<string, unknown>)[language]; return object(copy) && typeof copy.title === 'string' && copy.title.length <= 180 && typeof copy.body === 'string' && copy.body.length <= 2000; })) return false;
+  return !value.published || (value.images.length > 0 && activityTranslation(value as unknown as CompanyActivity, 'id') !== null);
+}
+export function isCompanyActivities(value: unknown): value is CompanyActivity[] | undefined {
+  return value === undefined || (Array.isArray(value) && value.length <= MAX_COMPANY_ACTIVITIES && value.every(isCompanyActivity) && new Set(value.map(item => item.id)).size === value.length);
+}
 export type CompanyProfile = Record<CompanyTextField, string> & {
   pillars: [string, string, string];
   services: { title: string; body: string }[];
@@ -16,6 +46,7 @@ export interface CompanyDocument {
   profiles: Record<CompanyLanguage, CompanyProfile>;
   contact: { phone: string; address: string };
   images: { hero: string; gallery: string[] };
+  activities?: CompanyActivity[];
 }
 export interface CompanyRecord { document: CompanyDocument; revision: number; updated_at: string }
 const object = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -25,6 +56,7 @@ export function isCompanyImagePath(v: unknown): v is string {
 }
 export function isCompanyDocument(v: unknown): v is CompanyDocument {
   if (!object(v) || v.schemaVersion !== 1 || !object(v.profiles) || !object(v.contact) || !object(v.images)) return false;
+  if (!isCompanyActivities(v.activities)) return false;
   if (!text(v.contact.address, 1000) || !text(v.contact.phone, 32) || !/^\+?[0-9 ()-]+$/.test(v.contact.phone) || !/^[0-9]{7,15}$/.test(v.contact.phone.replace(/\D/g, ''))) return false;
   if (!isCompanyImagePath(v.images.hero) || !Array.isArray(v.images.gallery) || v.images.gallery.length < 1 || v.images.gallery.length > 8 || !v.images.gallery.every(isCompanyImagePath) || new Set(v.images.gallery).size !== v.images.gallery.length) return false;
   return (['zh', 'en', 'id'] as const).every(language => {

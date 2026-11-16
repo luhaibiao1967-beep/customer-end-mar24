@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { ArrowLeft, ArrowUpRight, Droplets, MapPin, Phone, Recycle, Smartphone } from 'lucide-react';
 import BottomNavV0 from '../Components/BottomNavV0';
 import LanguageSwitcher from '../Components/LanguageSwitcher';
+import CompanyActivities from '../Components/CompanyActivities';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useColorTokens } from '../contexts/ColorTokensContext';
 import { useCompanyContent } from '../content/useCompanyContent';
@@ -86,6 +87,8 @@ export default function CompanyIntroduction({ customer }: { customer: { customer
           <p className="company-section-description">{copy.galleryBody}</p>
           <div className="company-gallery-grid">{content.images.gallery.map((image, index) => <figure key={image}><img src={imageUrl(image)} alt={`${copy.galleryAlt} ${index + 1}`} width="400" height="480" loading="lazy" /></figure>)}</div>
         </section>
+
+        <CompanyActivities activities={content.activities} language={language} imageUrl={imageUrl} />
 
         <section className="company-contact" aria-labelledby="company-contact-title">
           <div><p className="company-section-label">{copy.contactLabel}</p><h2 id="company-contact-title">{copy.contactTitle}</h2><p>{copy.contactBody}</p></div>
