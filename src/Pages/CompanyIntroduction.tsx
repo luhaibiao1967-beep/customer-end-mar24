@@ -1,5 +1,5 @@
-import { useEffect, type CSSProperties } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useRef, type CSSProperties } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, ArrowUpRight, Droplets, MapPin, Phone, Recycle, Smartphone } from 'lucide-react';
 import BottomNavV0 from '../Components/BottomNavV0';
 import LanguageSwitcher from '../Components/LanguageSwitcher';
@@ -7,6 +7,7 @@ import CompanyActivities from '../Components/CompanyActivities';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useColorTokens } from '../contexts/ColorTokensContext';
 import { useCompanyContent } from '../content/useCompanyContent';
+import { defaultCompanyDocument } from '../content/companyDefaults';
 import { COMPANY_BUCKET, companyImageUrl, companyPhoneHref } from '../content/companySchema';
 import { supabase } from '../supabaseClient';
 import './CompanyIntroduction.css';
@@ -17,11 +18,19 @@ export default function CompanyIntroduction({ customer }: { customer: { customer
   const { language } = useLanguage();
   const { tokens, isDark } = useColorTokens();
   const content = useCompanyContent();
+  const navigate = useNavigate();
+  const activityAnchorPending = useRef(window.location.hash === '#company-activities');
   const copy = content.profiles[language];
   const imageUrl = (path: string) => companyImageUrl(path, key => supabase.storage.from(COMPANY_BUCKET).getPublicUrl(key).data.publicUrl);
   const home = customer ? '/customer-home' : '/';
 
-  useEffect(() => { window.scrollTo(0, 0); }, []);
+  useEffect(() => { if (window.location.hash !== '#company-activities') window.scrollTo(0, 0); }, []);
+  useEffect(() => {
+    if (!activityAnchorPending.current) return;
+    const frame = window.requestAnimationFrame(() => document.getElementById('company-activities')?.scrollIntoView({ block: 'start' }));
+    if (content !== defaultCompanyDocument) activityAnchorPending.current = false;
+    return () => window.cancelAnimationFrame(frame);
+  }, [content]);
   useEffect(() => {
     const previous = document.title;
     document.title = `${copy.pageTitle} | VIVIDAQUA`;
@@ -88,7 +97,7 @@ export default function CompanyIntroduction({ customer }: { customer: { customer
           <div className="company-gallery-grid">{content.images.gallery.map((image, index) => <figure key={image}><img src={imageUrl(image)} alt={`${copy.galleryAlt} ${index + 1}`} width="400" height="480" loading="lazy" /></figure>)}</div>
         </section>
 
-        <CompanyActivities activities={content.activities} language={language} imageUrl={imageUrl} />
+        <CompanyActivities activities={content.activities} language={language} imageUrl={imageUrl} activityHref={id => `/company/activities/${id}`} onOpenActivity={id => navigate(`/company/activities/${id}`)} />
 
         <section className="company-contact" aria-labelledby="company-contact-title">
           <div><p className="company-section-label">{copy.contactLabel}</p><h2 id="company-contact-title">{copy.contactTitle}</h2><p>{copy.contactBody}</p></div>

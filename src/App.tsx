@@ -14,6 +14,7 @@ import OrderHistory from './Pages/OrderHistory';
 import PlaceOrder from './Pages/PlaceOrder';
 import MyAccount from './Pages/MyAccount';
 import CompanyIntroduction from './Pages/CompanyIntroduction';
+import CompanyActivityPage from './Pages/CompanyActivityPage';
 import OrderDelivery from './Pages/OrderDelivery';
 import SplashPreview from './Pages/SplashPreview';
 import MagicLinkHandler from './Components/MagicLinkHandler';
@@ -169,6 +170,7 @@ function App() {
 
           {/* Public registration */}
           <Route path="/company" element={<CompanyIntroduction customer={customer} />} />
+          <Route path="/company/activities/:activityId" element={<CompanyActivityPage customer={customer} />} />
           <Route
             path="/register"
             element={customer ? <CustomerAuthRedirect fallback="/place-order" /> : <CustomerRegister />}
