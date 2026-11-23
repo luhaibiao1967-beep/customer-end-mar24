@@ -1,0 +1,14 @@
+.company-article-main { max-width: 840px; margin: 8px auto 0; }
+.company-article-page .company-header { max-width: 1040px; }
+.company-article-message { padding: 48px 32px; border: 1px solid var(--company-border); background: var(--company-card); border-radius: 20px; color: var(--company-text); line-height: 1.8; }
+.company-article-message > p { margin-bottom: 16px; }
+.company-page .company-article-message h1 { color: var(--company-text); font-size: 27px; line-height: 1.5; margin-bottom: 16px; }
+.company-article-message > button, .company-article-message > a { display: inline-block; border: 1px solid var(--company-border); padding: 9px 15px; border-radius: 9px; background: var(--company-tint); color: var(--company-primary); font-weight: 600; cursor: pointer; }
+.company-article-message > button:focus-visible { outline: 3px solid #f7c35f; outline-offset: 3px; }
+@media(max-width:640px) {
+ .company-article-page .company-header { flex-wrap: wrap; gap: 10px; }
+ .company-article-page .company-back { flex-basis: 100%; }
+ .company-article-page .company-header > div { margin-left: auto; }
+ .company-article-main { margin-top: 5px; }
+ .company-article-message { padding: 30px 22px; }
+}

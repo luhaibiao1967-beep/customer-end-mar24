@@ -55,6 +55,7 @@ const translations: Record<Language, Record<string, string>> = {
     'nav.myAccount': 'My Account',
     'nav.vouchers': 'Vouchers',
     'nav.test': 'Test',
+    'nav.company': 'About us',
 
     // Common
     'common.back': 'Back',
@@ -564,6 +565,7 @@ const translations: Record<Language, Record<string, string>> = {
     'nav.myAccount': 'Akun Saya',
     'nav.vouchers': 'Voucher',
     'nav.test': 'Tes',
+    'nav.company': 'Tentang',
 
     // Common
     'common.back': 'Kembali',
@@ -1044,6 +1046,7 @@ const translations: Record<Language, Record<string, string>> = {
     'nav.myAccount': '我的账户',
     'nav.vouchers': '代金券',
     'nav.test': '测试',
+    'nav.company': '公司介绍',
 
     // Common
     'common.back': '返回',
